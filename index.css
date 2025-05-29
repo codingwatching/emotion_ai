@@ -1,0 +1,239 @@
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  background-color: light-dark(#f4f4f8, #1a1a1c);
+  color: light-dark(#2c2c2e, #e1e1e3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+#chat-container {
+  width: 100%;
+  max-width: 700px;
+  height: 90vh;
+  max-height: 800px;
+  background-color: light-dark(#ffffff, #2c2c2e);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  background-color: light-dark(#6200ea, #bb86fc);
+  color: #ffffff;
+  padding: 15px 20px;
+  text-align: center;
+  border-bottom: 1px solid light-dark(#e0e0e0, #3a3a3c);
+  position: relative; /* For tooltip positioning */
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.4em;
+  font-weight: 500;
+  margin-bottom: 8px; /* Space for status grid */
+}
+
+#aura-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  font-size: 0.85em;
+  color: light-dark(#f0f0f0, #d0d0d0);
+  min-height: 1.2em; /* Ensure space even if text is short */
+}
+
+#aura-emotion-status-container,
+#aura-cognitive-focus-container {
+  position: relative; /* For tooltip positioning within grid cells */
+  text-align: center;
+}
+
+
+#aura-emotion-status,
+#aura-cognitive-focus {
+  font-weight: bold;
+  cursor: default; /* Indicate it's not just plain text */
+}
+
+.tooltip {
+  visibility: hidden;
+  width: max-content;
+  max-width: 220px; /* Slightly wider for potentially longer descriptions */
+  background-color: light-dark(#555, #ccc);
+  color: light-dark(#fff, #333);
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px 8px;
+  position: absolute;
+  z-index: 1;
+  bottom: 100%; 
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 0.9em;
+  margin-bottom: 5px; /* Space between tooltip and text */
+  pointer-events: none; /* Allow hover on parent even if tooltip covers it */
+}
+
+#aura-emotion-status-container:hover .tooltip,
+#aura-cognitive-focus-container:hover .tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+
+#message-area {
+  flex-grow: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.message-bubble {
+  padding: 10px 15px;
+  border-radius: 18px;
+  max-width: 75%;
+  word-wrap: break-word;
+  line-height: 1.5;
+}
+
+.message-bubble.user {
+  background-color: light-dark(#dcf8c6, #05603A);
+  color: light-dark(#333, #e1e1e3);
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.message-bubble.aura {
+  background-color: light-dark(#e9e9eb, #3e3e42);
+  color: light-dark(#333, #e1e1e3);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+
+.message-bubble.aura p:first-child,
+.message-bubble.aura ul:first-child,
+.message-bubble.aura ol:first-child {
+    margin-top: 0;
+}
+.message-bubble.aura p:last-child,
+.message-bubble.aura ul:last-child,
+.message-bubble.aura ol:last-child {
+    margin-bottom: 0;
+}
+
+
+.message-bubble.error {
+  background-color: light-dark(#ffebee, #5c1212);
+  color: light-dark(#c62828, #ffcdd2);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+
+.message-bubble strong {
+  font-weight: 600;
+}
+
+.message-bubble ul, .message-bubble ol {
+  padding-left: 20px;
+}
+
+footer {
+  padding: 15px 20px;
+  border-top: 1px solid light-dark(#e0e0e0, #3a3a3c);
+  background-color: light-dark(#f9f9f9, #252527);
+}
+
+#chat-form {
+  display: flex;
+  gap: 10px;
+}
+
+#message-input {
+  flex-grow: 1;
+  padding: 12px 15px;
+  border: 1px solid light-dark(#ccc, #444);
+  border-radius: 20px;
+  font-size: 1em;
+  background-color: light-dark(#fff, #333);
+  color: light-dark(#2c2c2e, #e1e1e3);
+}
+
+#message-input:focus {
+  outline: none;
+  border-color: light-dark(#6200ea, #bb86fc);
+  box-shadow: 0 0 0 2px light-dark(rgba(98, 0, 234, 0.2), rgba(187, 134, 252, 0.3));
+}
+
+#send-button {
+  padding: 12px 20px;
+  background-color: light-dark(#6200ea, #bb86fc);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 1em;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+#send-button:hover {
+  background-color: light-dark(#5a00d1, #b073f8);
+}
+
+#send-button:disabled {
+  background-color: light-dark(#b0b0b0, #555);
+  cursor: not-allowed;
+}
+
+/* Typing indicator */
+.typing-indicator {
+  font-style: italic;
+  color: light-dark(#777, #aaa);
+  padding: 5px 0;
+  align-self: flex-start;
+}
+
+/* Scrollbar styling for webkit browsers */
+#message-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+#message-area::-webkit-scrollbar-track {
+  background: light-dark(#f1f1f1, #2c2c2e);
+  border-radius: 10px;
+}
+
+#message-area::-webkit-scrollbar-thumb {
+  background: light-dark(#c5c5c5, #555);
+  border-radius: 10px;
+}
+
+#message-area::-webkit-scrollbar-thumb:hover {
+  background: light-dark(#a8a8a8, #777);
+}
+
+pre {
+  border: 1px solid light-dark(#ddd, #444);
+  padding: 1em;
+  overflow: auto;
+  border-radius: 8px;
+  background-color: light-dark(#f9f9f9, #222);
+  color: light-dark(#333, #eee);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  font-size: 0.9em;
+}
+
+code {
+ font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+}

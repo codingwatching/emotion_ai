@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini Companion Chat</title>
+  <link rel="stylesheet" href="index.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "@google/genai": "https://esm.sh/@google/genai@^0.8.0",
+        "marked": "https://esm.sh/marked@^15.0.8"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="chat-container">
+    <header>
+      <h1>Aura - Your Gemini Companion</h1>
+      <div id="aura-status-grid">
+        <div id="aura-emotion-status-container">
+          Emotion: <span id="aura-emotion-status" aria-live="polite">Normal</span>
+          <span id="aura-emotion-details" class="tooltip">Brainwave: Alpha | NT: Serotonin</span>
+        </div>
+        <div id="aura-cognitive-focus-container">
+          Focus: <span id="aura-cognitive-focus" aria-live="polite">Learning</span>
+          <span id="aura-cognitive-focus-details" class="tooltip">Description of current cognitive focus.</span>
+        </div>
+      </div>
+    </header>
+    <main id="message-area" aria-live="polite" aria-atomic="false"></main>
+    <footer>
+      <form id="chat-form">
+        <input type="text" id="message-input" placeholder="Type your message..." aria-label="Message to Aura" autocomplete="off">
+        <button type="submit" id="send-button" aria-label="Send message">Send</button>
+      </form>
+    </footer>
+  </div>
+  <script type="module" src="index.js"></script>
+</body>
+</html><link rel="stylesheet" href="index.css">
+<script src="index.tsx" type="module"></script>
