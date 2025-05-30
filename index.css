@@ -263,10 +263,13 @@ header h1 {
 }
 
 #message-area {
-  flex: 1;
+  height: 350px;           /* Or use max-height for responsive design */
   overflow-y: auto;
-  padding: 20px;
-  scroll-behavior: smooth;
+  padding: 1rem;
+  background: #f8f8fa;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+  margin-bottom: 1rem;
 }
 
 .message-bubble {
