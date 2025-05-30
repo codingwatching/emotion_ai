@@ -97,7 +97,8 @@ Go to-
 Local:   http://localhost:5173/
 Network: use --host to expose
 
-![alt text](image-1.png)
+![alt text](image-2.png)
+
 
 ## 📡 API Endpoints
 

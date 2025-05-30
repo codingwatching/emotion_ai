@@ -248,13 +248,25 @@ async function displayMessage(
   } else if (sender === 'aura' && !isStreaming) {
     if (currentAuraMessageElement) {
       currentAuraMessageElement.innerHTML = messageBubble.innerHTML;
+      // Add message actions to the existing message element
+      if (sender !== 'error') {
+        addMessageActions(currentAuraMessageElement, text, sender);
+      }
       currentAuraMessageElement = null;
     } else {
       messageArea.appendChild(messageBubble);
+      // Add message actions to new message
+      if (sender !== 'error') {
+        addMessageActions(messageBubble, text, sender);
+      }
     }
   }
   else {
     messageArea.appendChild(messageBubble);
+    // Add message actions to user and aura messages (not error messages)
+    if (sender !== 'error') {
+      addMessageActions(messageBubble, text, sender);
+    }
   }
 
   scrollToBottom();
@@ -449,19 +461,8 @@ function updateAuraCognitiveFocusDisplay(focusCode: string | null) {
 
 
 // --- Enhanced UI Features ---
-function addMemorySearchPanel() {
-  const memorySearchHTML = `
-    <div id="memory-search-panel" class="memory-panel">
-      <h3>🔍 Memory Search</h3>
-      <input type="text" id="memory-query" placeholder="Search conversations..." />
-      <button id="search-memories">Search</button>
-      <div id="memory-results"></div>
-    </div>
-  `;
-  
-  messageArea.insertAdjacentHTML('beforebegin', memorySearchHTML);
-  
-  // Add event listeners
+function setupMemorySearchPanel() {
+  // Connect to existing HTML elements instead of creating new ones
   const searchButton = document.getElementById('search-memories');
   const memoryQuery = document.getElementById('memory-query') as HTMLInputElement;
   const memoryResults = document.getElementById('memory-results');
@@ -504,17 +505,8 @@ function addMemorySearchPanel() {
   }
 }
 
-function addEmotionalInsightsPanel() {
-  const insightsHTML = `
-    <div id="insights-panel" class="insights-panel">
-      <h3>📊 Emotional Insights</h3>
-      <button id="show-insights">View 7-Day Analysis</button>
-      <div id="insights-content"></div>
-    </div>
-  `;
-  
-  messageArea.insertAdjacentHTML('beforebegin', insightsHTML);
-  
+function setupEmotionalInsightsPanel() {
+  // Connect to existing HTML elements instead of creating new ones
   const showInsightsButton = document.getElementById('show-insights');
   const insightsContent = document.getElementById('insights-content');
   
@@ -551,16 +543,165 @@ function addEmotionalInsightsPanel() {
   }
 }
 
+// --- Message Actions (Delete, Edit, Regenerate) ---
+function addMessageActions(messageBubble: HTMLElement, messageText: string, sender: 'user' | 'aura') {
+  const actionsDiv = document.createElement('div');
+  actionsDiv.className = 'message-actions';
+  actionsDiv.style.display = 'none';
+  
+  if (sender === 'user') {
+    // Edit and Delete for user messages
+    actionsDiv.innerHTML = `
+      <button class="action-btn edit-btn" title="Edit message">✏️</button>
+      <button class="action-btn delete-btn" title="Delete message">🗑️</button>
+    `;
+  } else {
+    // Regenerate and Delete for Aura messages
+    actionsDiv.innerHTML = `
+      <button class="action-btn regenerate-btn" title="Regenerate response">🔄</button>
+      <button class="action-btn delete-btn" title="Delete message">🗑️</button>
+    `;
+  }
+  
+  messageBubble.appendChild(actionsDiv);
+  
+  // Show actions on hover
+  messageBubble.addEventListener('mouseenter', () => {
+    actionsDiv.style.display = 'flex';
+  });
+  
+  messageBubble.addEventListener('mouseleave', () => {
+    actionsDiv.style.display = 'none';
+  });
+  
+  // Add event listeners
+  const deleteBtn = actionsDiv.querySelector('.delete-btn');
+  const editBtn = actionsDiv.querySelector('.edit-btn');
+  const regenerateBtn = actionsDiv.querySelector('.regenerate-btn');
+  
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', () => {
+      if (confirm('Delete this message?')) {
+        messageBubble.remove();
+      }
+    });
+  }
+  
+  if (editBtn) {
+    editBtn.addEventListener('click', () => {
+      editMessage(messageBubble, messageText);
+    });
+  }
+  
+  if (regenerateBtn) {
+    regenerateBtn.addEventListener('click', () => {
+      regenerateResponse(messageBubble);
+    });
+  }
+}
+
+function editMessage(messageBubble: HTMLElement, originalText: string) {
+  const textArea = document.createElement('textarea');
+  textArea.value = originalText;
+  textArea.className = 'edit-textarea';
+  textArea.style.width = '100%';
+  textArea.style.minHeight = '60px';
+  textArea.style.resize = 'vertical';
+  
+  const actionDiv = document.createElement('div');
+  actionDiv.className = 'edit-actions';
+  actionDiv.innerHTML = `
+    <button class="action-btn save-btn">💾 Save</button>
+    <button class="action-btn cancel-btn">❌ Cancel</button>
+  `;
+  
+  const originalContent = messageBubble.innerHTML;
+  messageBubble.innerHTML = '';
+  messageBubble.appendChild(textArea);
+  messageBubble.appendChild(actionDiv);
+  
+  textArea.focus();
+  
+  const saveBtn = actionDiv.querySelector('.save-btn');
+  const cancelBtn = actionDiv.querySelector('.cancel-btn');
+  
+  saveBtn?.addEventListener('click', async () => {
+    const newText = textArea.value.trim();
+    if (newText && newText !== originalText) {
+      // Update the message
+      messageBubble.innerHTML = await marked.parse(newText);
+      addMessageActions(messageBubble, newText, 'user');
+      
+      // Resend the conversation from this point
+      // This would require more complex state management
+      // For now, just update the display
+    } else {
+      messageBubble.innerHTML = originalContent;
+    }
+  });
+  
+  cancelBtn?.addEventListener('click', () => {
+    messageBubble.innerHTML = originalContent;
+  });
+}
+
+async function regenerateResponse(messageBubble: HTMLElement) {
+  if (!userName || !backendConnected) return;
+  
+  // Find the user message that prompted this response
+  const userMessage = findPreviousUserMessage(messageBubble);
+  if (!userMessage) return;
+  
+  // Show regenerating indicator
+  messageBubble.innerHTML = '<div class="typing-indicator">Regenerating response...</div>';
+  
+  try {
+    // Send the same message again to get a new response
+    const response = await auraAPI.sendMessage({
+      user_id: userName,
+      message: userMessage,
+      session_id: currentSessionId || undefined
+    });
+    
+    // Update the message content
+    messageBubble.innerHTML = await marked.parse(response.response);
+    addMessageActions(messageBubble, response.response, 'aura');
+    
+    // Update emotional and cognitive state
+    updateAuraEmotionDisplay({
+      name: response.emotional_state.name,
+      intensity: response.emotional_state.intensity
+    });
+    updateAuraCognitiveFocusDisplay(response.cognitive_state.focus);
+    
+  } catch (error) {
+    console.error('Failed to regenerate response:', error);
+    messageBubble.innerHTML = '<div class="message-bubble error">Failed to regenerate response</div>';
+  }
+}
+
+function findPreviousUserMessage(auraMessageBubble: HTMLElement): string | null {
+  let currentElement = auraMessageBubble.previousElementSibling;
+  
+  while (currentElement) {
+    if (currentElement.classList.contains('message-bubble') && 
+        currentElement.classList.contains('user')) {
+      return currentElement.textContent || null;
+    }
+    currentElement = currentElement.previousElementSibling;
+  }
+  
+  return null;
+}
+
 // --- Main Initialization ---
 async function main() {
   try {
     await initializeChat();
     
-    // Add enhanced UI features after initialization
-    setTimeout(() => {
-      addMemorySearchPanel();
-      addEmotionalInsightsPanel();
-    }, 1000);
+    // Setup enhanced UI features - connect to existing HTML elements
+    setupMemorySearchPanel();
+    setupEmotionalInsightsPanel();
     
   } catch (e) {
     console.error("Failed to initialize chat:", e);
