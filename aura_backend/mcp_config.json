@@ -1,0 +1,319 @@
+{
+  "name": "Aura Advanced AI Companion",
+  "version": "1.0.0",
+  "description": "Sophisticated AI companion with emotional intelligence, vector memory, and ASEKE cognitive architecture",
+  "mcp_server": {
+    "name": "aura-companion",
+    "description": "Model Context Protocol server for Aura AI Companion",
+    "version": "1.0.0",
+    "transport": {
+      "stdio": {
+        "command": "python",
+        "args": ["mcp_server.py"],
+        "env": {
+          "PYTHONPATH": ".",
+          "AURA_MCP_MODE": "true"
+        }
+      },
+      "http": {
+        "url": "http://localhost:8000/mcp",
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      }
+    },
+    "capabilities": {
+      "tools": [
+        {
+          "name": "search_aura_memories",
+          "description": "Search through Aura's conversation memories using semantic search",
+          "parameters": {
+            "user_id": {
+              "type": "string",
+              "description": "User identifier for memory search"
+            },
+            "query": {
+              "type": "string",
+              "description": "Search query for semantic memory retrieval"
+            },
+            "n_results": {
+              "type": "integer",
+              "description": "Number of results to return (default: 5)",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 5
+            }
+          },
+          "required": ["user_id", "query"]
+        },
+        {
+          "name": "analyze_aura_emotional_patterns",
+          "description": "Analyze emotional patterns and trends for a specific user over time",
+          "parameters": {
+            "user_id": {
+              "type": "string",
+              "description": "User identifier for emotional analysis"
+            },
+            "days": {
+              "type": "integer",
+              "description": "Number of days to analyze (default: 7)",
+              "minimum": 1,
+              "maximum": 365,
+              "default": 7
+            }
+          },
+          "required": ["user_id"]
+        },
+        {
+          "name": "store_aura_conversation",
+          "description": "Store a conversation memory in Aura's vector database",
+          "parameters": {
+            "user_id": {
+              "type": "string",
+              "description": "User identifier"
+            },
+            "message": {
+              "type": "string",
+              "description": "Message content to store"
+            },
+            "sender": {
+              "type": "string",
+              "description": "Message sender ('user' or 'aura' or agent name)",
+              "enum": ["user", "aura", "agent", "system"]
+            },
+            "emotional_state": {
+              "type": "string",
+              "description": "Optional emotional state in format 'Emotion:Intensity' (e.g., 'Happy:Medium')"
+            },
+            "cognitive_focus": {
+              "type": "string",
+              "description": "Optional ASEKE cognitive focus component",
+              "enum": ["KS", "CE", "IS", "KI", "KP", "ESA", "SDA", "Learning"]
+            },
+            "session_id": {
+              "type": "string",
+              "description": "Optional session identifier"
+            }
+          },
+          "required": ["user_id", "message", "sender"]
+        },
+        {
+          "name": "get_aura_user_profile",
+          "description": "Retrieve user profile information from Aura's file system",
+          "parameters": {
+            "user_id": {
+              "type": "string",
+              "description": "User identifier"
+            }
+          },
+          "required": ["user_id"]
+        },
+        {
+          "name": "export_aura_user_data",
+          "description": "Export comprehensive user data including conversations and patterns",
+          "parameters": {
+            "user_id": {
+              "type": "string",
+              "description": "User identifier"
+            },
+            "format": {
+              "type": "string",
+              "description": "Export format",
+              "enum": ["json", "csv", "xml"],
+              "default": "json"
+            }
+          },
+          "required": ["user_id"]
+        },
+        {
+          "name": "query_aura_emotional_states",
+          "description": "Get information about Aura's emotional state model and available emotions",
+          "parameters": {},
+          "required": []
+        },
+        {
+          "name": "query_aura_aseke_framework",
+          "description": "Get detailed information about Aura's ASEKE cognitive architecture framework",
+          "parameters": {},
+          "required": []
+        }
+      ],
+      "resources": [
+        {
+          "name": "aura_capabilities",
+          "description": "Comprehensive overview of Aura's advanced AI companion capabilities",
+          "mimeType": "application/json"
+        }
+      ]
+    },
+    "features": {
+      "emotional_intelligence": {
+        "real_time_detection": true,
+        "pattern_analysis": true,
+        "neurological_correlation": true,
+        "mathematical_modeling": true,
+        "supported_emotions": [
+          "Normal", "Happy", "Sad", "Angry", "Excited", "Fear", "Disgust", "Surprise",
+          "Joy", "Love", "Peace", "Creativity", "DeepMeditation", "Friendliness", "Curiosity",
+          "Hope", "Optimism", "Awe", "Remorse", "RomanticLove", "PlatonicLove", "ParentalLove"
+        ],
+        "intensity_levels": ["Low", "Medium", "High"],
+        "brainwave_correlation": ["Alpha", "Beta", "Gamma", "Theta", "Delta"],
+        "neurotransmitter_mapping": ["Dopamine", "Serotonin", "Oxytocin", "GABA", "Norepinephrine", "Endorphin"]
+      },
+      "cognitive_architecture": {
+        "framework": "ASEKE (Adaptive Socio-Emotional Knowledge Ecosystem)",
+        "components": {
+          "KS": "Knowledge Substrate - shared context and history",
+          "CE": "Cognitive Energy - mental effort and focus",
+          "IS": "Information Structures - ideas and concepts",
+          "KI": "Knowledge Integration - learning connections",
+          "KP": "Knowledge Propagation - information sharing",
+          "ESA": "Emotional State Algorithms - emotional influence",
+          "SDA": "Sociobiological Drives - social dynamics"
+        },
+        "adaptive_features": [
+          "Self-reflection mechanisms",
+          "Dynamic cognitive focus tracking",
+          "Contextual emotional response",
+          "Social interaction awareness",
+          "Learning pattern adaptation"
+        ]
+      },
+      "memory_system": {
+        "vector_database": "ChromaDB with semantic search",
+        "embedding_model": "all-MiniLM-L6-v2",
+        "collections": [
+          "conversations - conversation history with semantic search",
+          "emotional_patterns - historical emotional state patterns",
+          "cognitive_patterns - cognitive focus and ASEKE tracking",
+          "knowledge_substrate - shared knowledge and insights"
+        ],
+        "search_capabilities": [
+          "Semantic similarity search",
+          "Temporal filtering",
+          "Emotional state filtering",
+          "Cognitive focus filtering",
+          "User-specific filtering"
+        ]
+      },
+      "personalization": {
+        "user_profiles": true,
+        "adaptive_responses": true,
+        "learning_patterns": true,
+        "relationship_building": true,
+        "long_term_memory": true,
+        "context_awareness": true
+      }
+    },
+    "integration": {
+      "supported_protocols": ["MCP", "HTTP REST", "WebSocket"],
+      "data_formats": ["JSON", "CSV", "XML"],
+      "authentication": ["API Key", "Session Token"],
+      "deployment": ["Local", "Docker", "Cloud", "Systemd Service"]
+    }
+  },
+  "client_examples": {
+    "claude_desktop": {
+      "mcpServers": {
+        "aura-companion": {
+          "command": "python",
+          "args": ["/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend/mcp_server.py"],
+          "env": {
+            "PYTHONPATH": "/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend"
+          }
+        }
+      }
+    },
+    "cursor_ide": {
+      "mcp": {
+        "servers": [
+          {
+            "name": "aura-companion",
+            "command": ["python", "/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend/mcp_server.py"],
+            "transport": "stdio"
+          }
+        ]
+      }
+    },
+    "generic_mcp_client": {
+      "server_config": {
+        "name": "aura-companion",
+        "transport": "stdio",
+        "command": ["python", "/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend/mcp_server.py"],
+        "working_directory": "/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend"
+      }
+    }
+  },
+  "usage_examples": {
+    "search_memories": {
+      "description": "Search for past conversations about emotional support",
+      "tool": "search_aura_memories",
+      "parameters": {
+        "user_id": "Ty",
+        "query": "emotional support during difficult times",
+        "n_results": 5
+      }
+    },
+    "emotional_analysis": {
+      "description": "Analyze emotional patterns over the last week",
+      "tool": "analyze_aura_emotional_patterns",
+      "parameters": {
+        "user_id": "Ty",
+        "days": 7
+      }
+    },
+    "store_conversation": {
+      "description": "Store a supportive message in Aura's memory",
+      "tool": "store_aura_conversation",
+      "parameters": {
+        "user_id": "Ty",
+        "message": "I understand you're going through a difficult time. Remember that it's okay to feel overwhelmed sometimes.",
+        "sender": "aura",
+        "emotional_state": "Empathy:High",
+        "cognitive_focus": "ESA"
+      }
+    }
+  },
+  "setup_instructions": {
+    "prerequisites": [
+      "Python 3.8+",
+      "Google API Key",
+      "4GB+ RAM for vector embeddings",
+      "2GB+ storage space"
+    ],
+    "installation": [
+      "1. Navigate to aura_backend directory",
+      "2. Run ./setup.sh",
+      "3. Edit .env with your Google API key",
+      "4. Run ./test_setup.py to verify",
+      "5. Run ./start_mcp.sh to start MCP server"
+    ],
+    "configuration": [
+      "Set GOOGLE_API_KEY in .env",
+      "Configure data directories if needed",
+      "Adjust MCP server settings",
+      "Enable desired features"
+    ]
+  },
+  "troubleshooting": {
+    "common_issues": [
+      {
+        "issue": "MCP server fails to start",
+        "solution": "Check Python dependencies: pip install -r requirements.txt"
+      },
+      {
+        "issue": "Vector database errors",
+        "solution": "Reset database: rm -rf aura_chroma_db/ && ./test_setup.py"
+      },
+      {
+        "issue": "Memory issues",
+        "solution": "Increase system RAM or use lighter embedding models"
+      },
+      {
+        "issue": "API connection errors",
+        "solution": "Verify Google API key in .env file"
+      }
+    ]
+  }
+}

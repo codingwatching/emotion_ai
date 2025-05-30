@@ -1,0 +1,852 @@
+#!/bin/bash
+# -*- coding: utf-8 -*-
+"""
+Aura MCP Server - Model Context Protocol Integration
+==================================================
+
+This MCP server exposes Aura's capabilities to external AI agents and tools,
+enabling sophisticated multi-agent interactions and tool ecosystem integration.
+
+This is a self-contained MCP server that initializes its own components
+to avoid import issues and circular dependencies.
+"""
+
+import logging
+import sys
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timedelta
+from dataclasses import dataclass
+from enum import Enum
+import uuid
+import json
+from pathlib import Path
+from pydantic import AnyUrl, BaseModel, ValidationError
+# MCP and FastMCP imports
+from fastmcp import FastMCP
+# @mcp.tool()
+
+from pydantic import BaseModel
+
+# Core dependencies
+import chromadb
+from chromadb.config import Settings
+from sentence_transformers import SentenceTransformer
+import numpy as np
+from dotenv import load_dotenv
+import aiofiles
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# Data Models and Enums (Self-contained)
+# ============================================================================
+
+class EmotionalIntensity(str, Enum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+
+class AsekeComponent(str, Enum):
+    KS = "KS"  # Knowledge Substrate
+    CE = "CE"  # Cognitive Energy
+    IS = "IS"  # Information Structures
+    KI = "KI"  # Knowledge Integration
+    KP = "KP"  # Knowledge Propagation
+    ESA = "ESA"  # Emotional State Algorithms
+    SDA = "SDA"  # Sociobiological Drives
+    LEARNING = "Learning"
+
+@dataclass
+class EmotionalStateData:
+    name: str
+    formula: str
+    components: Dict[str, str]
+    ntk_layer: str
+    brainwave: str
+    neurotransmitter: str
+    description: str
+    intensity: EmotionalIntensity = EmotionalIntensity.MEDIUM
+    primary_components: Optional[List[str]] = None
+    timestamp: Optional[datetime] = None
+
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = datetime.now()
+
+@dataclass
+class CognitiveState:
+    focus: AsekeComponent
+    description: str
+    context: str
+    timestamp: Optional[datetime] = None
+
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = datetime.now()
+
+@dataclass
+class ConversationMemory:
+    user_id: str
+    message: str
+    sender: str  # 'user' or 'aura'
+    emotional_state: Optional[EmotionalStateData] = None
+    cognitive_state: Optional[CognitiveState] = None
+    timestamp: Optional[datetime] = None
+    embedding: Optional[List[float]] = None
+    session_id: Optional[str] = None
+
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = datetime.now()
+        if self.session_id is None:
+            self.session_id = str(uuid.uuid4())
+
+# ============================================================================
+# MCP Tool Parameter Models
+# ============================================================================
+
+class AuraMemorySearch(BaseModel):
+    user_id: str
+    query: str
+    n_results: int = 5
+
+class AuraEmotionalAnalysis(BaseModel):
+    user_id: str
+    days: int = 7
+
+class AuraConversationStore(BaseModel):
+    user_id: str
+    message: str
+    sender: str
+    emotional_state: Optional[str] = None
+    cognitive_focus: Optional[str] = None
+    session_id: Optional[str] = None
+
+# ============================================================================
+# Aura Components (Self-contained for MCP)
+# ============================================================================
+
+class AuraVectorDB:
+    """Self-contained vector database for MCP server"""
+
+    def __init__(self, persist_directory: str = "./mcp_aura_chroma_db"):
+        self.persist_directory = Path(persist_directory)
+        self.persist_directory.mkdir(exist_ok=True)
+
+        self.client = chromadb.PersistentClient(
+            path=str(self.persist_directory),
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True
+            )
+        )
+
+        # Initialize embedding model
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+        # Initialize collections
+        self._init_collections()
+
+    def _init_collections(self):
+        """Initialize vector database collections"""
+        try:
+            # Conversation memory collection
+            self.conversations = self.client.get_or_create_collection(
+                name="aura_mcp_conversations",
+                metadata={"description": "MCP Conversation history with semantic search"}
+            )
+
+            # Emotional patterns collection
+            self.emotional_patterns = self.client.get_or_create_collection(
+                name="aura_mcp_emotional_patterns",
+                metadata={"description": "MCP Historical emotional state patterns"}
+            )
+
+            # Knowledge substrate collection
+            self.knowledge_substrate = self.client.get_or_create_collection(
+                name="aura_mcp_knowledge_substrate",
+                metadata={"description": "MCP Shared knowledge and insights"}
+            )
+
+            logger.info("✅ MCP Vector database collections initialized successfully")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize MCP vector collections: {e}")
+            raise
+
+    async def store_conversation(self, memory: ConversationMemory) -> str:
+        """Store conversation memory with automatic embedding generation"""
+        try:
+            # Generate embedding if not provided or if it's None/empty
+            if memory.embedding is None or not memory.embedding:
+                memory.embedding = self.embedding_model.encode(memory.message).tolist()
+            if memory.embedding is None:
+                raise ValueError("Embedding could not be generated for the message.")
+
+            # Create unique ID
+            if memory.timestamp is None:
+                memory.timestamp = datetime.now()
+            doc_id = f"mcp_{memory.user_id}_{memory.timestamp.isoformat()}_{uuid.uuid4().hex[:8]}"
+
+            # Prepare metadata
+            metadata = {
+                "user_id": memory.user_id,
+                "sender": memory.sender,
+                "timestamp": memory.timestamp.isoformat(),
+                "session_id": memory.session_id,
+                "source": "mcp_client"
+            }
+
+            # Add emotional state if present
+            if memory.emotional_state:
+                metadata.update({
+                    "emotion_name": memory.emotional_state.name,
+                    "emotion_intensity": memory.emotional_state.intensity.value,
+                    "brainwave": memory.emotional_state.brainwave,
+                    "neurotransmitter": memory.emotional_state.neurotransmitter
+                })
+
+            # Add cognitive state if present
+            if memory.cognitive_state:
+                metadata.update({
+                    "cognitive_focus": memory.cognitive_state.focus.value,
+                    "cognitive_description": memory.cognitive_state.description
+                })
+
+            # Store in vector database
+            self.conversations.add(
+                documents=[memory.message],
+                embeddings=[[float(x) for x in memory.embedding]],
+                metadatas=[metadata],
+                ids=[doc_id]
+            )
+
+            logger.info(f"📝 MCP: Stored conversation memory: {doc_id}")
+            return doc_id
+
+        except Exception as e:
+            logger.error(f"❌ MCP: Failed to store conversation memory: {e}")
+            raise
+    async def search_conversations(
+        self,
+        query: str,
+        user_id: str,
+        n_results: int = 5,
+        where_filter: Optional[Dict] = None
+    ) -> List[Dict]:
+        """Semantic search through conversation history"""
+        try:
+            # Generate query embedding
+            query_embedding = self.embedding_model.encode(query).tolist()
+
+            # Prepare where filter
+            from chromadb.types import Where
+
+            base_filter: Where = {"user_id": user_id}
+            if where_filter:
+                base_filter.update(where_filter)
+
+            # Ensure base_filter values are compatible with Where type (LiteralValue or OperatorExpression)
+            # For most cases, user_id is a string (LiteralValue), so it's fine.
+            # If where_filter contains operator expressions, they should be dicts like {"$gte": ...}, etc.
+
+            # Perform semantic search
+            results = self.conversations.query(
+                query_embeddings=[query_embedding],
+                n_results=n_results,
+                where=base_filter,  # base_filter values should be LiteralValue or OperatorExpression
+                include=["documents", "metadatas", "distances"]
+            )
+
+            # Format results
+            formatted_results = []
+            documents = results.get('documents')
+            metadatas = results.get('metadatas')
+            distances = results.get('distances')
+            if documents and documents[0]:
+                for i, doc in enumerate(documents[0]):
+                    formatted_results.append({
+                        "content": doc,
+                        "metadata": metadatas[0][i] if metadatas and metadatas[0] else {},
+                        "similarity": 1 - distances[0][i] if distances and distances[0] else None  # Convert distance to similarity
+                    })
+
+            logger.info(f"🔍 MCP: Found {len(formatted_results)} relevant memories for query: {query}")
+            return formatted_results
+
+        except Exception as e:
+            logger.error(f"❌ MCP: Failed to search conversations: {e}")
+            return []
+    async def analyze_emotional_trends(self, user_id: str, days: int = 7) -> Dict[str, Any]:
+        """Analyze emotional patterns over time"""
+        try:
+            # Get recent emotional data
+            cutoff_date = datetime.now() - timedelta(days=days)
+
+            results = self.emotional_patterns.get(
+                where={
+                    "$and": [
+                        {"user_id": user_id},
+                        {"timestamp": {"$gte": cutoff_date.isoformat()}}
+                    ]
+                },
+                include=["metadatas"]
+            )
+
+            if not results['metadatas']:
+                return {
+                    "message": "No emotional data found for analysis",
+                    "period_days": days,
+                    "user_id": user_id
+                }
+
+            # Analyze patterns
+            emotions = [meta['emotion_name'] for meta in results['metadatas'] if 'emotion_name' in meta]
+            intensities = [meta['emotion_intensity'] for meta in results['metadatas'] if 'emotion_intensity' in meta]
+
+            from collections import Counter
+
+            analysis = {
+                "period_days": days,
+                "total_entries": len(emotions),
+                "dominant_emotions": Counter(emotions).most_common(3) if emotions else [],
+                "intensity_distribution": dict(Counter(intensities)) if intensities else {},
+                "emotional_stability": self._calculate_stability([str(e) for e in emotions]),
+                "recommendations": self._generate_emotional_recommendations([str(e) for e in emotions], [str(i) for i in intensities])
+            }
+
+            logger.info(f"📊 MCP: Generated emotional analysis for user {user_id}")
+            return analysis
+
+        except Exception as e:
+            logger.error(f"❌ MCP: Failed to analyze emotional trends: {e}")
+            return {"error": str(e), "user_id": user_id}
+
+    def _calculate_stability(self, emotions: List[str]) -> float:
+        """Calculate emotional stability score (0-1, higher = more stable)"""
+        if len(emotions) <= 1:
+            return 1.0
+
+        from collections import Counter
+        emotion_counts = Counter(emotions)
+        entropy = -sum((count/len(emotions)) * np.log2(count/len(emotions))
+                      for count in emotion_counts.values())
+        max_entropy = np.log2(len(emotion_counts))
+
+        # Normalize entropy to 0-1 and invert (higher = more stable)
+        return 1 - (entropy / max_entropy if max_entropy > 0 else 0)
+
+    def _generate_emotional_recommendations(self, emotions: List[str], intensities: List[str]) -> List[str]:
+        """Generate emotional well-being recommendations"""
+        recommendations = []
+
+        if not emotions:
+            return ["Continue building emotional awareness through regular reflection"]
+
+        # High intensity emotions
+        high_intensity_count = intensities.count("High") if intensities else 0
+        if high_intensity_count > len(intensities) * 0.7:
+            recommendations.append("Consider emotional regulation techniques - high intensity emotions detected")
+
+        # Negative emotion patterns
+        negative_emotions = ["Angry", "Sad", "Fear", "Disgust"]
+        negative_count = sum(1 for emotion in emotions if emotion in negative_emotions)
+        if negative_count > len(emotions) * 0.5:
+            recommendations.append("Focus on positive emotional experiences and self-care activities")
+
+        # Lack of variety
+        unique_emotions = len(set(emotions))
+        if unique_emotions < 3 and len(emotions) > 5:
+            recommendations.append("Explore diverse experiences to expand emotional range")
+
+        return recommendations or ["Emotional patterns appear balanced - continue current approach"]
+
+class AuraFileSystem:
+    """Self-contained file system for MCP server"""
+
+    def __init__(self, base_path: str = "./mcp_aura_data"):
+        self.base_path = Path(base_path)
+        self.base_path.mkdir(exist_ok=True)
+
+        # Create subdirectories
+        (self.base_path / "users").mkdir(exist_ok=True)
+        (self.base_path / "exports").mkdir(exist_ok=True)
+
+    async def load_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Load user profile"""
+        try:
+            profile_path = self.base_path / "users" / f"{user_id}.json"
+
+            if not profile_path.exists():
+                return None
+
+            async with aiofiles.open(profile_path, 'r') as f:
+                content = await f.read()
+                return json.loads(content)
+
+        except Exception as e:
+            logger.error(f"❌ MCP: Failed to load user profile: {e}")
+            return None
+
+    async def save_user_profile(self, user_id: str, profile_data: Dict[str, Any]) -> str:
+        """Save user profile with enhanced data"""
+        try:
+            profile_path = self.base_path / "users" / f"{user_id}.json"
+
+            # Add metadata
+            profile_data.update({
+                "last_updated": datetime.now().isoformat(),
+                "user_id": user_id,
+                "source": "mcp_client"
+            })
+
+            async with aiofiles.open(profile_path, 'w') as f:
+                await f.write(json.dumps(profile_data, indent=2, default=str))
+
+            logger.info(f"💾 MCP: Saved user profile: {user_id}")
+            return str(profile_path)
+
+        except Exception as e:
+            logger.error(f"❌ MCP: Failed to save user profile: {e}")
+            raise
+
+    async def export_conversation_history(self, user_id: str, format: str = "json") -> str:
+        """Export conversation history in various formats"""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"mcp_conversation_export_{user_id}_{timestamp}.{format}"
+            export_path = self.base_path / "exports" / filename
+
+            # Create export data structure
+            export_data = {
+                "user_id": user_id,
+                "export_timestamp": datetime.now().isoformat(),
+                "format": format,
+                "source": "mcp_server",
+                "conversations": [],  # Would be populated from vector DB
+                "emotional_patterns": [],  # Would be populated from vector DB
+                "note": "This is a placeholder export from MCP server. Full integration would populate actual data."
+            }
+
+            if format == "json":
+                async with aiofiles.open(export_path, 'w') as f:
+                    await f.write(json.dumps(export_data, indent=2, default=str))
+
+            logger.info(f"📤 MCP: Exported conversation history: {filename}")
+            return str(export_path)
+
+        except Exception as e:
+            logger.error(f"❌ MCP: Failed to export conversation history: {e}")
+            raise
+
+# ============================================================================
+# Initialize MCP Server Components
+# ============================================================================
+
+# Initialize global components for MCP server
+try:
+    vector_db = AuraVectorDB()
+    file_system = AuraFileSystem()
+    logger.info("✅ MCP Server components initialized successfully")
+except Exception as e:
+    logger.error(f"❌ Failed to initialize MCP server components: {e}")
+    sys.exit(1)
+
+# MCP Server instance
+mcp = FastMCP("Aura Advanced AI Companion")
+
+# ============================================================================
+# MCP Tools Implementation
+# ============================================================================
+
+@mcp.tool()
+async def search_aura_memories(params: AuraMemorySearch) -> Dict[str, Any]:
+    """
+    Search through Aura's conversation memories using semantic search.
+
+    This tool enables agents to find relevant past conversations, emotional patterns,
+    and insights from Aura's interaction history with a specific user.
+    """
+    try:
+        results = await vector_db.search_conversations(
+            query=params.query,
+            user_id=params.user_id,
+            n_results=params.n_results
+        )
+
+        logger.info(f"🔍 MCP: Searched memories for user {params.user_id}, found {len(results)} results")
+
+        return {
+            "status": "success",
+            "query": params.query,
+            "user_id": params.user_id,
+            "results_count": len(results),
+            "memories": results
+        }
+
+    except Exception as e:
+        logger.error(f"❌ MCP: Failed to search Aura memories: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "query": params.query,
+            "user_id": params.user_id
+        }
+
+@mcp.tool()
+async def analyze_aura_emotional_patterns(params: AuraEmotionalAnalysis) -> Dict[str, Any]:
+    """
+    Analyze emotional patterns and trends for a specific user over time.
+
+    This tool provides deep insights into emotional stability, dominant emotions,
+    brainwave patterns, and personalized recommendations for emotional well-being.
+    """
+    try:
+        analysis = await vector_db.analyze_emotional_trends(params.user_id, params.days)
+
+        logger.info(f"📊 MCP: Generated emotional analysis for user {params.user_id}")
+
+        return {
+            "status": "success",
+            "user_id": params.user_id,
+            "analysis_period_days": params.days,
+            "emotional_analysis": analysis
+        }
+
+    except Exception as e:
+        logger.error(f"❌ MCP: Failed to analyze emotional patterns: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "user_id": params.user_id
+        }
+
+@mcp.tool()
+async def store_aura_conversation(params: AuraConversationStore) -> Dict[str, Any]:
+    """
+    Store a conversation memory in Aura's vector database with optional emotional and cognitive state.
+
+    This tool allows external agents to contribute to Aura's memory system,
+    enabling collaborative learning and shared knowledge building.
+    """
+    try:
+        # Create emotional state if provided
+        emotional_state = None
+        if params.emotional_state:
+            # Parse emotional state (expecting format like "Happy:Medium")
+            emotion_parts = params.emotional_state.split(":")
+            if len(emotion_parts) == 2:
+                emotion_name, intensity = emotion_parts
+                emotional_state = EmotionalStateData(
+                    name=emotion_name,
+                    formula="External:Input",
+                    components={"external": "Provided by MCP client"},
+                    ntk_layer="Unknown",
+                    brainwave="Unknown",
+                    neurotransmitter="Unknown",
+                    description=f"External emotional state: {emotion_name}",
+                    intensity=EmotionalIntensity(intensity) if intensity in ["Low", "Medium", "High"] else EmotionalIntensity.MEDIUM
+                )
+
+        # Create cognitive state if provided
+        cognitive_state = None
+        if params.cognitive_focus:
+            try:
+                cognitive_state = CognitiveState(
+                    focus=AsekeComponent(params.cognitive_focus),
+                    description=f"External cognitive focus: {params.cognitive_focus}",
+                    context="Provided by MCP client"
+                )
+            except ValueError:
+                cognitive_state = CognitiveState(
+                    focus=AsekeComponent.LEARNING,
+                    description=f"External cognitive focus: {params.cognitive_focus} (defaulted to Learning)",
+                    context="Provided by MCP client"
+                )
+
+        # Create memory object
+        memory = ConversationMemory(
+            user_id=params.user_id,
+            message=params.message,
+            sender=params.sender,
+            emotional_state=emotional_state,
+            cognitive_state=cognitive_state,
+            session_id=params.session_id
+        )
+
+        # Store in vector database
+        doc_id = await vector_db.store_conversation(memory)
+
+        logger.info(f"💾 MCP: Stored conversation memory for user {params.user_id}")
+
+        return {
+            "status": "success",
+            "user_id": params.user_id,
+            "document_id": doc_id,
+            "message": "Conversation stored successfully in Aura's memory"
+        }
+
+    except Exception as e:
+        logger.error(f"❌ MCP: Failed to store conversation: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "user_id": params.user_id
+        }
+
+@mcp.tool()
+async def get_aura_user_profile(user_id: str) -> Dict[str, Any]:
+    """
+    Retrieve user profile information from Aura's file system.
+
+    This tool provides access to stored user preferences, historical patterns,
+    and personalization data maintained by Aura.
+    """
+    try:
+        profile = await file_system.load_user_profile(user_id)
+
+        if profile is None:
+            return {
+                "status": "not_found",
+                "user_id": user_id,
+                "message": "User profile not found"
+            }
+
+        logger.info(f"👤 MCP: Retrieved user profile for {user_id}")
+
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "profile": profile
+        }
+
+    except Exception as e:
+        logger.error(f"❌ MCP: Failed to get user profile: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "user_id": user_id
+        }
+
+@mcp.tool()
+async def export_aura_user_data(user_id: str, format: str = "json") -> Dict[str, Any]:
+    """
+    Export comprehensive user data including conversations, emotional patterns, and cognitive insights.
+
+    This tool enables data portability and backup functionality for Aura's users,
+    supporting various export formats.
+    """
+    try:
+        export_path = await file_system.export_conversation_history(user_id, format)
+
+        logger.info(f"📤 MCP: Exported user data for {user_id} in {format} format")
+
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "export_format": format,
+            "export_path": export_path,
+            "message": "User data exported successfully"
+        }
+
+    except Exception as e:
+        logger.error(f"❌ MCP: Failed to export user data: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "user_id": user_id
+        }
+
+@mcp.tool()
+async def query_aura_emotional_states() -> Dict[str, Any]:
+    """
+    Get information about Aura's emotional state model and available emotions.
+
+    This tool provides metadata about Aura's sophisticated emotional intelligence system,
+    including neurological correlations and emotional formulas.
+    """
+    try:
+        emotional_states_info = {
+            "total_emotions": "22+",
+            "categories": [
+                "Basic emotions (Normal, Happy, Sad, Angry, Excited, Fear, Disgust, Surprise)",
+                "Complex emotions (Joy, Love, Peace, Creativity, DeepMeditation, Friendliness, Curiosity)",
+                "Combined emotions (Hope, Optimism, Awe, Remorse)",
+                "Social emotions (RomanticLove, PlatonicLove, ParentalLove)"
+            ],
+            "features": [
+                "Neurological correlations (Brainwaves, Neurotransmitters)",
+                "Mathematical formulas for emotional states",
+                "Intensity levels (Low, Medium, High)",
+                "Emotional component tracking",
+                "NTK (Neural Tensor Kernel) layer mapping"
+            ],
+            "brainwave_patterns": ["Alpha", "Beta", "Gamma", "Theta", "Delta"],
+            "neurotransmitters": ["Dopamine", "Serotonin", "Oxytocin", "GABA", "Norepinephrine", "Endorphin"],
+            "aseke_integration": {
+                "ESA": "Emotional State Algorithms - How emotions influence interaction",
+                "framework": "ASEKE (Adaptive Socio-Emotional Knowledge Ecosystem)"
+            }
+        }
+
+        logger.info("🎭 MCP: Provided emotional states information")
+
+        return {
+            "status": "success",
+            "emotional_system": emotional_states_info
+        }
+
+    except Exception as e:
+        logger.error(f"❌ MCP: Failed to query emotional states: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+@mcp.tool()
+async def query_aura_aseke_framework() -> Dict[str, Any]:
+    """
+    Get detailed information about Aura's ASEKE cognitive architecture framework.
+
+    This tool provides comprehensive details about the Adaptive Socio-Emotional
+    Knowledge Ecosystem that powers Aura's cognitive processing.
+    """
+    try:
+        aseke_info = {
+            "framework_name": "ASEKE - Adaptive Socio-Emotional Knowledge Ecosystem",
+            "components": {
+                "KS": {
+                    "name": "Knowledge Substrate",
+                    "description": "The shared context, environment, and history of our discussion"
+                },
+                "CE": {
+                    "name": "Cognitive Energy",
+                    "description": "The mental effort, attention, and focus being applied to the conversation"
+                },
+                "IS": {
+                    "name": "Information Structures",
+                    "description": "The ideas, concepts, models, and patterns we are exploring or building"
+                },
+                "KI": {
+                    "name": "Knowledge Integration",
+                    "description": "How new information is being connected with existing understanding and beliefs"
+                },
+                "KP": {
+                    "name": "Knowledge Propagation",
+                    "description": "How ideas and information are being shared or potentially spread"
+                },
+                "ESA": {
+                    "name": "Emotional State Algorithms",
+                    "description": "How feelings and emotions are influencing perception, valuation, and interaction"
+                },
+                "SDA": {
+                    "name": "Sociobiological Drives",
+                    "description": "How social dynamics, trust, or group context might be shaping our interaction"
+                }
+            },
+            "adaptive_features": [
+                "Self-reflection mechanisms",
+                "Dynamic cognitive focus tracking",
+                "Contextual emotional response",
+                "Social interaction awareness",
+                "Learning pattern adaptation"
+            ],
+            "implementation": {
+                "vector_database": "ChromaDB for semantic memory storage",
+                "emotional_tracking": "Real-time state detection and pattern analysis",
+                "cognitive_monitoring": "Dynamic focus and energy allocation tracking",
+                "knowledge_integration": "Cross-domain learning and connection building"
+            }
+        }
+
+        logger.info("🧠 MCP: Provided ASEKE framework information")
+
+        return {
+            "status": "success",
+            "aseke_framework": aseke_info
+        }
+
+    except Exception as e:
+        logger.error(f"❌ MCP: Failed to query ASEKE framework: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+# ============================================================================
+# MCP Resources
+# ============================================================================
+
+# @mcp.resource(uri="aura_capabilities")
+async def aura_capabilities():
+    """Resource describing Aura's advanced capabilities"""
+    return {
+        "name": "Aura Advanced AI Companion Capabilities",
+        "description": "Comprehensive overview of Aura's sophisticated AI companion features",
+        "version": "1.0.0",
+        "capabilities": {
+            "emotional_intelligence": {
+                "emotional_state_detection": "Real-time emotional state analysis with neurological correlations",
+                "emotional_pattern_tracking": "Long-term emotional pattern analysis and stability metrics",
+                "neurological_correlation": "Brainwave and neurotransmitter mapping for emotional states",
+                "emotional_formulas": "Mathematical modeling of emotional states and transitions"
+            },
+            "cognitive_architecture": {
+                "aseke_framework": "Adaptive Socio-Emotional Knowledge Ecosystem with 7 components",
+                "cognitive_focus_tracking": "Dynamic cognitive state monitoring and energy allocation",
+                "knowledge_integration": "Contextual learning and cross-domain memory integration",
+                "adaptive_reflection": "Self-improvement mechanisms and error correction protocols"
+            },
+            "memory_system": {
+                "vector_database": "ChromaDB with semantic search and retrieval capabilities",
+                "conversation_memory": "Persistent conversation history with contextual understanding",
+                "emotional_memory": "Emotional pattern storage and trend analysis",
+                "cognitive_memory": "Cognitive focus pattern tracking and optimization"
+            },
+            "personalization": {
+                "user_profiles": "Individual user preference storage and adaptation",
+                "adaptive_responses": "Context-aware response generation and personalization",
+                "learning_patterns": "Individual learning style recognition and adaptation",
+                "relationship_building": "Long-term relationship development and continuity"
+            }
+        },
+        "integration": {
+            "mcp_protocol": "Model Context Protocol server with 7 specialized tools",
+            "vector_database": "ChromaDB with sentence-transformers embeddings",
+            "file_system": "Enhanced file operations and multi-format data export",
+            "api_endpoints": "RESTful API for external integration and web interfaces"
+        },
+        "technical_specifications": {
+            "embedding_model": "all-MiniLM-L6-v2 (384-dimensional vectors)",
+            "vector_similarity": "Cosine similarity with HNSW indexing",
+            "supported_formats": ["JSON", "CSV", "XML"],
+            "aseke_components": ["KS", "CE", "IS", "KI", "KP", "ESA", "SDA"],
+            "emotional_intensities": ["Low", "Medium", "High"],
+            "brainwave_patterns": ["Alpha", "Beta", "Gamma", "Theta", "Delta"]
+        }
+    }
+
+# ============================================================================
+# MCP Server Startup
+# ============================================================================
+
+if __name__ == "__main__":
+    logger.info("🚀 Starting Aura MCP Server...")
+    logger.info("🔗 Enabling sophisticated AI agent integration")
+    logger.info("✨ Features: Memory Search, Emotional Analysis, ASEKE Framework")
+    logger.info("🧠 Components: Vector DB, File System, Emotional Intelligence")
+    logger.info("📊 Tools: 7 specialized MCP tools for external agent integration")
+
+    # Run the MCP server
+    try:
+        mcp.run()
+    except KeyboardInterrupt:
+        logger.info("🛑 MCP Server stopped by user")
+    except Exception as e:
+        logger.error(f"❌ MCP Server error: {e}")
+        sys.exit(1)

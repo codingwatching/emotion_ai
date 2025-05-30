@@ -3,41 +3,90 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gemini Companion Chat</title>
+  <title>Aura - Adaptive Reflective Companion</title>
   <link rel="stylesheet" href="index.css">
-  <script type="importmap">
+  <script defer src="https://unpkg.com/es-module-shims@1.8.3/dist/es-module-shims.min.js"></script>
+  <!-- Import map shim is used to provide compatibility for browsers that do not yet support native import maps -->
+  <script type="importmap-shim">
     {
-      "imports": {
-        "@google/genai": "https://esm.sh/@google/genai@^0.8.0",
+        "@google/genai": "https://esm.sh/@google/genai@0.8.0",
+        "marked": "https://esm.sh/marked@15.0.8"
         "marked": "https://esm.sh/marked@^15.0.8"
       }
     }
   </script>
 </head>
 <body>
-  <div id="chat-container">
+  <div id="app-container">
+    <!-- Header -->
     <header>
-      <h1>Aura - Your Gemini Companion</h1>
-      <div id="aura-status-grid">
-        <div id="aura-emotion-status-container">
-          Emotion: <span id="aura-emotion-status" aria-live="polite">Normal</span>
-          <span id="aura-emotion-details" class="tooltip">Brainwave: Alpha | NT: Serotonin</span>
+      <button class="mobile-menu-btn" id="left-menu-btn" aria-label="Toggle Chat History">☰</button>
+      <h1>Aura - Your AI Companion</h1>
+      <div id="header-controls">
+        <div id="aura-status-grid">
+          <div class="status-container">
+            <span>Emotion: <span id="aura-emotion-status" aria-live="polite">Normal</span></span>
+            <span id="aura-emotion-details" class="tooltip">Brainwave: Alpha | NT: Serotonin</span>
+          </div>
+          <div class="status-container">
+            <span>Focus: <span id="aura-cognitive-focus" aria-live="polite">Learning</span></span>
+            <span id="aura-cognitive-focus-details" class="tooltip">Processing information</span>
+          </div>
         </div>
-        <div id="aura-cognitive-focus-container">
-          Focus: <span id="aura-cognitive-focus" aria-live="polite">Learning</span>
-          <span id="aura-cognitive-focus-details" class="tooltip">Description of current cognitive focus.</span>
-        </div>
+        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle Dark Mode">
+          <span class="theme-toggle-slider"></span>
+        </button>
       </div>
+      <button class="mobile-menu-btn" id="right-menu-btn" aria-label="Toggle Memory Panel">☰</button>
     </header>
-    <main id="message-area" aria-live="polite" aria-atomic="false"></main>
-    <footer>
+
+    <!-- Left Panel - Chat History -->
+    <aside id="left-panel">
+      <div class="panel-header">
+        <h2 class="panel-title">Chat History</h2>
+        <button class="collapse-btn" id="left-collapse-btn" aria-label="Collapse Panel">◀</button>
+      </div>
+      <button id="new-chat-btn">+ New Chat</button>
+      <div class="chat-history-list" id="chat-history-list">
+        <!-- Chat sessions will be dynamically inserted here -->
+      </div>
+    </aside>
+
+    <!-- Center Panel - Main Chat -->
+    <main id="chat-container">
+      <div id="message-area" aria-live="polite" aria-atomic="false"></div>
       <form id="chat-form">
         <input type="text" id="message-input" placeholder="Type your message..." aria-label="Message to Aura" autocomplete="off">
         <button type="submit" id="send-button" aria-label="Send message">Send</button>
       </form>
-    </footer>
+    </main>
+
+    <!-- Right Panel - Memory & Insights -->
+    <aside id="right-panel">
+      <div class="panel-header">
+        <h2 class="panel-title">AI Insights</h2>
+        <button class="collapse-btn" id="right-collapse-btn" aria-label="Collapse Panel">▶</button>
+      </div>
+
+      <!-- Memory Search -->
+      <div class="memory-panel">
+        <h3>🔍 Memory Search</h3>
+        <div class="memory-search-row">
+          <input type="text" id="memory-query" placeholder="Search conversations..." />
+          <button id="search-memories">Search</button>
+        </div>
+        <div id="memory-results"></div>
+      </div>
+
+      <!-- Emotional Insights -->
+      <div class="insights-panel">
+        <h3>📊 Emotional Insights</h3>
+        <button id="show-insights">View 7-Day Analysis</button>
+        <div id="insights-content"></div>
+      </div>
+    </aside>
   </div>
-  <script type="module" src="index.js"></script>
+
+  <script type="module" src="index.tsx"></script>
 </body>
-</html><link rel="stylesheet" href="index.css">
-<script src="index.tsx" type="module"></script>
+</html>

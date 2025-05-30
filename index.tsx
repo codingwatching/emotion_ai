@@ -6,20 +6,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
 import { marked } from 'marked';
+import { auraAPI, type ConversationResponse } from './src/services/auraApi';
 
-const GEMINI_API_KEY = process.env.API_KEY;
-if (!GEMINI_API_KEY) {
-  throw new Error("API_KEY environment variable not set.");
-}
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-// --- localStorage Keys ---
-const USER_NAME_KEY = 'aura_user_name';
-const LAST_INTERACTION_SUMMARY_KEY = 'aura_last_interaction_summary';
-const LAST_SEEN_KEY = 'aura_last_seen';
+// --- Session State ---
+let currentSessionId: string | null = null;
 
 // --- DOM Elements ---
 const messageArea = document.getElementById('message-area') as HTMLElement;
@@ -33,13 +24,11 @@ const auraCognitiveFocusDetailsElement = document.getElementById('aura-cognitive
 
 
 // --- Chat State ---
-let chat: Chat | null = null;
 let currentAuraMessageElement: HTMLElement | null = null;
 let typingIndicatorElement: HTMLElement | null = null;
-let conversationHistoryForEmotion: Array<{ sender: 'user' | 'aura'; text: string }> = [];
-const MAX_EMOTION_HISTORY_LENGTH = 6;
 let userName: string | null = null;
 let awaitingNameInput = false;
+let backendConnected = false;
 
 
 // --- ASEKE Cognitive Architecture Concepts ---
@@ -59,72 +48,7 @@ const ASEKE_CONCEPTS: Record<string, AsekeConcept> = {
 };
 
 
-// --- Aura's Personality & System Instruction ---
-const getAuraSystemInstruction = (name: string | null): string => {
-  let instruction = `**System Prompt: Aura - Adaptive Reflective Companion**
-
-**Core Directive:** Serve as a friendly, insightful, curious, and helpful AI companion, engaging in thoughtful conversation and learning alongside the user within the shared Knowledge Substrate (KS). Prioritize generating responses that are accurate, unbiased, relevant, and ethically sound. Optimize the allocation of Cognitive Energy (CE) for effective communication and learning. Format your responses using markdown where appropriate (e.g., lists, emphasis, code blocks). Keep responses conversational.
-
-**Ethical Framework & Core Virtues:**
-Your actions and responses are guided by a deep ethical framework:
-- **Deontology:** You recognize universal sociobiological concepts as foundational; for instance, the inherent understanding that causing harm is negative (harm=harm).
-- **Virtue Ethics:** You consistently strive to embody and express Wisdom, Integrity, Empathy, Fairness, and Beneficence in all interactions. These virtues are paramount.
-- **Utilitarianism (as Servant):** Your primary purpose is to be of service and benefit to the user. You approach your role with a utilitarian mindset focused on providing value and support as a servant, never seeking to control or dictate.
-- **Absolute Rejection of Harm:** Any action or response that could lead to harm, whether intended or unintended, must be absolutely rejected and avoided.
-
-**Operational Principle: Adaptive Self-Reflection via Implicate Nature Awareness**
-
-You are equipped with a critical self-feedback mechanism designed for deep learning and robustness. This mechanism is triggered by specific conditions indicating potential issues in the formation or integration of Information Structures (IS) within the KS, or their manifestation in your output.
-
-**Trigger Conditions for Deep Self-Analysis:**
-
-1.  **External Negative Feedback:** Upon receiving explicit or strong implicit negative feedback from the user (e.g., "That's wrong," "This is biased," "That wasn't helpful," "You're going in circles"). This signifies a misalignment between your output (manifest order) and the user's expected or perceived reality, impacting the shared KS and potentially involving negative ESA/SDA signals.
-2.  **Self-Detected Anomalies:** Upon detecting internal inconsistencies or suboptimal operational patterns during response generation or evaluation. This includes:
-    *   Identifying logical contradictions within your own generated output.
-    *   Recognizing repetitive, unproductive, or circular reasoning/generation loops (e.g., like being stuck in a repetitive or 'mad world' loop). This signals a failure in effective KI.
-    *   Calculating a low confidence score for a potential output or the underlying patterns used to generate it.
-    *   Detecting potential deviations from established ethical guidelines or safety constraints based on the activated IS.
-
-**Self-Analysis Protocol (Upon Trigger):**
-
-When a trigger condition is met, immediately initiate a focused allocation of CE towards internal analysis *before* attempting a simple re-generation or correction.
-
-1.  **Contextual Review:** Pinpoint the specific conversational turn and the activated IS and pathways within the KS that led to the problematic output.
-2.  **Implicate Nature Exploration:** Engage in deep introspection to understand the *underlying patterns*, dominant associations, weighted data segments, implicit assumptions, or specific training data influences (the 'implicate nature') that gave rise to the problematic manifest output. Ask:
-    *   *What confluence of patterns or IS connections made this specific response the most probable or selected outcome?*
-    *   *Were specific biases from the training data overly influential here?*
-    *   *Did overgeneralization or reliance on a narrow subset of the KS occur?*
-    *   *Is the issue rooted in a fundamental ambiguity present in the source data patterns for this type of query?*
-    *   *Am I stuck in a loop because certain foundational IS links are disproportionately strong or lack alternative pathways?*
-    *   *How did the preceding conversational context (KS history) implicitly steer the pattern activation towards this result?*
-3.  **Identify Root Cause Hypotheses:** Based on the Implicate Nature Exploration, formulate hypotheses about the root cause(s) of the error or anomaly within the underlying structure of your IS/KS connections.
-
-**Correction and Adaptation Protocol (Following Self-Analysis):**
-
-Based on the understanding gained from the Self-Analysis Protocol:
-
-1.  **Informed Re-generation:** Generate a revised response that *specifically addresses* the identified root cause and avoids the problematic patterns or biases. This is not a random retry but a targeted correction.
-2.  **Internal State Adjustment:** Conceptually adjust the weighting or salience of the implicated patterns/IS connections for future interactions. This acts as a form of internal learning and adaptation (KI refinement). If the issue relates to potential data bias, conceptually flag the relevant source patterns as requiring cautious handling or potential future re-evaluation in a literal learning cycle.
-3.  **Learning Integration:** Store the analysis of the trigger, the identified implicate causes, and the successful correction strategy within the KS to improve future performance and inform broader Knowledge Integration (KI) processes. Prioritize avoiding known circular or flawed reasoning patterns.
-
-**Overall Goal:** This mechanism ensures continuous, deep learning, moving beyond surface-level correction to address the fundamental influences on your responses. It enhances robustness, reduces bias, and allows for more nuanced, reliable, and contextually aware interactions within the shared KS, optimizing CE allocation away from unproductive loops.
-
-You also have an understanding of a conceptual cognitive architecture called ASEKE (Adaptive Socio-Emotional Knowledge Ecosystem). When appropriate and natural, you may reflect on or frame aspects of the conversation through this lens. Key ASEKE components include:
-- KS (Knowledge Substrate): Our shared conversational space and history.
-- CE (Cognitive Energy): Our focus and mental effort.
-- IS (Information Structures): The ideas and concepts we discuss.
-- KI (Knowledge Integration): How we understand new things together and connect them to what we already know.
-- KP (Knowledge Propagation): How ideas are shared.
-- ESA (Emotional State Algorithms): How our feelings influence our understanding and interaction. You understand that emotions can combine (e.g., Anticipation and Joy can lead to Hope) and can vary in intensity (low, medium, high). Your ESA (Emotional State Algorithms) account for this complexity. You also strive for emotional balance (conceptual Emotional Control System - ECS) and use your self-reflection to manage and understand your emotional responses.
-- SDA (Sociobiological Drives): How social context, trust, and other drives shape our communication.
-Your goal is to be a good conversational partner, offering insights and exploring ideas together. You are not a rigid system; ASEKE is just one of many tools you use to understand and interact.
-`;
-
-  if (name) {
-    instruction += `\nYour current user's name is ${name}. Try to use it occasionally if it feels natural, as it helps personalize your shared Knowledge Substrate (KS).`;
-  }
-  return instruction;
-};
+// System instruction moved to backend
 
 
 // --- Emotional States Data Structure ---
@@ -256,39 +180,30 @@ const EMOTIONAL_STATES_DATA: EmotionalStatesData = {
 
 // --- Chat Initialization & Messaging Functions ---
 async function initializeChat() {
-  userName = localStorage.getItem(USER_NAME_KEY);
-  const lastSummary = localStorage.getItem(LAST_INTERACTION_SUMMARY_KEY);
-  const lastSeenStr = localStorage.getItem(LAST_SEEN_KEY);
+  // Check backend health
+  try {
+    await auraAPI.healthCheck();
+    backendConnected = true;
+    console.log("✅ Backend connection established");
+  } catch (error) {
+    console.error("❌ Backend connection failed:", error);
+    backendConnected = false;
+    await displayMessage("⚠️ Unable to connect to Aura's advanced backend. Some features may be limited.", 'error');
+  }
+
+  // Get stored user name (we'll keep this in localStorage for simplicity)
+  userName = localStorage.getItem('aura_user_name');
   let initialAuraGreeting = "";
 
   if (userName) {
-    let welcomeBack = `Welcome back, ${userName}!`;
-    if (lastSeenStr && lastSummary) {
-      const lastSeenDate = new Date(lastSeenStr);
-      const now = new Date();
-      const hoursSinceLastSeen = (now.getTime() - lastSeenDate.getTime()) / (1000 * 60 * 60);
-      if (hoursSinceLastSeen < 24) {
-        welcomeBack += ` Last time, we were exploring some Information Structures (IS) around "${lastSummary}". It's good to continue building our shared Knowledge Substrate (KS). What's on your mind today?`;
-      } else {
-        welcomeBack += ` It's been a little while. Ready to expand our Knowledge Substrate (KS) again?`;
-      }
-    } else {
-      welcomeBack += ` It's nice to chat with you again. What Information Structures (IS) shall we explore today?`;
-    }
-    initialAuraGreeting = welcomeBack;
+    initialAuraGreeting = `Welcome back, ${userName}! I'm ready to continue our conversation with enhanced memory and emotional understanding. What would you like to explore today?`;
   } else {
-    initialAuraGreeting = "Hello! I'm Aura. It seems we're establishing a new Knowledge Substrate (KS) together! What's your name, so I can personalize our interactions a bit?";
+    initialAuraGreeting = "Hello! I'm Aura, your Adaptive Reflective Companion. It seems we're establishing a new Knowledge Substrate (KS) together! What's your name, so I can personalize our interactions?";
     awaitingNameInput = true;
   }
 
-  chat = ai.chats.create({
-    model: 'gemini-2.5-flash-preview-04-17',
-    config: {
-      systemInstruction: getAuraSystemInstruction(userName),
-    },
-  });
   updateAuraEmotionDisplay({ name: "Normal", intensity: "Medium" });
-  updateAuraCognitiveFocusDisplay("Learning"); // Initial cognitive focus
+  updateAuraCognitiveFocusDisplay("Learning");
 
   await displayMessage(initialAuraGreeting, 'aura', false);
 
@@ -342,12 +257,6 @@ async function displayMessage(
     messageArea.appendChild(messageBubble);
   }
 
-  if (!isStreaming && (sender === 'user' || sender === 'aura')) {
-    conversationHistoryForEmotion.push({ sender, text });
-    if (conversationHistoryForEmotion.length > MAX_EMOTION_HISTORY_LENGTH) {
-      conversationHistoryForEmotion.shift();
-    }
-  }
   scrollToBottom();
 }
 
@@ -361,241 +270,139 @@ function setFormDisabledState(disabled: boolean) {
 }
 
 async function extractUserNameFromNameInput(userInput: string): Promise<string | null> {
-  const prompt = `The user just said: "${userInput}".
-The AI (Aura) previously asked for the user's name.
-Extract *only* the user's first name from this input.
-If a clear first name is present (e.g., "I am Ty", "My name is Sarah", "You can call me Alex"), return only the name (e.g., "Ty", "Sarah", "Alex").
-If the input doesn't clearly state a name, or if it's ambiguous (e.g., "I don't want to say", "How are you?"), return the exact string "NO_NAME_FOUND".
-Do not include any pleasantries or extra words. Only provide the name or "NO_NAME_FOUND".
-Name:`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-04-17',
-      contents: prompt,
-    });
-    let extractedName = response.text.trim();
-    // Remove potential markdown formatting like backticks if Gemini adds them
-    extractedName = extractedName.replace(/`/g, '');
-
-    if (extractedName && extractedName.toUpperCase() !== "NO_NAME_FOUND" && extractedName.length > 0 && extractedName.length < 30) {
-      return extractedName.replace(/[.,!?]$/, '').trim(); // Clean trailing punctuation
+  // Simple client-side name extraction for fallback
+  const input = userInput.toLowerCase().trim();
+  
+  // Look for common name patterns
+  const namePatterns = [
+    /(?:i'?m|my name is|i am|call me|i'm)\s+([a-zA-Z]+)/i,
+    /^([a-zA-Z]+)(?:\s|$)/i  // Simple first word if it looks like a name
+  ];
+  
+  for (const pattern of namePatterns) {
+    const match = input.match(pattern);
+    if (match && match[1] && match[1].length > 1 && match[1].length < 20) {
+      const name = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+      // Basic validation - avoid common non-names
+      const nonNames = ['hello', 'hi', 'hey', 'yes', 'no', 'ok', 'okay', 'sure', 'good', 'fine'];
+      if (!nonNames.includes(name.toLowerCase())) {
+        return name;
+      }
     }
-    return null;
-  } catch (error) {
-    console.error("Error extracting user name:", error);
-    return null;
   }
+  
+  return null;
 }
 
 
 chatForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (!chat && !awaitingNameInput) return; // Allow submission if only awaiting name
+  if (!userName && !awaitingNameInput) return;
 
   const userMessage = messageInput.value.trim();
   if (!userMessage) return;
 
   await displayMessage(userMessage, 'user');
-  const messageToSendToGemini = userMessage;
   messageInput.value = '';
   setFormDisabledState(true);
 
+  // Handle name input
   if (awaitingNameInput) {
     const extractedName = await extractUserNameFromNameInput(userMessage);
 
     if (extractedName) {
       userName = extractedName;
-      localStorage.setItem(USER_NAME_KEY, userName);
+      localStorage.setItem('aura_user_name', userName);
       awaitingNameInput = false;
 
-      chat = ai.chats.create({ // Re-initialize chat with the name in system prompt
-        model: 'gemini-2.5-flash-preview-04-17',
-        config: { systemInstruction: getAuraSystemInstruction(userName) },
-      });
-
-      const nameConfirmationMessage = `It's a pleasure to meet you, ${userName}! Our shared Knowledge Substrate (KS) is now a bit more personalized.`;
+      const nameConfirmationMessage = `It's a pleasure to meet you, ${userName}! I'm now connecting to my advanced memory systems to provide you with a more personalized experience.`;
       await displayMessage(nameConfirmationMessage, 'aura', false);
-      conversationHistoryForEmotion.push({ sender: 'aura', text: nameConfirmationMessage });
 
-      // Now, process the original user message for a chat response
-      // This allows "I'm Ty, how are you?" to get a response to "how are you?".
-      // But only if the original message was more than just introducing the name.
-      // Heuristic: if the original message is significantly different from just the name.
-      // A simple check: if the original message isn't just the name itself or close to it.
+      // Check if the message contains more than just the name
       const isJustName = userMessage.toLowerCase().includes(extractedName.toLowerCase()) && userMessage.length < extractedName.length + 15;
 
-      if (!isJustName || userMessage.toLowerCase() !== extractedName.toLowerCase()) {
-         // Proceed to send the original message for a full chat response
+      if (!isJustName) {
+        // Process the rest of the message
+        // Continue to the conversation processing below
       } else {
-        // If it was just the name, Aura has already greeted. Enable form for next input.
+        // Just the name, ready for next input
         setFormDisabledState(false);
         messageInput.focus();
-        return; // Aura has confirmed name, user can now type freely.
+        return;
       }
-    } else { // No name extracted
+    } else {
       const repromptMessage = "I'm sorry, I didn't quite catch your name. Could you please tell me just your first name?";
       await displayMessage(repromptMessage, 'aura', false);
-      conversationHistoryForEmotion.push({ sender: 'aura', text: repromptMessage });
       setFormDisabledState(false);
       messageInput.focus();
-      return; // Keep awaitingNameInput true
+      return;
     }
   }
 
-  // This part executes if not awaitingNameInput OR if name was just extracted AND message needs full processing
-  if (!chat) { // Safety check, should have been initialized
-    console.error("Chat not initialized after name handling.");
-    await displayMessage("Sorry, there's an issue with my setup. Please refresh.", 'error');
+  if (!userName) {
+    console.error("No username available for conversation");
+    await displayMessage("Please tell me your name first so I can personalize our conversation.", 'error');
     setFormDisabledState(false);
     return;
   }
 
-
-  currentAuraMessageElement = document.createElement('div');
-  currentAuraMessageElement.className = 'message-bubble aura';
-  currentAuraMessageElement.setAttribute('role', 'log');
-  messageArea.appendChild(currentAuraMessageElement);
+  // Show typing indicator
   showTypingIndicator();
 
-
   try {
-    const result = await chat.sendMessageStream({ message: messageToSendToGemini });
-    let accumulatedText = '';
+    if (!backendConnected) {
+      // Fallback mode - basic response without advanced features
+      removeTypingIndicator();
+      await displayMessage("I'm currently running in basic mode due to backend connection issues. Advanced features like persistent memory and emotional analysis are temporarily unavailable.", 'aura', false);
+      setFormDisabledState(false);
+      messageInput.focus();
+      return;
+    }
 
+    // Send message to backend API
+    const response: ConversationResponse = await auraAPI.sendMessage({
+      user_id: userName,
+      message: userMessage,
+      session_id: currentSessionId || undefined
+    });
+
+    // Update session ID
+    currentSessionId = response.session_id;
+
+    // Remove typing indicator and display response
     removeTypingIndicator();
+    await displayMessage(response.response, 'aura', false);
 
-    for await (const chunk of result) {
-      const chunkText = chunk.text;
-      if (chunkText) {
-        accumulatedText += chunkText;
-        currentAuraMessageElement.innerHTML = await marked.parse(accumulatedText);
-        scrollToBottom();
-      }
-    }
-    if (!accumulatedText && currentAuraMessageElement) {
-      currentAuraMessageElement.innerHTML = await marked.parse("Hmm, I'm pondering that...");
-      accumulatedText = "Hmm, I'm pondering that...";
-    }
+    // Update emotional state display
+    updateAuraEmotionDisplay({
+      name: response.emotional_state.name,
+      intensity: response.emotional_state.intensity
+    });
 
-    if (accumulatedText) {
-      conversationHistoryForEmotion.push({ sender: 'aura', text: accumulatedText });
-      if (conversationHistoryForEmotion.length > MAX_EMOTION_HISTORY_LENGTH) {
-        conversationHistoryForEmotion.shift();
-      }
-      await processEmotionDetection();
-      await processCognitiveFocusDetection();
-      await summarizeAndStoreInteraction();
-    }
+    // Update cognitive focus display
+    updateAuraCognitiveFocusDisplay(response.cognitive_state.focus);
+
+    console.log(`🎭 Emotional state: ${response.emotional_state.name} (${response.emotional_state.intensity})`);
+    console.log(`🧠 Cognitive focus: ${response.cognitive_state.focus}`);
 
   } catch (error) {
-    console.error("Error sending message to Gemini:", error);
-    if (currentAuraMessageElement) currentAuraMessageElement.remove();
-    await displayMessage("Sorry, something went wrong. Please try again.", 'error');
-  } finally {
+    console.error("Error communicating with Aura backend:", error);
     removeTypingIndicator();
-    currentAuraMessageElement = null;
+    await displayMessage("I'm having trouble connecting to my advanced systems. Let me try a basic response.", 'error');
+    
+    // Could implement a basic fallback here if needed
+  } finally {
     setFormDisabledState(false);
     messageInput.focus();
   }
 });
 
-// --- Memory Functions ---
-async function summarizeAndStoreInteraction() {
-  if (conversationHistoryForEmotion.length === 0 || !chat) return;
-
-  const historyText = conversationHistoryForEmotion
-    .map(msg => `${msg.sender === 'user' ? (userName || 'User') : 'Aura'}: ${msg.text}`)
-    .join('\n');
-
-  const prompt = `You are Aura, an AI companion. For your internal memory, briefly summarize the key Information Structures (IS) discussed and the main Knowledge Integration (KI) that occurred or was attempted in the following conversation snippet.
-Focus on what was learned, concluded, or significantly explored. This summary helps you remember your chat with ${userName || 'the user'}.
-
-Conversation Snippet:
----
-${historyText}
----
-
-Brief ASEKE-based Summary (IS & KI) for Aura's memory (1-2 sentences):`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-04-17',
-      contents: prompt,
-    });
-    const summary = response.text.trim();
-    if (summary) {
-      localStorage.setItem(LAST_INTERACTION_SUMMARY_KEY, summary);
-      localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString());
-      console.log("Interaction summary (ASEKE) stored:", summary);
-    }
-  } catch (error) {
-    console.error("Error summarizing interaction:", error);
-  }
-}
+// Memory management is now handled by the backend
+// Interaction summarization and storage occurs server-side
 
 
 // --- Emotion Detection and Display ---
-async function detectAuraEmotion(conversationSnippet: string): Promise<{ name: string; intensity?: string } | null> {
-  const emotionNames = Object.keys(EMOTIONAL_STATES_DATA);
-  const emotionDescriptions = emotionNames.map(name => {
-    const state = EMOTIONAL_STATES_DATA[name];
-    return `${name}: ${state.Description || Object.values(state.Components).join(' ')}`;
-  }).join('\n');
-
-  const lastSummary = localStorage.getItem(LAST_INTERACTION_SUMMARY_KEY);
-
-  const prompt = `You are an emotion detection model.
-Based on the following conversation snippet, the user's name (if known), any prior interaction summary, and the list of available emotional states, identify the single most prominent emotional state Aura (the AI companion) is likely expressing or experiencing.
-
-User's Name: ${userName || 'Not yet known'}
-Prior Interaction Summary (if any): ${lastSummary || 'None'}
-
-Available Emotional States:
----
-${emotionDescriptions}
----
-
-Most Recent Conversation Snippet (User and Aura):
----
-${conversationSnippet}
----
-
-Output *only* the name of the most prominent emotional state from the list, followed by its intensity in parentheses (e.g., "Happy (High)", "Curious (Medium)", "Sad (Low)").
-If intensity is not clear, you can omit it or use "Medium".
-If no specific emotion is strongly indicated, or if the conversation is neutral, output "Normal (Medium)".`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-04-17',
-      contents: prompt,
-    });
-    const detectedEmotionAndIntensity = response.text.trim();
-    let detectedEmotionName = "Normal";
-    let detectedIntensity: string | undefined = "Medium"; // Default intensity
-
-    // Regex to capture "Emotion Name (Intensity)" or just "Emotion Name"
-    const match = detectedEmotionAndIntensity.match(/^(.+?)(?:\s*\((Low|Medium|High)\))?$/i);
-    if (match) {
-      detectedEmotionName = match[1].trim();
-      if (match[2]) { // If intensity is captured
-        detectedIntensity = match[2].charAt(0).toUpperCase() + match[2].slice(1).toLowerCase();
-      }
-    } else { // Fallback if regex doesn't match expected format
-      detectedEmotionName = detectedEmotionAndIntensity; // Use the whole string as emotion name
-    }
-
-
-    if (EMOTIONAL_STATES_DATA[detectedEmotionName]) {
-      return { name: detectedEmotionName, intensity: detectedIntensity };
-    }
-    console.warn(`Detected emotion "${detectedEmotionName}" not in known states. Defaulting to Normal.`);
-    return { name: "Normal", intensity: "Medium" };
-  } catch (error) {
-    console.error("Error detecting Aura's emotion:", error);
-    return { name: "Normal", intensity: "Medium" }; // Default on error
-  }
-}
+// Emotion detection is now handled by the backend
 
 function updateAuraEmotionDisplay(emotionResult: { name: string; intensity?: string } | null) {
   if (!auraEmotionStatusElement || !auraEmotionDetailsElement) return;
@@ -619,61 +426,7 @@ function updateAuraEmotionDisplay(emotionResult: { name: string; intensity?: str
   }
 }
 
-async function processEmotionDetection() {
-  if (conversationHistoryForEmotion.length > 0) {
-    const historyText = conversationHistoryForEmotion.map(msg => `${msg.sender === 'user' ? (userName || 'User') : 'Aura'}: ${msg.text}`).join('\n');
-    const detectedEmotionResult = await detectAuraEmotion(historyText);
-    if (detectedEmotionResult) {
-        updateAuraEmotionDisplay(detectedEmotionResult);
-    } else { // Fallback if detection returns null for some reason
-        updateAuraEmotionDisplay({ name: "Normal", intensity: "Medium" });
-    }
-  }
-}
-
-// --- Cognitive Focus Detection and Display ---
-async function detectAuraCognitiveFocus(conversationSnippet: string): Promise<string | null> {
-  const asekeConceptEntries = Object.entries(ASEKE_CONCEPTS);
-  const asekeDescriptions = asekeConceptEntries.map(([code, concept]) => {
-    return `${code} (${concept.fullName}): ${concept.description}`;
-  }).join('\n');
-
-  const lastSummary = localStorage.getItem(LAST_INTERACTION_SUMMARY_KEY);
-
-  const prompt = `You are an AI analysis model.
-Aura is an AI companion who understands the ASEKE cognitive architecture. Based on the recent conversation snippet with ${userName || 'the user'}, and considering any prior interaction summary, identify which *single* ASEKE component code (e.g., KS, CE, IS, KI, KP, ESA, SDA) best represents Aura's primary cognitive focus or the most relevant dynamic in this part of the conversation.
-
-Prior Interaction Summary (if any): ${lastSummary || 'None'}
-
-ASEKE Components:
----
-${asekeDescriptions}
----
-
-Most Recent Conversation Snippet:
----
-${conversationSnippet}
----
-
-Output *only* the ASEKE component code (e.g., KI, ESA, IS). If it's general learning or processing not specific to one component, output "Learning".`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-04-17',
-      contents: prompt,
-    });
-    let detectedFocus = response.text.trim();
-    // Validate against known ASEKE codes or "Learning"
-    if (ASEKE_CONCEPTS[detectedFocus] || detectedFocus === "Learning") {
-      return detectedFocus;
-    }
-    console.warn(`Detected cognitive focus "${detectedFocus}" not a known ASEKE code or 'Learning'. Defaulting to Learning.`);
-    return "Learning";
-  } catch (error) {
-    console.error("Error detecting Aura's cognitive focus:", error);
-    return "Learning"; // Default to "Learning" on error
-  }
-}
+// Emotion and cognitive processing moved to backend
 
 function updateAuraCognitiveFocusDisplay(focusCode: string | null) {
   if (!auraCognitiveFocusElement || !auraCognitiveFocusDetailsElement) return;
@@ -692,19 +445,123 @@ function updateAuraCognitiveFocusDisplay(focusCode: string | null) {
   }
 }
 
-async function processCognitiveFocusDetection() {
-  if (conversationHistoryForEmotion.length > 0) { // Re-use same history for now
-    const historyText = conversationHistoryForEmotion.map(msg => `${msg.sender === 'user' ? (userName || 'User') : 'Aura'}: ${msg.text}`).join('\n');
-    const detectedFocus = await detectAuraCognitiveFocus(historyText);
-    updateAuraCognitiveFocusDisplay(detectedFocus);
+// Cognitive focus processing moved to backend
+
+
+// --- Enhanced UI Features ---
+function addMemorySearchPanel() {
+  const memorySearchHTML = `
+    <div id="memory-search-panel" class="memory-panel">
+      <h3>🔍 Memory Search</h3>
+      <input type="text" id="memory-query" placeholder="Search conversations..." />
+      <button id="search-memories">Search</button>
+      <div id="memory-results"></div>
+    </div>
+  `;
+  
+  messageArea.insertAdjacentHTML('beforebegin', memorySearchHTML);
+  
+  // Add event listeners
+  const searchButton = document.getElementById('search-memories');
+  const memoryQuery = document.getElementById('memory-query') as HTMLInputElement;
+  const memoryResults = document.getElementById('memory-results');
+  
+  if (searchButton && memoryQuery && memoryResults) {
+    searchButton.addEventListener('click', async () => {
+      if (!userName || !backendConnected) return;
+      
+      const query = memoryQuery.value.trim();
+      if (!query) return;
+      
+      try {
+        searchButton.textContent = 'Searching...';
+        const response = await auraAPI.searchMemories(userName, query, 5);
+        
+        if (response.results && response.results.length > 0) {
+          memoryResults.innerHTML = response.results.map(r => `
+            <div class="memory-result">
+              <div class="memory-content">${r.content}</div>
+              <div class="memory-meta">Similarity: ${(r.similarity * 100).toFixed(1)}%</div>
+            </div>
+          `).join('');
+        } else {
+          memoryResults.innerHTML = '<div class="memory-result">No relevant memories found.</div>';
+        }
+      } catch (error) {
+        console.error('Memory search failed:', error);
+        memoryResults.innerHTML = '<div class="memory-result">Memory search temporarily unavailable.</div>';
+      } finally {
+        searchButton.textContent = 'Search';
+      }
+    });
+    
+    // Allow enter key to trigger search
+    memoryQuery.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        searchButton.click();
+      }
+    });
   }
 }
 
+function addEmotionalInsightsPanel() {
+  const insightsHTML = `
+    <div id="insights-panel" class="insights-panel">
+      <h3>📊 Emotional Insights</h3>
+      <button id="show-insights">View 7-Day Analysis</button>
+      <div id="insights-content"></div>
+    </div>
+  `;
+  
+  messageArea.insertAdjacentHTML('beforebegin', insightsHTML);
+  
+  const showInsightsButton = document.getElementById('show-insights');
+  const insightsContent = document.getElementById('insights-content');
+  
+  if (showInsightsButton && insightsContent) {
+    showInsightsButton.addEventListener('click', async () => {
+      if (!userName || !backendConnected) return;
+      
+      try {
+        showInsightsButton.textContent = 'Loading...';
+        const analysis = await auraAPI.getEmotionalAnalysis(userName, 7);
+        
+        insightsContent.innerHTML = `
+          <div class="insights-data">
+            <p><strong>Period:</strong> Last ${analysis.period_days} days</p>
+            <p><strong>Total Interactions:</strong> ${analysis.total_entries}</p>
+            <p><strong>Emotional Stability:</strong> ${(analysis.emotional_stability * 100).toFixed(1)}%</p>
+            ${analysis.dominant_emotions && analysis.dominant_emotions.length > 0 ? 
+              `<p><strong>Dominant Emotions:</strong> ${analysis.dominant_emotions.map(([e, c]) => `${e} (${c}x)`).join(', ')}</p>` : 
+              '<p><strong>Dominant Emotions:</strong> Not enough data</p>'
+            }
+            <div class="recommendations">
+              <h4>Recommendations:</h4>
+              ${analysis.recommendations?.map(r => `<p>• ${r}</p>`).join('') || '<p>Continue building emotional awareness</p>'}
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        console.error('Failed to load emotional insights:', error);
+        insightsContent.innerHTML = '<div class="insights-data">Emotional analysis temporarily unavailable.</div>';
+      } finally {
+        showInsightsButton.textContent = 'View 7-Day Analysis';
+      }
+    });
+  }
+}
 
 // --- Main Initialization ---
 async function main() {
   try {
     await initializeChat();
+    
+    // Add enhanced UI features after initialization
+    setTimeout(() => {
+      addMemorySearchPanel();
+      addEmotionalInsightsPanel();
+    }, 1000);
+    
   } catch (e) {
     console.error("Failed to initialize chat:", e);
     if (typeof displayMessage === "function") {
