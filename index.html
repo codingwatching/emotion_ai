@@ -10,7 +10,6 @@
   <script type="importmap-shim">
     {
         "@google/genai": "https://esm.sh/@google/genai@0.8.0",
-        "marked": "https://esm.sh/marked@15.0.8"
         "marked": "https://esm.sh/marked@^15.0.8"
       }
   </script>
@@ -53,7 +52,7 @@
 
     <!-- Center Panel - Main Chat -->
     <main id="chat-container">
-      <div id="message-area" aria-live="polite" aria-atomic="false"></div>
+      <div id="message-area" class="scrollable-content" aria-live="polite" aria-atomic="false"></div>
       <form id="chat-form">
         <input type="text" id="message-input" placeholder="Type your message..." aria-label="Message to Aura" autocomplete="off">
         <button type="submit" id="send-button" aria-label="Send message">Send</button>

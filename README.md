@@ -99,6 +99,7 @@ Network: use --host to expose
 
 ![alt text](image-2.png)
 
+![alt text](image-3.png)
 
 ## 📡 API Endpoints
 

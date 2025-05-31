@@ -21,6 +21,7 @@ const auraEmotionStatusElement = document.getElementById('aura-emotion-status') 
 const auraEmotionDetailsElement = document.getElementById('aura-emotion-details') as HTMLElement;
 const auraCognitiveFocusElement = document.getElementById('aura-cognitive-focus') as HTMLElement;
 const auraCognitiveFocusDetailsElement = document.getElementById('aura-cognitive-focus-details') as HTMLElement;
+const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
 
 
 // --- Chat State ---
@@ -243,37 +244,33 @@ async function displayMessage(
   messageBubble.setAttribute('role', 'log');
   messageBubble.innerHTML = await marked.parse(text);
 
+  // Simplified logic to prevent content loss
   if (sender === 'aura' && isStreaming && currentAuraMessageElement) {
+    // Update streaming message
     currentAuraMessageElement.innerHTML = messageBubble.innerHTML;
-  } else if (sender === 'aura' && !isStreaming) {
-    if (currentAuraMessageElement) {
-      currentAuraMessageElement.innerHTML = messageBubble.innerHTML;
-      // Add message actions to the existing message element
-      if (sender !== 'error') {
-        addMessageActions(currentAuraMessageElement, text, sender);
-      }
-      currentAuraMessageElement = null;
-    } else {
-      messageArea.appendChild(messageBubble);
-      // Add message actions to new message
-      if (sender !== 'error') {
-        addMessageActions(messageBubble, text, sender);
-      }
-    }
-  }
-  else {
+  } else if (sender === 'aura' && !isStreaming && currentAuraMessageElement) {
+    // Complete the streaming message
+    currentAuraMessageElement.innerHTML = messageBubble.innerHTML;
+    addMessageActions(currentAuraMessageElement, text, sender);
+    currentAuraMessageElement = null;
+  } else {
+    // Add new message to area
     messageArea.appendChild(messageBubble);
-    // Add message actions to user and aura messages (not error messages)
-    if (sender !== 'error') {
-      addMessageActions(messageBubble, text, sender);
-    }
+    addMessageActions(messageBubble, text, sender);
   }
 
   scrollToBottom();
 }
 
+// Enhanced scroll function to ensure visibility of latest content
 function scrollToBottom() {
-  messageArea.scrollTop = messageArea.scrollHeight;
+  if (messageArea) {
+    // Ensure DOM is fully updated before scrolling
+    setTimeout(() => {
+      // Force scroll to absolute bottom
+      messageArea.scrollTop = messageArea.scrollHeight + 1000;
+    }, 50);
+  }
 }
 
 function setFormDisabledState(disabled: boolean) {
@@ -544,7 +541,9 @@ function setupEmotionalInsightsPanel() {
 }
 
 // --- Message Actions (Delete, Edit, Regenerate) ---
-function addMessageActions(messageBubble: HTMLElement, messageText: string, sender: 'user' | 'aura') {
+function addMessageActions(messageBubble: HTMLElement, messageText: string, sender: 'user' | 'aura' | 'error') {
+  // Don't add actions to error messages
+  if (sender === 'error') return;
   const actionsDiv = document.createElement('div');
   actionsDiv.className = 'message-actions';
   actionsDiv.style.display = 'none';
@@ -694,9 +693,57 @@ function findPreviousUserMessage(auraMessageBubble: HTMLElement): string | null 
   return null;
 }
 
+// --- Theme Management ---
+function initializeTheme() {
+  // Get stored theme preference or default to 'dark'
+  const savedTheme = localStorage.getItem('aura_theme') || 'dark';
+  
+  // Apply theme to document
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  
+  // Update toggle appearance based on current theme
+  updateThemeToggleAppearance(savedTheme);
+  
+  // Add event listener for theme toggle
+  if (themeToggle) {
+    themeToggle.addEventListener('click', toggleTheme);
+  }
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  
+  // Update document theme
+  document.documentElement.setAttribute('data-theme', newTheme);
+  
+  // Update toggle appearance
+  updateThemeToggleAppearance(newTheme);
+  
+  // Save preference
+  localStorage.setItem('aura_theme', newTheme);
+  
+  console.log(`🎨 Theme switched to: ${newTheme}`);
+}
+
+function updateThemeToggleAppearance(theme: string) {
+  const slider = themeToggle?.querySelector('.theme-toggle-slider') as HTMLElement;
+  
+  if (slider) {
+    if (theme === 'dark') {
+      slider.style.transform = 'translateX(26px)';
+    } else {
+      slider.style.transform = 'translateX(0px)';
+    }
+  }
+}
+
 // --- Main Initialization ---
 async function main() {
   try {
+    // Initialize theme first
+    initializeTheme();
+    
     await initializeChat();
     
     // Setup enhanced UI features - connect to existing HTML elements
