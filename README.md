@@ -99,7 +99,8 @@ npm run dev
 ```
 
 Go to-
-Local:   http://localhost:5173/
+Local:   http://localhost:5173
+
 Network: use --host to expose
 
 ![alt text](image-5.png)
