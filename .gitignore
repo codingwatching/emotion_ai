@@ -23,8 +23,15 @@ dist-ssr
 *.sln
 *.sw?
 
-#Backend
-aura_backend/venv
-aura_backend/__pycache__
-aura_backend/.env
-aura_backend/aura_chroma_db
+# Python
+__pycache__/
+*.pyc
+*.pyd
+venv/
+
+# Environment variables
+.env
+
+# Backend specific ignores
+aura_backend/aura_chroma_db/
+aura_backend/aura_data/users/

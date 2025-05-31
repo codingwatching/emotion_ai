@@ -28,7 +28,7 @@ echo "✅ All services started!"
 echo "📡 API Server: http://localhost:8000"
 echo "🔗 MCP Server: Available for external connections"
 echo "📖 API Documentation: http://localhost:8000/docs"
-echo ""
+echo "Local UI: http://localhost:5173/"
 echo "Press Ctrl+C to stop all services"
 
 # Wait for all background processes
