@@ -33,6 +33,11 @@
 - **Personalized Recommendations** based on interaction history
 - **Data Export** in multiple formats (JSON, CSV, etc.)
 
+### Most of that isn't set up yet but the vector memory is pretty amazing- no need to prompt to remember or recall.
+ I am not a coder so hopefully it sets up right if anyone tries it- I will try to package it up better and get mcp servers integrated, chats saved, plus more.
+
+![alt text](image-4.png)
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -97,9 +102,8 @@ Go to-
 Local:   http://localhost:5173/
 Network: use --host to expose
 
-![alt text](image-2.png)
+![alt text](image-5.png)
 
-![alt text](image-3.png)
 
 ## 📡 API Endpoints
 
@@ -115,7 +119,7 @@ Visit `http://localhost:8000/docs` for interactive API documentation.
 
 ## 🔗 MCP Integration
 
-### Available MCP Tools
+### Available MCP Tools- I haven't tried this, Aura is functioning automatically and quite well without explicit requests.
 
 1. **search_aura_memories**: Semantic search through conversation history
 2. **analyze_aura_emotional_patterns**: Deep emotional trend analysis
@@ -355,6 +359,8 @@ results = await vector_db.search_conversations(
     n_results=10
 )
 ```
+
+![alt text](image-3.png)
 
 ## 🐛 Troubleshooting
 
