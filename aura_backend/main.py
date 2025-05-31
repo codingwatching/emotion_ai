@@ -819,12 +819,15 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         )
 
         # Generate response using Gemini
+        # Get max tokens from environment or use higher default
+        max_tokens = int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '8192'))
+        
         chat = client.chats.create(
             model='gemini-2.5-flash-preview-04-17',
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.7,
-                max_output_tokens=1000
+                max_output_tokens=max_tokens
             )
         )
 
