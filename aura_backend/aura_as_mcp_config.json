@@ -218,9 +218,9 @@
       "mcpServers": {
         "aura-companion": {
           "command": "python",
-          "args": ["/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend/mcp_server.py"],
+          "args": ["./mcp_server.py"],
           "env": {
-            "PYTHONPATH": "/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend"
+            "PYTHONPATH": "."
           }
         }
       }
@@ -230,7 +230,7 @@
         "servers": [
           {
             "name": "aura-companion",
-            "command": ["python", "/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend/mcp_server.py"],
+            "command": ["python", "./mcp_server.py"],
             "transport": "stdio"
           }
         ]
@@ -240,8 +240,8 @@
       "server_config": {
         "name": "aura-companion",
         "transport": "stdio",
-        "command": ["python", "/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend/mcp_server.py"],
-        "working_directory": "/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend"
+        "command": ["python", "./mcp_server.py"],
+        "working_directory": "."
       }
     }
   },
@@ -277,7 +277,7 @@
   },
   "setup_instructions": {
     "prerequisites": [
-      "Python 3.8+",
+      "Python 3.10+",
       "Google API Key",
       "4GB+ RAM for vector embeddings",
       "2GB+ storage space"

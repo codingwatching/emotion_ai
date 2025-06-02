@@ -1,13 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Aura MCP Server - Model Context Protocol Integration
+Aura Internal Server - Model Context Protocol Integration
 ==================================================
 
-This MCP server exposes Aura's capabilities to external AI agents and tools,
+This Internal Server exposes Aura's capabilities to external AI agents and tools,
 enabling sophisticated multi-agent interactions and tool ecosystem integration.
 
-This is a self-contained MCP server that initializes its own components
+This is a self-contained Internal Server that initializes its own components
 to avoid import issues and circular dependencies.
 """
 
@@ -20,12 +20,10 @@ from enum import Enum
 import uuid
 import json
 from pathlib import Path
-from pydantic import AnyUrl, BaseModel, ValidationError
+from pydantic import BaseModel
 # MCP and FastMCP imports
 from fastmcp import FastMCP
 # @mcp.tool()
-
-from pydantic import BaseModel
 
 # Core dependencies
 import chromadb
@@ -132,9 +130,9 @@ class AuraConversationStore(BaseModel):
 # ============================================================================
 
 class AuraVectorDB:
-    """Self-contained vector database for MCP server"""
+    """Self-contained vector database for Internal Server"""
 
-    def __init__(self, persist_directory: str = "./mcp_aura_chroma_db"):
+    def __init__(self, persist_directory: str = "./aura_chroma_db"):
         self.persist_directory = Path(persist_directory)
         self.persist_directory.mkdir(exist_ok=True)
 
@@ -157,20 +155,20 @@ class AuraVectorDB:
         try:
             # Conversation memory collection
             self.conversations = self.client.get_or_create_collection(
-                name="aura_mcp_conversations",
-                metadata={"description": "MCP Conversation history with semantic search"}
+                name="aura_conversations",
+                metadata={"description": "Conversation history with semantic search"}
             )
 
             # Emotional patterns collection
             self.emotional_patterns = self.client.get_or_create_collection(
-                name="aura_mcp_emotional_patterns",
-                metadata={"description": "MCP Historical emotional state patterns"}
+                name="aura_emotional_patterns",
+                metadata={"description": "Historical emotional state patterns"}
             )
 
             # Knowledge substrate collection
             self.knowledge_substrate = self.client.get_or_create_collection(
-                name="aura_mcp_knowledge_substrate",
-                metadata={"description": "MCP Shared knowledge and insights"}
+                name="aura_knowledge_substrate",
+                metadata={"description": "Shared knowledge and insights"}
             )
 
             logger.info("✅ MCP Vector database collections initialized successfully")
@@ -191,7 +189,7 @@ class AuraVectorDB:
             # Create unique ID
             if memory.timestamp is None:
                 memory.timestamp = datetime.now()
-            doc_id = f"mcp_{memory.user_id}_{memory.timestamp.isoformat()}_{uuid.uuid4().hex[:8]}"
+            doc_id = f"{memory.user_id}_{memory.timestamp.isoformat()}_{uuid.uuid4().hex[:8]}"
 
             # Prepare metadata
             metadata = {
@@ -367,9 +365,9 @@ class AuraVectorDB:
         return recommendations or ["Emotional patterns appear balanced - continue current approach"]
 
 class AuraFileSystem:
-    """Self-contained file system for MCP server"""
+    """Self-contained file system for Internal Server"""
 
-    def __init__(self, base_path: str = "./mcp_aura_data"):
+    def __init__(self, base_path: str = "./aura_data"):
         self.base_path = Path(base_path)
         self.base_path.mkdir(exist_ok=True)
 
@@ -430,7 +428,7 @@ class AuraFileSystem:
                 "source": "mcp_server",
                 "conversations": [],  # Would be populated from vector DB
                 "emotional_patterns": [],  # Would be populated from vector DB
-                "note": "This is a placeholder export from MCP server. Full integration would populate actual data."
+                "note": "This is a placeholder export from Internal Server. Full integration would populate actual data."
             }
 
             if format == "json":
@@ -445,19 +443,19 @@ class AuraFileSystem:
             raise
 
 # ============================================================================
-# Initialize MCP Server Components
+# Initialize Internal Server Components
 # ============================================================================
 
-# Initialize global components for MCP server
+# Initialize global components for Internal Server
 try:
     vector_db = AuraVectorDB()
     file_system = AuraFileSystem()
-    logger.info("✅ MCP Server components initialized successfully")
+    logger.info("✅ Internal Server components initialized successfully")
 except Exception as e:
-    logger.error(f"❌ Failed to initialize MCP server components: {e}")
+    logger.error(f"❌ Failed to initialize Internal Server components: {e}")
     sys.exit(1)
 
-# MCP Server instance
+# Internal Server instance
 mcp = FastMCP("Aura Advanced AI Companion")
 
 # ============================================================================
@@ -782,7 +780,7 @@ async def query_aura_aseke_framework() -> Dict[str, Any]:
 # MCP Resources
 # ============================================================================
 
-# @mcp.resource(uri="aura_capabilities")
+@mcp.tool()
 async def aura_capabilities():
     """Resource describing Aura's advanced capabilities"""
     return {
@@ -832,21 +830,21 @@ async def aura_capabilities():
     }
 
 # ============================================================================
-# MCP Server Startup
+# Internal Server Startup
 # ============================================================================
 
 if __name__ == "__main__":
-    logger.info("🚀 Starting Aura MCP Server...")
+    logger.info("🚀 Starting Aura Internal Server...")
     logger.info("🔗 Enabling sophisticated AI agent integration")
-    logger.info("✨ Features: Memory Search, Emotional Analysis, ASEKE Framework")
-    logger.info("🧠 Components: Vector DB, File System, Emotional Intelligence")
+    logger.info("✨ Features: Memory Search, Emotional Analysis, Adaptive Sociobiological Emotional Knowledge Ecosystem Framework")
+    logger.info("🧠 Components: Vector DB, Internal File System, Emotional Intelligence")
     logger.info("📊 Tools: 7 specialized MCP tools for external agent integration")
 
-    # Run the MCP server
+    # Run the Internal Server
     try:
         mcp.run()
     except KeyboardInterrupt:
-        logger.info("🛑 MCP Server stopped by user")
+        logger.info("🛑 Internal Server stopped by user")
     except Exception as e:
-        logger.error(f"❌ MCP Server error: {e}")
+        logger.error(f"❌ Internal Server error: {e}")
         sys.exit(1)

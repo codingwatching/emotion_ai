@@ -37,3 +37,4 @@ aura_backend/aura_chroma_db/
 aura_backend/mcp_aura_chroma_db/
 aura_backend/aura_data/users/
 aura_backend/aura_data/**/*.json
+aura_backend/mcp_client_config.json

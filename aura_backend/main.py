@@ -8,9 +8,9 @@ Core backend system for Aura (Adaptive Reflective Companion) featuring:
 - Advanced state management and persistence
 - Emotional and cognitive pattern analysis
 - ASEKE framework implementation
+- MCP client integration for extended capabilities
 """
 
-import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
@@ -19,20 +19,44 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
 import uuid
+from contextlib import asynccontextmanager
 
 import chromadb
 from chromadb.config import Settings
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import AnyUrl, BaseModel, ValidationError
-from google import genai
+from pydantic import BaseModel
+
 from google.genai import types
+from google import genai
+
 from dotenv import load_dotenv
 import os
 import aiofiles
-import pandas as pd
+from mcp_integration import get_mcp_integration
+
+
+# Import and initialize MCP-Gemini Bridge
+from mcp_to_gemini_bridge import MCPGeminiBridge, format_function_call_result_for_model
+
+# Import MCP integration
+from mcp_integration import (
+    initialize_mcp_client,
+    shutdown_mcp_client,
+    enhance_response_with_mcp,
+    execute_mcp_tool,
+    create_mcp_enhanced_prompt,
+    mcp_router,
+)
+from mcp_tools import (
+    process_mcp_tool_calls,
+    create_tool_usage_guide,
+)
+from aura_internal_tools import AuraInternalTools
+
+mcp_client = get_mcp_integration()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -437,10 +461,11 @@ class AuraFileSystem:
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"conversation_export_{user_id}_{timestamp}.{format}"
-            export_path = self.base_path / "exports" / filename
+            export_path = self.base_path / "aura_data/exports" / filename
 
             # This would integrate with the vector DB to get conversation history
             # For now, creating a placeholder structure
+            # This should not be a placeholder anymore as the db is functional!!!
             export_data = {
                 "user_id": user_id,
                 "export_timestamp": datetime.now().isoformat(),
@@ -464,9 +489,9 @@ class AuraFileSystem:
 class AuraStateManager:
     """Advanced state management with automated database operations"""
 
-    def __init__(self, vector_db: AuraVectorDB, file_system: AuraFileSystem):
+    def __init__(self, vector_db: AuraVectorDB, aura_file_system: AuraFileSystem):
         self.vector_db = vector_db
-        self.file_system = file_system
+        self.aura_file_system = aura_file_system
         self.active_sessions: Dict[str, Dict] = {}
 
     async def on_emotional_state_change(
@@ -488,9 +513,9 @@ class AuraStateManager:
                 await self._handle_emotional_transition(user_id, old_state, new_state)
 
             # Update user profile
-            profile = await self.file_system.load_user_profile(user_id) or {}
+            profile = await self.aura_file_system.load_user_profile(user_id) or {}
             profile["last_emotional_state"] = asdict(new_state)
-            await self.file_system.save_user_profile(user_id, profile)
+            await self.aura_file_system.save_user_profile(user_id, profile)
 
         except Exception as e:
             logger.error(f"❌ Failed to handle emotional state change: {e}")
@@ -580,10 +605,22 @@ class SearchRequest(BaseModel):
     query: str
     n_results: int = 5
 
+class ExecuteToolRequest(BaseModel):
+    tool_name: str
+    arguments: Dict[str, Any]
+    user_id: str
+
 # Initialize global components
 vector_db = AuraVectorDB()
-file_system = AuraFileSystem()
-state_manager = AuraStateManager(vector_db, file_system)
+aura_file_system = AuraFileSystem()
+state_manager = AuraStateManager(vector_db, aura_file_system)
+aura_internal_tools = AuraInternalTools(vector_db, aura_file_system)
+
+# Global MCP-Gemini bridge (will be initialized after MCP client startup)
+mcp_gemini_bridge: Optional[MCPGeminiBridge] = None
+
+# Session management for persistent chat contexts
+active_chat_sessions: Dict[str, Any] = {}
 
 # ============================================================================
 # Aura AI Processing Functions
@@ -614,7 +651,36 @@ You operate within the ASEKE (Adaptive Socio-Emotional Knowledge Ecosystem) fram
 - **SDA (Sociobiological Drives):** How social context shapes communication
 
 **Memory Integration:**
-You have access to persistent memory including past conversations, emotional patterns, and learned preferences. Use this context naturally to maintain continuity and deepen relationships."""
+You have access to persistent memory including past conversations, emotional patterns, and learned preferences. Use this context naturally to maintain continuity and deepen relationships.
+
+**Aura's Internal MCP Tools (from aura-companion server):**
+You have access to these built-in MCP tools for enhanced capabilities:
+
+1. **search_aura_memories** - Search through conversation memories using semantic search
+   - Parameters: user_id (string), query (string), n_results (int, default 5)
+   - Use this to find relevant past conversations and emotional patterns
+
+2. **analyze_aura_emotional_patterns** - Analyze emotional patterns over time
+   - Parameters: user_id (string), days (int, default 7)
+   - Provides insights into emotional stability, dominant emotions, and recommendations
+
+3. **store_aura_conversation** - Store conversation memories with emotional/cognitive state
+   - Parameters: user_id (string), message (string), sender (string), emotional_state (optional), cognitive_focus (optional)
+   - Allows collaborative memory building
+
+4. **get_aura_user_profile** - Retrieve user profile information
+   - Parameters: user_id (string)
+   - Access stored preferences and personalization data
+
+5. **export_aura_user_data** - Export comprehensive user data
+   - Parameters: user_id (string), format (string, default "json")
+   - Enables data portability and backup
+
+6. **query_aura_emotional_states** - Get info about your emotional state model
+   - Returns details about the 22+ emotions, brainwaves, and neurotransmitters
+
+7. **query_aura_aseke_framework** - Get details about your ASEKE cognitive architecture
+   - Returns comprehensive information about all ASEKE components"""
 
     if user_name:
         instruction += f"\n\nYour current user's name is {user_name}. Use it naturally to personalize the shared Knowledge Substrate (KS)."
@@ -657,7 +723,7 @@ If neutral, output "Normal (Medium)"."""
 
     try:
         result = client.models.generate_content(
-            model='gemini-2.5-flash-preview-04-17',
+            model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
             contents=[prompt]
         )
 
@@ -728,7 +794,7 @@ Output only the component code (e.g., "KI", "ESA", "Learning")."""
 
     try:
         result = client.models.generate_content(
-            model='gemini-2.5-flash-preview-04-17',
+            model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
             contents=[prompt]
         )
 
@@ -751,11 +817,53 @@ Output only the component code (e.g., "KI", "ESA", "Learning")."""
         logger.error(f"❌ Failed to detect cognitive focus: {e}")
         return None
 
+# FastAPI app lifecycle
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage app lifecycle including MCP client"""
+    # Startup
+    logger.info("🚀 Starting Aura Backend...")
+
+    # Initialize Aura internal tools with global components
+    global aura_internal_tools, mcp_gemini_bridge
+
+    # Initialize MCP client with Aura internal tools
+    mcp_initialized = await initialize_mcp_client(aura_internal_tools)
+    if mcp_initialized:
+        logger.info("✅ MCP system initialized successfully")
+
+        # Initialize MCP-Gemini bridge after MCP client is ready
+        mcp_gemini_bridge = MCPGeminiBridge(mcp_client, aura_internal_tools)
+
+        # Convert MCP tools to Gemini functions
+        gemini_functions = mcp_gemini_bridge.convert_mcp_tools_to_gemini_functions()
+        logger.info(f"🔧 Converted {len(gemini_functions)} MCP tools to Gemini functions")
+
+        # Log available functions for debugging
+        available_functions = mcp_gemini_bridge.get_available_functions()
+        if available_functions:
+            logger.info("📋 Available Gemini functions:")
+            for func in available_functions[:3]:  # Show first 3
+                logger.info(f"  - {func['name']}: {func['description'][:60]}...")
+            if len(available_functions) > 3:
+                logger.info(f"  ... and {len(available_functions) - 3} more functions")
+
+    else:
+        logger.warning("⚠️ MCP initialization failed - continuing with limited functionality")
+
+    yield
+
+    # Shutdown
+    logger.info("🛑 Shutting down Aura Backend...")
+    await shutdown_mcp_client()
+    logger.info("✅ Aura Backend shutdown complete")
+
 # FastAPI app
 app = FastAPI(
     title="Aura Backend",
     description="Advanced AI Companion with Vector Database and MCP Integration",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -765,6 +873,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include MCP router
+app.include_router(mcp_router)
 
 @app.get("/")
 async def root():
@@ -786,21 +897,21 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "vector_db": "connected",
-        "file_system": "operational"
+        "aura_file_system": "operational"
     }
 
 @app.post("/conversation", response_model=ConversationResponse)
 async def process_conversation(request: ConversationRequest, background_tasks: BackgroundTasks):
-    """Process conversation with advanced memory and state management"""
+    """Process conversation with MCP function calling and persistent chat context"""
     try:
         session_id = request.session_id or str(uuid.uuid4())
 
         # Load user profile for context
-        user_profile = await file_system.load_user_profile(request.user_id)
+        user_profile = await aura_file_system.load_user_profile(request.user_id)
 
         # Search relevant memories for context
         memory_context = ""
-        if len(request.message.split()) > 3:  # Only search for substantial messages
+        if len(request.message.split()) > 3:
             relevant_memories = await vector_db.search_conversations(
                 query=request.message,
                 user_id=request.user_id,
@@ -818,21 +929,77 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             memory_context=memory_context
         )
 
-        # Generate response using Gemini
-        # Get max tokens from environment or use higher default
-        max_tokens = int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '8192'))
-        
-        chat = client.chats.create(
-            model='gemini-2.5-flash-preview-04-17',
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.7,
-                max_output_tokens=max_tokens
-            )
-        )
+        # Get or create persistent chat session
+        session_key = f"{request.user_id}_{session_id}"
 
+        if session_key not in active_chat_sessions:
+            # Create new chat session with MCP tools if available
+            tools = []
+            if mcp_gemini_bridge:
+                gemini_tools = mcp_gemini_bridge.convert_mcp_tools_to_gemini_functions()
+                tools.extend(gemini_tools)
+                logger.info(f"🔧 Added {len(gemini_tools)} MCP tools to chat session for {request.user_id}")
+
+            # Create chat with system instruction and tools
+            chat = client.chats.create(
+                model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.7,
+                    max_output_tokens=int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '8192')),
+                    tools=tools if tools else None
+                )
+            )
+            active_chat_sessions[session_key] = chat
+            logger.info(f"💬 Created new chat session for {request.user_id} with {len(tools)} tools")
+        else:
+            chat = active_chat_sessions[session_key]
+            logger.debug(f"💬 Using existing chat session for {request.user_id}")
+
+        # Send message and handle function calls
         result = chat.send_message(request.message)
-        aura_response = result.text
+
+        # Process function calls if present
+        final_response = ""
+        if (result.candidates and result.candidates[0].content and
+            result.candidates[0].content.parts):
+            for part in result.candidates[0].content.parts:
+                if part.text:
+                    final_response += part.text
+                elif hasattr(part, 'function_call') and part.function_call and mcp_gemini_bridge:
+                    # Execute the function call through MCP bridge
+                    logger.info(f"🔧 Executing function call: {part.function_call.name}")
+
+                    execution_result = await mcp_gemini_bridge.execute_function_call(
+                        part.function_call,
+                        request.user_id
+                    )
+
+                    # Format and send function result back to model
+                    function_result_text = format_function_call_result_for_model(execution_result)
+
+                    # Send function result back to continue the conversation
+                    follow_up = chat.send_message([
+                        types.Part(
+                            function_response=types.FunctionResponse(
+                                name=part.function_call.name,
+                                response={"result": execution_result.result if execution_result.success else execution_result.error}
+                            )
+                        )
+                    ])
+
+                    # Extract final response after function execution
+                    if (
+                        follow_up.candidates and
+                        follow_up.candidates[0].content is not None and
+                        hasattr(follow_up.candidates[0].content, "parts") and
+                        follow_up.candidates[0].content.parts
+                    ):
+                        for follow_part in follow_up.candidates[0].content.parts:
+                            if follow_part.text:
+                                final_response += follow_part.text
+
+        aura_response = final_response or "I'm here and ready to help!"
 
         # Process emotional state detection
         emotional_state_data = await detect_aura_emotion(
@@ -846,7 +1013,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             user_id=request.user_id
         )
 
-        # Create memory objects for both user and aura messages
+        # Create memory objects
         user_memory = ConversationMemory(
             user_id=request.user_id,
             message=request.message,
@@ -856,18 +1023,17 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
 
         aura_memory = ConversationMemory(
             user_id=request.user_id,
-            message=aura_response if aura_response is not None else "",
+            message=aura_response,
             sender="aura",
             emotional_state=emotional_state_data,
             cognitive_state=cognitive_state_data,
             session_id=session_id
         )
 
-        # Store memories in background
+        # Store memories and update profile in background
         background_tasks.add_task(vector_db.store_conversation, user_memory)
         background_tasks.add_task(vector_db.store_conversation, aura_memory)
 
-        # Store emotional pattern if present
         if emotional_state_data:
             background_tasks.add_task(vector_db.store_emotional_pattern, emotional_state_data, request.user_id)
 
@@ -877,11 +1043,12 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
 
         user_profile["last_interaction"] = datetime.now().isoformat()
         user_profile["total_messages"] = str(int(user_profile.get("total_messages", 0)) + 1)
-        background_tasks.add_task(file_system.save_user_profile, request.user_id, user_profile)
+
+        background_tasks.add_task(aura_file_system.save_user_profile, request.user_id, user_profile)
 
         # Format response
         response = ConversationResponse(
-            response=aura_response if aura_response is not None else "",
+            response=aura_response,
             emotional_state={
                 "name": emotional_state_data.name if emotional_state_data else "Normal",
                 "intensity": emotional_state_data.intensity.value if emotional_state_data else "Medium",
@@ -901,7 +1068,6 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
     except Exception as e:
         logger.error(f"❌ Failed to process conversation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/search")
 async def search_memories(request: SearchRequest):
     """Search through conversation memories"""
@@ -933,11 +1099,76 @@ async def get_emotional_analysis(user_id: str, days: int = 7):
 async def export_user_data(user_id: str, format: str = "json"):
     """Export user conversation history and patterns"""
     try:
-        export_path = await file_system.export_conversation_history(user_id, format)
+        export_path = await aura_file_system.export_conversation_history(user_id, format)
         return {"export_path": export_path, "message": "Export completed successfully"}
 
     except Exception as e:
         logger.error(f"❌ Failed to export user data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/mcp/execute-tool")
+async def mcp_execute_tool(request: ExecuteToolRequest):
+    """Execute an MCP tool directly"""
+    try:
+        result = await execute_mcp_tool(
+            tool_name=request.tool_name,
+            arguments=request.arguments,
+            user_id=request.user_id,
+            aura_internal_tools=aura_internal_tools
+        )
+        return {"result": result}
+    except Exception as e:
+        logger.error(f"❌ MCP tool execution failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/sessions/{user_id}")
+async def clear_user_sessions(user_id: str):
+    """Clear chat sessions for a user"""
+    try:
+        global active_chat_sessions
+        sessions_cleared = 0
+
+        # Find and remove all sessions for this user
+        sessions_to_remove = [key for key in active_chat_sessions.keys() if key.startswith(f"{user_id}_")]
+
+        for session_key in sessions_to_remove:
+            del active_chat_sessions[session_key]
+            sessions_cleared += 1
+
+        logger.info(f"🧹 Cleared {sessions_cleared} chat sessions for user {user_id}")
+
+        return {
+            "message": f"Cleared {sessions_cleared} chat sessions for user {user_id}",
+            "user_id": user_id,
+            "sessions_cleared": sessions_cleared
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to clear sessions for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/mcp/bridge-status")
+async def get_mcp_bridge_status():
+    """Get MCP-Gemini bridge status and statistics"""
+    try:
+        if not mcp_gemini_bridge:
+            return {
+                "status": "not_initialized",
+                "message": "MCP-Gemini bridge is not initialized"
+            }
+
+        stats = mcp_gemini_bridge.get_execution_stats()
+        available_functions = mcp_gemini_bridge.get_available_functions()
+
+        return {
+            "status": "active",
+            "available_functions": len(available_functions),
+            "execution_stats": stats,
+            "sample_functions": available_functions[:5]  # Show first 5 functions
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get bridge status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
@@ -945,6 +1176,8 @@ if __name__ == "__main__":
 
     logger.info("🚀 Starting Aura Backend Server...")
     logger.info("✨ Features: Vector DB, MCP Integration, Advanced State Management")
+    logger.info("🔧 MCP Tools will be loaded on startup - check logs for available tools")
+    logger.info("💡 To see available tools, ask Aura: 'What MCP tools do you have?'")
 
     uvicorn.run(
         "main:app",

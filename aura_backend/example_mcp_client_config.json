@@ -1,0 +1,48 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-memory"
+      ]
+    },
+    "sqlite": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/ty/Repositories/servers/src/sqlite",
+        "run",
+        "mcp-server-sqlite",
+        "--db-path",
+        "/home/ty/Repositories/ai_workspace/algorithm_platform/data/algo.db"
+      ]
+    },
+    "docker-mcp": {
+      "command": "uvx",
+      "args": [
+        "docker-mcp"
+      ]
+    },
+    "desktop-commander": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "/home/ty/Repositories/DesktopCommanderMCP/dist/index.js",
+        "run",
+        "desktop-commander",
+        "--config",
+        "\"{}\""
+      ]
+    },
+    "chroma": {
+      "command": "uvx",
+      "args": [
+        "chroma-mcp",
+        "--client-type",
+        "persistent",
+        "--data-dir",
+        "/home/ty/Repositories/chroma-db"
+      ]
+    }
+  }
+}

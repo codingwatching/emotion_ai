@@ -292,4 +292,4 @@ print_warning "Remember to add this directory to your PATH or use full paths"
 # Make sure the virtual environment is activated for the user
 echo ""
 echo "To activate the virtual environment manually:"
-echo "source venv/bin/activate"
+echo "source .venv/bin/activate"

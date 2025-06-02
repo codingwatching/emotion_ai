@@ -12,18 +12,18 @@ async def test_setup():
         # Test vector database
         from main import vector_db
         print("✅ Vector database initialized")
-        
+
         # Test file system
-        from main import file_system
+        from main import aura_file_system
         print("✅ File system initialized")
-        
+
         # Test state manager
         from main import state_manager
         print("✅ State manager initialized")
-        
+
         print("\n🎉 Aura backend setup test completed successfully!")
         return True
-        
+
     except Exception as e:
         print(f"❌ Setup test failed: {e}")
         return False
