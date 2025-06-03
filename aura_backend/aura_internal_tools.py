@@ -192,6 +192,16 @@ class AuraInternalTools:
             for name, tool in self.tools.items()
         ]
 
+    def get_tool_definitions(self) -> Dict[str, Dict[str, Any]]:
+        """Get tool definitions for the MCP bridge"""
+        definitions = {}
+        for name, tool in self.tools.items():
+            definitions[name] = {
+                "description": tool["description"],
+                "parameters": tool["parameters"]
+            }
+        return definitions
+
     async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """Execute an internal tool"""
         if tool_name not in self.tools:

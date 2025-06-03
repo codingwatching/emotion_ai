@@ -35,26 +35,28 @@ from google import genai
 from dotenv import load_dotenv
 import os
 import aiofiles
+from mcp_integration import get_mcp_integration
 
 
-
-# Import MCP-Gemini Bridge
+# Import and initialize MCP-Gemini Bridge
 from mcp_to_gemini_bridge import MCPGeminiBridge, format_function_call_result_for_model
 
 # Import MCP integration
-from mcp_system import (
-    initialize_mcp_system,
-    shutdown_mcp_system,
-    get_mcp_status,
-    get_mcp_bridge,
-    get_mcp_client,
-    get_all_available_tools
-)
 from mcp_integration import (
+    initialize_mcp_client,
+    shutdown_mcp_client,
+    enhance_response_with_mcp,
     execute_mcp_tool,
+    create_mcp_enhanced_prompt,
     mcp_router,
 )
+from mcp_tools import (
+    process_mcp_tool_calls,
+    create_tool_usage_guide,
+)
 from aura_internal_tools import AuraInternalTools
+
+mcp_client = get_mcp_integration()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -619,10 +621,6 @@ mcp_gemini_bridge: Optional[MCPGeminiBridge] = None
 
 # Session management for persistent chat contexts
 active_chat_sessions: Dict[str, Any] = {}
-# Track when tools were last updated for each session
-session_tool_versions: Dict[str, int] = {}
-# Global tool version counter
-global_tool_version = 0
 
 # ============================================================================
 # Aura AI Processing Functions
@@ -698,14 +696,14 @@ You have access to these built-in MCP tools for enhanced capabilities:
         if tools_by_server:
             instruction += "\n\n**External MCP Tools Available:**\n"
             instruction += "You also have access to these external MCP tools for extended capabilities:\n\n"
-
+            
             for server, server_tools in tools_by_server.items():
                 if server != 'aura-internal':  # Skip internal tools as they're already listed
                     instruction += f"**From {server} server:**\n"
                     for tool in server_tools[:10]:  # Limit to first 10 tools per server to avoid token overflow
                         clean_name = tool.get('clean_name', tool['name'])
                         instruction += f"- **{clean_name}** - {tool.get('description', 'No description')[:100]}...\n"
-
+                    
                     if len(server_tools) > 10:
                         instruction += f"  ... and {len(server_tools) - 10} more tools from {server}\n"
                     instruction += "\n"
@@ -853,39 +851,37 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Aura Backend...")
 
     # Initialize Aura internal tools with global components
-    global aura_internal_tools, mcp_gemini_bridge, global_tool_version
+    global aura_internal_tools, mcp_gemini_bridge
 
-    # Initialize the complete MCP system
-    mcp_status = await initialize_mcp_system(aura_internal_tools)
-
-    if mcp_status["status"] == "success":
+    # Initialize MCP client with Aura internal tools
+    mcp_initialized = await initialize_mcp_client(aura_internal_tools)
+    if mcp_initialized:
         logger.info("✅ MCP system initialized successfully")
-        logger.info(f"📊 Connected to {mcp_status['connected_servers']}/{mcp_status['total_servers']} servers")
-        logger.info(f"📦 Total available tools: {mcp_status['available_tools']}")
 
-        # Get the bridge instance
-        mcp_gemini_bridge = get_mcp_bridge()
+        # Initialize MCP-Gemini bridge after MCP client is ready
+        mcp_gemini_bridge = MCPGeminiBridge(mcp_client, aura_internal_tools)
 
-        if mcp_gemini_bridge:
-            # Increment global tool version to force session recreation
-            global_tool_version += 1
-            logger.info(f"🔄 Incremented global tool version to {global_tool_version}")
+        # Convert MCP tools to Gemini functions
+        gemini_functions = mcp_gemini_bridge.convert_mcp_tools_to_gemini_functions()
+        logger.info(f"🔧 Converted {len(gemini_functions)} MCP tools to Gemini functions")
 
-            # Log tools by server for debugging
-            if "tools_by_server" in mcp_status:
-                for server, tools in mcp_status["tools_by_server"].items():
-                    logger.info(f"  {server}: {len(tools)} tools")
-        else:
-            logger.warning("⚠️ MCP bridge not initialized properly")
+        # Log available functions for debugging
+        available_functions = mcp_gemini_bridge.get_available_functions()
+        if available_functions:
+            logger.info("📋 Available Gemini functions:")
+            for func in available_functions[:3]:  # Show first 3
+                logger.info(f"  - {func['name']}: {func['description'][:60]}...")
+            if len(available_functions) > 3:
+                logger.info(f"  ... and {len(available_functions) - 3} more functions")
+
     else:
-        logger.error(f"❌ MCP system initialization failed: {mcp_status.get('error', 'Unknown error')}")
-        logger.warning("⚠️ Continuing with limited functionality (internal tools only)")
+        logger.warning("⚠️ MCP initialization failed - continuing with limited functionality")
 
     yield
 
     # Shutdown
     logger.info("🛑 Shutting down Aura Backend...")
-    await shutdown_mcp_system()
+    await shutdown_mcp_client()
     logger.info("✅ Aura Backend shutdown complete")
 
 # FastAPI app
@@ -965,14 +961,14 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 import re
                 match = re.search(r'\(MCP tool: (.+?)\)', func.get('description', ''))
                 mcp_name = match.group(1) if match else func['name']
-
+                
                 # Find the server from tool mapping
                 server = 'unknown'
                 for tool_name, tool_info in mcp_gemini_bridge._tool_mapping.items():
                     if tool_name == func['name']:
                         server = tool_info.get('server', 'unknown')
                         break
-
+                
                 available_tools_info.append({
                     'name': mcp_name,
                     'clean_name': func['name'],
@@ -990,20 +986,11 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         # Get or create persistent chat session
         session_key = f"{request.user_id}_{session_id}"
 
-        # Check if we need to recreate session due to tool updates
-        needs_new_session = session_key not in active_chat_sessions
-
-        # Also check if existing session has outdated tool version
-        if not needs_new_session and session_key in session_tool_versions:
-            if session_tool_versions[session_key] < global_tool_version:
-                needs_new_session = True
-                logger.info(f"🔄 Session {session_key} has outdated tools (v{session_tool_versions[session_key]} < v{global_tool_version}), recreating...")
-
-        if needs_new_session:
+        if session_key not in active_chat_sessions:
             # Create new chat session with MCP tools if available
             tools = []
             if mcp_gemini_bridge:
-                gemini_tools = await mcp_gemini_bridge.convert_mcp_tools_to_gemini_functions()
+                gemini_tools = mcp_gemini_bridge.convert_mcp_tools_to_gemini_functions()
                 tools.extend(gemini_tools)
                 logger.info(f"🔧 Added {len(gemini_tools)} MCP tools to chat session for {request.user_id}")
 
@@ -1018,8 +1005,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 )
             )
             active_chat_sessions[session_key] = chat
-            session_tool_versions[session_key] = global_tool_version
-            logger.info(f"💬 Created new chat session for {request.user_id} with {len(tools)} tools (v{global_tool_version})")
+            logger.info(f"💬 Created new chat session for {request.user_id} with {len(tools)} tools")
         else:
             chat = active_chat_sessions[session_key]
             logger.debug(f"💬 Using existing chat session for {request.user_id}")
@@ -1136,6 +1122,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
     except Exception as e:
         logger.error(f"❌ Failed to process conversation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+@app.post("/search")
 async def search_memories(request: SearchRequest):
     """Search through conversation memories"""
     try:
@@ -1171,90 +1158,6 @@ async def export_user_data(user_id: str, format: str = "json"):
 
     except Exception as e:
         logger.error(f"❌ Failed to export user data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/chat-history/{user_id}")
-async def get_chat_history(user_id: str, limit: int = 50):
-    """Get chat history for a user"""
-    try:
-        # Get recent conversations from vector DB
-        results = vector_db.conversations.get(
-            where={"user_id": user_id},
-            limit=limit,
-            include=["documents", "metadatas"]
-        )
-
-        if not results or not results.get('documents') or not isinstance(results['documents'], list):
-            return {"sessions": [], "total": 0}
-
-        # Group by session
-        sessions = {}
-        for i, doc in enumerate(results['documents']):
-            metadata = results['metadatas'][i] if results.get('metadatas') and results['metadatas'] is not None else {}
-            session_id = metadata.get('session_id', 'unknown')
-
-            if session_id not in sessions:
-                sessions[session_id] = {
-                    "session_id": session_id,
-                    "messages": [],
-                    "start_time": metadata.get('timestamp', ''),
-                    "last_time": metadata.get('timestamp', '')
-                }
-
-            sessions[session_id]["messages"].append({
-                "content": doc,
-                "sender": metadata.get('sender', 'unknown'),
-                "timestamp": metadata.get('timestamp', ''),
-                "emotion": metadata.get('emotion_name', 'Normal')
-            })
-
-            # Update session times
-            if metadata.get('timestamp', '') < sessions[session_id]["start_time"]:
-                sessions[session_id]["start_time"] = metadata.get('timestamp', '')
-            if metadata.get('timestamp', '') > sessions[session_id]["last_time"]:
-                sessions[session_id]["last_time"] = metadata.get('timestamp', '')
-
-        # Convert to list and sort by last activity
-        session_list = list(sessions.values())
-        session_list.sort(key=lambda x: x["last_time"], reverse=True)
-
-        return {
-            "sessions": session_list,
-            "total": len(session_list)
-        }
-
-    except Exception as e:
-        logger.error(f"❌ Failed to get chat history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/chat-history/{user_id}/{session_id}")
-async def delete_chat_session(user_id: str, session_id: str):
-    """Delete a specific chat session"""
-    try:
-        # Get all messages for this session
-        results = vector_db.conversations.get(
-            where={
-                "user_id": user_id,
-                "session_id": session_id
-            },
-            include=["documents", "metadatas"]
-        )
-
-        if results and results.get('ids'):
-            # Delete all messages in this session
-            vector_db.conversations.delete(ids=results['ids'])
-
-            # Also remove from active sessions if present
-            session_key = f"{user_id}_{session_id}"
-            if session_key in active_chat_sessions:
-                del active_chat_sessions[session_key]
-
-            return {"message": f"Deleted session {session_id}", "deleted_count": len(results['ids'])}
-        else:
-            return {"message": "Session not found", "deleted_count": 0}
-
-    except Exception as e:
-        logger.error(f"❌ Failed to delete chat session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/mcp/execute-tool")
@@ -1321,40 +1224,6 @@ async def get_mcp_bridge_status():
     except Exception as e:
         logger.error(f"❌ Failed to get bridge status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/mcp/system-status")
-async def get_mcp_system_status():
-    """Get comprehensive MCP system status"""
-    try:
-        status = get_mcp_status()
-
-        # Get detailed tool information if initialized
-        if status["initialized"]:
-            tools = await get_all_available_tools()
-
-            # Group tools by server
-            tools_by_server = {}
-            for tool in tools:
-                server = tool.get("server", "unknown")
-                if server not in tools_by_server:
-                    tools_by_server[server] = []
-                tools_by_server[server].append({
-                    "name": tool["name"],
-                    "description": tool["description"][:100] + "..." if len(tool["description"]) > 100 else tool["description"]
-                })
-
-            status["tools_by_server"] = tools_by_server
-            status["total_tools"] = len(tools)
-
-        return status
-
-    except Exception as e:
-        logger.error(f"❌ Failed to get MCP system status: {e}")
-        return {
-            "status": "error",
-            "error": str(e),
-            "initialized": False
-        }
 
 if __name__ == "__main__":
     import uvicorn

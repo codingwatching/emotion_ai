@@ -52,7 +52,7 @@ class MCPGeminiBridge:
         self._tool_mapping: Dict[str, Dict[str, Any]] = {}
         self._execution_history: List[ToolExecutionResult] = []
 
-    def convert_mcp_tools_to_gemini_functions(self) -> List[types.Tool]:
+    async def convert_mcp_tools_to_gemini_functions(self) -> List[types.Tool]:
         """
         Convert all available MCP tools to Gemini function definitions.
 
@@ -60,8 +60,41 @@ class MCPGeminiBridge:
             List of Gemini Tool objects that can be passed to the model
         """
         try:
-            # Get all available tools from MCP client
-            available_tools = self.mcp_client_manager.get_available_tools()
+            available_tools = []
+
+            # Get external MCP tools if client is available and connected
+            if hasattr(self.mcp_client_manager, 'list_all_tools'):
+                try:
+                    # AuraMCPClient has list_all_tools() method
+                    mcp_tools = await self.mcp_client_manager.list_all_tools()
+                    for tool_name, tool_info in mcp_tools.items():
+                        # Convert to format expected by _convert_single_tool
+                        available_tools.append({
+                            'name': tool_name,
+                            'description': tool_info.get('description', ''),
+                            'server': tool_info.get('server', 'unknown'),
+                            'parameters': tool_info.get('input_schema', {}),
+                            'original_tool': tool_info
+                        })
+                        logger.debug(f"🔧 Added external MCP tool: {tool_name} from {tool_info.get('server')}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not get external MCP tools: {e}")
+
+            # Get Aura internal tools if available
+            if self.aura_internal_tools and hasattr(self.aura_internal_tools, 'get_tool_definitions'):
+                try:
+                    internal_tools = self.aura_internal_tools.get_tool_definitions()
+                    for tool_name, tool_def in internal_tools.items():
+                        available_tools.append({
+                            'name': tool_name,
+                            'description': tool_def.get('description', ''),
+                            'server': 'aura-internal',
+                            'parameters': tool_def.get('parameters', {}),
+                            'original_tool': tool_def
+                        })
+                        logger.debug(f"🔧 Added internal tool: {tool_name}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not get internal tools: {e}")
 
             if not available_tools:
                 logger.warning("⚠️ No MCP tools available for conversion")
@@ -276,10 +309,10 @@ class MCPGeminiBridge:
                 result = await self.aura_internal_tools.execute_tool(mcp_tool_name, arguments)
             else:
                 # Use MCP client to execute external tool
-                if hasattr(self.mcp_client_manager, '_aura_mcp_client') and self.mcp_client_manager._aura_mcp_client:
-                    result = await self.mcp_client_manager._aura_mcp_client.call_tool(mcp_tool_name, arguments)
+                if hasattr(self.mcp_client_manager, 'call_tool'):
+                    result = await self.mcp_client_manager.call_tool(mcp_tool_name, arguments)
                 else:
-                    result = await self.mcp_client_manager.execute_tool(mcp_tool_name, arguments)
+                    raise ValueError(f"Cannot execute external tool {mcp_tool_name}: MCP client not properly configured")
 
             execution_time = (datetime.now() - start_time).total_seconds()
 
