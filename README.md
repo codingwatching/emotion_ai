@@ -136,14 +136,22 @@ Visit `http://localhost:8000/docs` for interactive API documentation.
 ### Connecting External Tools
 
 To connect external MCP clients to Aura:
+# Example MCP client configuration- for Claude or other clients to talk to Aura or use as a system.
+Edit your directory path and place in claude desktop config json.
 
 ```bash
-# Example MCP client configuration- not right and not really needed currently but could be fun for Claude to talk to or use as a system.
-{
-  "name": "aura-companion",
-  "command": "python",
-  "args": ["path/to/aura_backend/mcp_server.py"],
-  "transport": "stdio"
+
+    },
+    "aura-companion": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/ty/Repositories/ai_workspace/emotion_ai/aura_backend",
+        "run",
+        "aura_server.py"
+      ]
+    }
+  }
 }
 ```
 
