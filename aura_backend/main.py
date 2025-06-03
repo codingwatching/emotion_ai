@@ -1044,7 +1044,27 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                     )
 
                     # Format and send function result back to model
+                    # Send function result back to model
                     function_result_text = format_function_call_result_for_model(execution_result)
+
+                    # *** NEW LINE ***
+                    final_response += function_result_text + "\\n" # Append the raw tool result
+
+                    # Send function result back to continue the conversation
+                    follow_up = chat.send_message(
+                        [types.Part(text=execution_result.result if execution_result.success else execution_result.error)]
+                    )
+
+                    # Extract final response after function execution
+                    if (
+                        follow_up.candidates and
+                        follow_up.candidates[0].content is not None and
+                        hasattr(follow_up.candidates[0].content, "parts") and
+                        follow_up.candidates[0].content.parts
+                    ):
+                        for follow_part in follow_up.candidates[0].content.parts:
+                            if follow_part.text:
+                                final_response += follow_part.text
 
                     # Send function result back to continue the conversation
                     follow_up = chat.send_message([

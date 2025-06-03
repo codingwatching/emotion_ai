@@ -33,8 +33,11 @@
 - **Personalized Recommendations** based on interaction history
 - **Data Export** in multiple formats (JSON, CSV, etc.)
 
-### Most of that isn't set up yet but the vector memory is pretty amazing- no need to prompt to remember or recall.
- I am not a coder so hopefully it sets up right if anyone tries it- I will try to package it up better and get mcp servers integrated, chats saved, plus more.
+### MCP Client now fully functional!!! Next add bells and whistles to UI and get chat history working.
+
+![alt text](image-1.png)
+
+ I am not a coder so hopefully it sets up right if anyone tries it.
 
 ![alt text](image-4.png)
 
@@ -73,7 +76,7 @@ I want this script changed to uv- I already made the pyproject.toml and created 
 
 5. **Start Services**:
    ```bash
-   ./start_all.sh
+   ./start.sh
    ```
 
    cd /emotion_ai
