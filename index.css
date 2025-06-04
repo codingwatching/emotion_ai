@@ -541,6 +541,34 @@ header h1 {
   border-color: var(--accent-primary);
 }
 
+/* Insights Controls */
+.insights-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#insights-period {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+  cursor: pointer;
+}
+
+#insights-period:focus {
+  border-color: var(--accent-primary);
+}
+
+#insights-period option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
 #search-memories, #show-insights {
   padding: 8px 16px;
   background-color: var(--accent-primary);

@@ -38,6 +38,8 @@ export interface SearchResponse {
 
 export interface EmotionalAnalysisResponse {
   period_days: number;
+  period_type?: string;
+  custom_days?: number;
   total_entries: number;
   dominant_emotions: Array<[string, number]>;
   intensity_distribution: Record<string, number>;
@@ -104,9 +106,14 @@ export class AuraAPI {
     }
   }
 
-  async getEmotionalAnalysis(userId: string, days: number = 7): Promise<EmotionalAnalysisResponse> {
+  async getEmotionalAnalysis(userId: string, period: string = 'week', customDays?: number): Promise<EmotionalAnalysisResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/emotional-analysis/${userId}?days=${days}`);
+      let url = `${API_BASE_URL}/emotional-analysis/${userId}?period=${period}`;
+      if (customDays !== undefined) {
+        url += `&custom_days=${customDays}`;
+      }
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -116,6 +123,22 @@ export class AuraAPI {
       return response.json();
     } catch (error) {
       console.error('Error getting emotional analysis:', error);
+      throw error;
+    }
+  }
+
+  async getChatHistory(userId: string, limit: number = 50) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat-history/${userId}?limit=${limit}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`History error ${response.status}: ${errorText}`);
+      }
+      
+      return response.json();
+    } catch (error) {
+      console.error('Error getting chat history:', error);
       throw error;
     }
   }

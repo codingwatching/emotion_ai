@@ -140,8 +140,8 @@ To connect external MCP clients to Aura:
 Edit your directory path and place in claude desktop config json.
 
 ```bash
-
-    },
+{
+  "mcpServers": {
     "aura-companion": {
       "command": "uv",
       "args": [

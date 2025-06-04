@@ -47,7 +47,7 @@ from mcp_system import (
     shutdown_mcp_system,
     get_mcp_status,
     get_mcp_bridge,
-    get_mcp_client,
+    # get_mcp_client,
     get_all_available_tools
 )
 from mcp_integration import (
@@ -327,8 +327,10 @@ class AuraVectorDB:
 
             results = self.emotional_patterns.get(
                 where={
-                    "user_id": user_id,
-                    "timestamp": {"$gte": cutoff_date.isoformat()}
+                    "$and": [
+                        {"user_id": {"$eq": user_id}},
+                        {"timestamp": {"$gte": cutoff_date.isoformat()}}
+                    ]
                 },
                 include=["metadatas"]
             )
@@ -718,6 +720,85 @@ You have access to these built-in MCP tools for enhanced capabilities:
 
     return instruction
 
+async def detect_user_emotion(user_message: str, user_id: str) -> Optional[EmotionalStateData]:
+    """Detect User's emotional state from their message"""
+
+    # Emotional states mapping (same as Aura's for consistency)
+    emotional_states = {
+        "Normal": ("Baseline state of calmness", "Alpha", "Serotonin"),
+        "Excited": ("Enthusiastic anticipation", "Beta", "Dopamine"),
+        "Happy": ("Pleased and content", "Beta", "Endorphin"),
+        "Sad": ("Sorrowful or unhappy", "Delta", "Serotonin"),
+        "Angry": ("Strong displeasure", "Theta", "Norepinephrine"),
+        "Joy": ("Intense happiness", "Gamma", "Oxytocin"),
+        "Peace": ("Tranquil and calm", "Theta", "GABA"),
+        "Curiosity": ("Strong desire to learn", "Beta", "Dopamine"),
+        "Friendliness": ("Kind and warm", "Alpha", "Endorphin"),
+        "Love": ("Deep affection", "Alpha", "Oxytocin"),
+        "Creativity": ("Inspired and inventive", "Gamma", "Dopamine"),
+        "Anxious": ("Worried or nervous", "Beta", "Cortisol"),
+        "Tired": ("Exhausted or fatigued", "Delta", "Melatonin")
+    }
+
+    emotion_list = "\n".join([f"{name}: {desc}" for name, (desc, _, _) in emotional_states.items()])
+
+    prompt = f"""Analyze this user's message and identify their most prominent emotional state.
+Consider the tone, word choice, and context.
+
+Available emotions:
+{emotion_list}
+
+User message:
+{user_message}
+
+Output only the emotion name and intensity like: "Happy (Medium)" or "Curiosity (High)".
+If neutral, output "Normal (Medium)"."""
+
+    try:
+        result = client.models.generate_content(
+            model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
+            contents=[prompt]
+        )
+
+        response_text = result.text.strip() if result.text is not None else ""
+
+        # Parse response like "Happy (Medium)"
+        import re
+        match = re.match(r'^(.+?)\s*\((\w+)\)$', response_text)
+        if match:
+            emotion_name, intensity = match.groups()
+            emotion_name = emotion_name.strip()
+
+            if emotion_name in emotional_states:
+                desc, brainwave, neurotransmitter = emotional_states[emotion_name]
+                return EmotionalStateData(
+                    name=emotion_name,
+                    formula=f"{emotion_name}(x) = detected_from_user_input",
+                    components={"user_message": "Emotional state detected from user's message"},
+                    ntk_layer=f"{brainwave.lower()}-like_NTK",
+                    brainwave=brainwave,
+                    neurotransmitter=neurotransmitter,
+                    description=desc,
+                    intensity=EmotionalIntensity(intensity.title()) if intensity.title() in ["Low", "Medium", "High"] else EmotionalIntensity.MEDIUM
+                )
+
+        # Default fallback
+        desc, brainwave, neurotransmitter = emotional_states["Normal"]
+        return EmotionalStateData(
+            name="Normal",
+            formula="N(x) = baseline_state",
+            components={"routine": "No significant emotional triggers detected"},
+            ntk_layer="theta-like_NTK",
+            brainwave=brainwave,
+            neurotransmitter=neurotransmitter,
+            description=desc,
+            intensity=EmotionalIntensity.MEDIUM
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Failed to detect user emotion: {e}")
+        return None
+
 async def detect_aura_emotion(conversation_snippet: str, user_id: str) -> Optional[EmotionalStateData]:
     """Detect Aura's emotional state from conversation"""
 
@@ -1089,7 +1170,12 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
 
         aura_response = final_response or "I'm here and ready to help!"
 
-        # Process emotional state detection
+        # Process emotional state detection for both user and Aura
+        user_emotional_state = await detect_user_emotion(
+            user_message=request.message,
+            user_id=request.user_id
+        )
+
         emotional_state_data = await detect_aura_emotion(
             conversation_snippet=f"User: {request.message}\nAura: {aura_response}",
             user_id=request.user_id
@@ -1106,6 +1192,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             user_id=request.user_id,
             message=request.message,
             sender="user",
+            emotional_state=user_emotional_state,  # Add user's emotional state
             session_id=session_id
         )
 
@@ -1124,6 +1211,10 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
 
         if emotional_state_data:
             background_tasks.add_task(vector_db.store_emotional_pattern, emotional_state_data, request.user_id)
+
+        # Store user's emotional pattern for analysis
+        if user_emotional_state:
+            background_tasks.add_task(vector_db.store_emotional_pattern, user_emotional_state, request.user_id)
 
         # Update user profile
         if user_profile is None:
@@ -1156,6 +1247,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
     except Exception as e:
         logger.error(f"❌ Failed to process conversation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+@app.post("/search")
 async def search_memories(request: SearchRequest):
     """Search through conversation memories"""
     try:
@@ -1172,10 +1264,30 @@ async def search_memories(request: SearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/emotional-analysis/{user_id}")
-async def get_emotional_analysis(user_id: str, days: int = 7):
-    """Get emotional pattern analysis"""
+async def get_emotional_analysis(
+    user_id: str, 
+    period: str = "week",  # Options: hour, day, week, month, year, multi-year
+    custom_days: Optional[int] = None
+):
+    """Get emotional pattern analysis with granular time periods"""
     try:
+        # Convert period to days
+        period_mapping = {
+            "hour": 1/24,      # Last hour
+            "day": 1,          # Last 24 hours
+            "week": 7,         # Last 7 days
+            "month": 30,       # Last 30 days
+            "year": 365,       # Last year
+            "multi-year": 1825  # Last 5 years
+        }
+        
+        # Use custom days if provided, otherwise use period mapping
+        days = custom_days if custom_days is not None else period_mapping.get(period, 7)
+        
         analysis = await vector_db.analyze_emotional_trends(user_id, days)
+        analysis["period_type"] = period
+        analysis["custom_days"] = custom_days
+        
         return analysis
 
     except Exception as e:

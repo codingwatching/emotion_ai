@@ -77,7 +77,17 @@
       <!-- Emotional Insights -->
       <div class="insights-panel">
         <h3>📊 Emotional Insights</h3>
-        <button id="show-insights">View 7-Day Analysis</button>
+        <div class="insights-controls">
+          <select id="insights-period" aria-label="Select time period for emotional insights">
+            <option value="hour">Last Hour</option>
+            <option value="day">Last 24 Hours</option>
+            <option value="week" selected>Last Week</option>
+            <option value="month">Last Month</option>
+            <option value="year">Last Year</option>
+            <option value="multi-year">Last 5 Years</option>
+          </select>
+          <button id="show-insights">View Analysis</button>
+        </div>
         <div id="insights-content"></div>
       </div>
     </aside>
