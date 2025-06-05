@@ -123,7 +123,7 @@ Visit `http://localhost:8000/docs` for interactive API documentation.
 
 ## 🔗 MCP Integration
 
-### Available MCP Tools- I haven't tried this, Aura is functioning automatically and quite well without explicit requests.
+### Available MCP Tools- Working on emotional state records, hopefully fixed tomorrow
 
 1. **search_aura_memories**: Semantic search through conversation history
 2. **analyze_aura_emotional_patterns**: Deep emotional trend analysis

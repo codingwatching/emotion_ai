@@ -617,10 +617,76 @@ async function loadChatHistory(): Promise<void> {
 }
 
 async function loadChatSession(sessionId: string): Promise<void> {
-    // This should load a specific chat session
-    currentSessionId = sessionId;
-    await displayMessage(`Loading session ${sessionId}...`, 'aura');
-    // TODO: Implement actual session loading from backend
+    if (!userName || !backendConnected) {
+        await displayMessage("Unable to load chat session - not connected to backend", 'error');
+        return;
+    }
+
+    try {
+        // Show loading indicator
+        const messageArea = document.getElementById('message-area');
+        if (messageArea) {
+            messageArea.innerHTML = '<div class="loading-session">Loading conversation history...</div>';
+        }
+
+        // Fetch chat history from backend
+        const response = await auraAPI.getChatHistory(userName, 50); // Get more messages for session loading
+
+        // Find the specific session
+        const targetSession = response.sessions?.find((session: any) => session.session_id === sessionId);
+
+        if (!targetSession) {
+            await displayMessage(`Session ${sessionId} not found or has been removed.`, 'error');
+            return;
+        }
+
+        // Clear message area
+        if (messageArea) {
+            messageArea.innerHTML = '';
+        }
+
+        // Set current session
+        currentSessionId = sessionId;
+
+        // Display session info
+        const sessionDate = new Date(targetSession.start_time);
+        const sessionInfo = `📅 **Chat Session**: ${sessionDate.toLocaleDateString()} at ${sessionDate.toLocaleTimeString()}`;
+        await displayMessage(sessionInfo, 'aura');
+
+        // Sort messages by timestamp to ensure chronological order
+        const sortedMessages = targetSession.messages.sort((a: any, b: any) => 
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+
+        // Display all messages from the session
+        for (const message of sortedMessages) {
+            const sender = message.sender === 'user' ? 'user' : 'aura';
+            await displayMessage(message.content, sender);
+            
+            // Small delay to prevent UI overwhelming
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        // Update emotional state if available from last Aura message
+        const lastAuraMessage = sortedMessages.filter((msg: any) => msg.sender === 'aura').pop();
+        if (lastAuraMessage && lastAuraMessage.emotion) {
+            updateAuraEmotionDisplay({ 
+                name: lastAuraMessage.emotion,
+                intensity: 'Medium' // Default intensity since historical data may not have it
+            });
+        }
+
+        console.log(`✅ Loaded session ${sessionId} with ${sortedMessages.length} messages`);
+
+    } catch (error) {
+        console.error('Failed to load chat session:', error);
+        await displayMessage(`Failed to load session ${sessionId}. Please try again.`, 'error');
+        
+        // Restore to new chat if loading failed
+        const newSessionId = crypto.randomUUID();
+        currentSessionId = newSessionId;
+        await displayMessage("Started a new conversation instead.", 'aura');
+    }
 }
 
 function setupEmotionalInsightsPanel(): void {

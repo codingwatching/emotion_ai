@@ -295,6 +295,21 @@ class MCPGeminiBridge:
             mcp_tool_name = tool_info['mcp_name']
             server = tool_info['server']
 
+            # Handle parameter unwrapping - check if arguments are wrapped in a 'params' key
+            if 'params' in arguments and len(arguments) == 1:
+                try:
+                    # Try to parse params as JSON string
+                    params_value = arguments['params']
+                    if isinstance(params_value, str):
+                        arguments = json.loads(params_value)
+                        logger.debug(f"🔄 Unwrapped JSON params for {function_name}: {arguments}")
+                    elif isinstance(params_value, dict):
+                        arguments = params_value
+                        logger.debug(f"🔄 Unwrapped dict params for {function_name}: {arguments}")
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"⚠️ Could not unwrap params for {function_name}: {e}")
+                    # Continue with original arguments if parsing fails
+
             # Add user_id to arguments if not present and needed
             if 'user_id' not in arguments:
                 # Check if the tool requires user_id
@@ -304,13 +319,28 @@ class MCPGeminiBridge:
                 if 'user_id' in properties:
                     arguments['user_id'] = user_id
 
-            # Execute the MCP tool
+            # Execute the MCP tool with appropriate parameter formatting
             if server == 'aura-internal' and self.aura_internal_tools:
+                # Internal tools expect individual keyword arguments
                 result = await self.aura_internal_tools.execute_tool(mcp_tool_name, arguments)
             else:
-                # Use MCP client to execute external tool
+                # External MCP tools (FastMCP) have different parameter requirements
                 if hasattr(self.mcp_client_manager, 'call_tool'):
-                    result = await self.mcp_client_manager.call_tool(mcp_tool_name, arguments)
+                    # Check if tool expects parameters at all
+                    original_tool = tool_info['original_tool']
+                    parameters = original_tool.get('parameters', {})
+                    properties = parameters.get('properties', {})
+                    
+                    if not properties and not arguments:
+                        # Tool expects no parameters and we have no arguments - pass empty dict
+                        mcp_arguments = {}
+                        logger.debug(f"🔄 No parameters needed for {mcp_tool_name}: {mcp_arguments}")
+                    else:
+                        # Tool expects parameters - wrap in params structure
+                        mcp_arguments = {'params': arguments}
+                        logger.debug(f"🔄 Wrapping arguments for external tool {mcp_tool_name}: {mcp_arguments}")
+                    
+                    result = await self.mcp_client_manager.call_tool(mcp_tool_name, mcp_arguments)
                 else:
                     raise ValueError(f"Cannot execute external tool {mcp_tool_name}: MCP client not properly configured")
 

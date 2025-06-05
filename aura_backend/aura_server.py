@@ -23,6 +23,7 @@ from pathlib import Path
 from pydantic import BaseModel
 # MCP and FastMCP imports
 from fastmcp import FastMCP
+import mcp.types as types
 # @mcp.tool()
 
 # Core dependencies
@@ -459,11 +460,36 @@ except Exception as e:
 mcp = FastMCP("Aura Advanced AI Companion")
 
 # ============================================================================
+# MCP Response Helper Functions
+# ============================================================================
+
+def create_mcp_response(data: Dict[str, Any], is_error: bool = False) -> types.CallToolResult:
+    """
+    Convert dictionary data to proper MCP CallToolResult format.
+    
+    Args:
+        data: Dictionary containing the response data
+        is_error: Whether this is an error response
+        
+    Returns:
+        CallToolResult with properly formatted TextContent
+    """
+    return types.CallToolResult(
+        content=[
+            types.TextContent(
+                type="text", 
+                text=json.dumps(data, indent=2, default=str)
+            )
+        ],
+        isError=is_error
+    )
+
+# ============================================================================
 # MCP Tools Implementation
 # ============================================================================
 
 @mcp.tool()
-async def search_aura_memories(params: AuraMemorySearch) -> Dict[str, Any]:
+async def search_aura_memories(params: AuraMemorySearch) -> types.CallToolResult:
     """
     Search through Aura's conversation memories using semantic search.
 
@@ -479,25 +505,27 @@ async def search_aura_memories(params: AuraMemorySearch) -> Dict[str, Any]:
 
         logger.info(f"🔍 MCP: Searched memories for user {params.user_id}, found {len(results)} results")
 
-        return {
+        response_data = {
             "status": "success",
             "query": params.query,
             "user_id": params.user_id,
             "results_count": len(results),
             "memories": results
         }
+        return create_mcp_response(response_data)
 
     except Exception as e:
         logger.error(f"❌ MCP: Failed to search Aura memories: {e}")
-        return {
+        error_data = {
             "status": "error",
             "error": str(e),
             "query": params.query,
             "user_id": params.user_id
         }
+        return create_mcp_response(error_data, is_error=True)
 
 @mcp.tool()
-async def analyze_aura_emotional_patterns(params: AuraEmotionalAnalysis) -> Dict[str, Any]:
+async def analyze_aura_emotional_patterns(params: AuraEmotionalAnalysis) -> types.CallToolResult:
     """
     Analyze emotional patterns and trends for a specific user over time.
 
@@ -509,23 +537,25 @@ async def analyze_aura_emotional_patterns(params: AuraEmotionalAnalysis) -> Dict
 
         logger.info(f"📊 MCP: Generated emotional analysis for user {params.user_id}")
 
-        return {
+        response_data = {
             "status": "success",
             "user_id": params.user_id,
             "analysis_period_days": params.days,
             "emotional_analysis": analysis
         }
+        return create_mcp_response(response_data)
 
     except Exception as e:
         logger.error(f"❌ MCP: Failed to analyze emotional patterns: {e}")
-        return {
+        error_data = {
             "status": "error",
             "error": str(e),
             "user_id": params.user_id
         }
+        return create_mcp_response(error_data, is_error=True)
 
 @mcp.tool()
-async def store_aura_conversation(params: AuraConversationStore) -> Dict[str, Any]:
+async def store_aura_conversation(params: AuraConversationStore) -> types.CallToolResult:
     """
     Store a conversation memory in Aura's vector database with optional emotional and cognitive state.
 
@@ -582,23 +612,25 @@ async def store_aura_conversation(params: AuraConversationStore) -> Dict[str, An
 
         logger.info(f"💾 MCP: Stored conversation memory for user {params.user_id}")
 
-        return {
+        response_data = {
             "status": "success",
             "user_id": params.user_id,
             "document_id": doc_id,
             "message": "Conversation stored successfully in Aura's memory"
         }
+        return create_mcp_response(response_data)
 
     except Exception as e:
         logger.error(f"❌ MCP: Failed to store conversation: {e}")
-        return {
+        error_data = {
             "status": "error",
             "error": str(e),
             "user_id": params.user_id
         }
+        return create_mcp_response(error_data, is_error=True)
 
 @mcp.tool()
-async def get_aura_user_profile(user_id: str) -> Dict[str, Any]:
+async def get_aura_user_profile(user_id: str) -> types.CallToolResult:
     """
     Retrieve user profile information from Aura's file system.
 
@@ -609,30 +641,33 @@ async def get_aura_user_profile(user_id: str) -> Dict[str, Any]:
         profile = await file_system.load_user_profile(user_id)
 
         if profile is None:
-            return {
+            response_data = {
                 "status": "not_found",
                 "user_id": user_id,
                 "message": "User profile not found"
             }
+            return create_mcp_response(response_data)
 
         logger.info(f"👤 MCP: Retrieved user profile for {user_id}")
 
-        return {
+        response_data = {
             "status": "success",
             "user_id": user_id,
             "profile": profile
         }
+        return create_mcp_response(response_data)
 
     except Exception as e:
         logger.error(f"❌ MCP: Failed to get user profile: {e}")
-        return {
+        error_data = {
             "status": "error",
             "error": str(e),
             "user_id": user_id
         }
+        return create_mcp_response(error_data, is_error=True)
 
 @mcp.tool()
-async def export_aura_user_data(user_id: str, format: str = "json") -> Dict[str, Any]:
+async def export_aura_user_data(user_id: str, format: str = "json") -> types.CallToolResult:
     """
     Export comprehensive user data including conversations, emotional patterns, and cognitive insights.
 
@@ -644,24 +679,26 @@ async def export_aura_user_data(user_id: str, format: str = "json") -> Dict[str,
 
         logger.info(f"📤 MCP: Exported user data for {user_id} in {format} format")
 
-        return {
+        response_data = {
             "status": "success",
             "user_id": user_id,
             "export_format": format,
             "export_path": export_path,
             "message": "User data exported successfully"
         }
+        return create_mcp_response(response_data)
 
     except Exception as e:
         logger.error(f"❌ MCP: Failed to export user data: {e}")
-        return {
+        error_data = {
             "status": "error",
             "error": str(e),
             "user_id": user_id
         }
+        return create_mcp_response(error_data, is_error=True)
 
 @mcp.tool()
-async def query_aura_emotional_states() -> Dict[str, Any]:
+async def query_aura_emotional_states() -> types.CallToolResult:
     """
     Get information about Aura's emotional state model and available emotions.
 
@@ -694,20 +731,22 @@ async def query_aura_emotional_states() -> Dict[str, Any]:
 
         logger.info("🎭 MCP: Provided emotional states information")
 
-        return {
+        response_data = {
             "status": "success",
             "emotional_system": emotional_states_info
         }
+        return create_mcp_response(response_data)
 
     except Exception as e:
         logger.error(f"❌ MCP: Failed to query emotional states: {e}")
-        return {
+        error_data = {
             "status": "error",
             "error": str(e)
         }
+        return create_mcp_response(error_data, is_error=True)
 
 @mcp.tool()
-async def query_aura_aseke_framework() -> Dict[str, Any]:
+async def query_aura_aseke_framework() -> types.CallToolResult:
     """
     Get detailed information about Aura's ASEKE cognitive architecture framework.
 
@@ -764,26 +803,28 @@ async def query_aura_aseke_framework() -> Dict[str, Any]:
 
         logger.info("🧠 MCP: Provided ASEKE framework information")
 
-        return {
+        response_data = {
             "status": "success",
             "aseke_framework": aseke_info
         }
+        return create_mcp_response(response_data)
 
     except Exception as e:
         logger.error(f"❌ MCP: Failed to query ASEKE framework: {e}")
-        return {
+        error_data = {
             "status": "error",
             "error": str(e)
         }
+        return create_mcp_response(error_data, is_error=True)
 
 # ============================================================================
 # MCP Resources
 # ============================================================================
 
 @mcp.tool()
-async def aura_capabilities():
+async def aura_capabilities() -> types.CallToolResult:
     """Resource describing Aura's advanced capabilities"""
-    return {
+    capabilities_data = {
         "name": "Aura Advanced AI Companion Capabilities",
         "description": "Comprehensive overview of Aura's sophisticated AI companion features",
         "version": "1.0.0",
@@ -814,7 +855,7 @@ async def aura_capabilities():
             }
         },
         "integration": {
-            "mcp_protocol": "Model Context Protocol server with 7 specialized tools",
+            "mcp_protocol": "Model Context Protocol server with 8 specialized tools",
             "vector_database": "ChromaDB with sentence-transformers embeddings",
             "file_system": "Enhanced file operations and multi-format data export",
             "api_endpoints": "RESTful API for external integration and web interfaces"
@@ -828,6 +869,8 @@ async def aura_capabilities():
             "brainwave_patterns": ["Alpha", "Beta", "Gamma", "Theta", "Delta"]
         }
     }
+    
+    return create_mcp_response(capabilities_data)
 
 # ============================================================================
 # Internal Server Startup

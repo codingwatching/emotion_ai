@@ -1132,8 +1132,15 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                     final_response += function_result_text + "\\n" # Append the raw tool result
 
                     # Send function result back to continue the conversation
+                    # Ensure result is converted to string for Part.text
+                    result_text = execution_result.result if execution_result.success else execution_result.error
+                    if isinstance(result_text, dict):
+                        result_text = json.dumps(result_text, indent=2)
+                    elif not isinstance(result_text, str):
+                        result_text = str(result_text)
+                    
                     follow_up = chat.send_message(
-                        [types.Part(text=execution_result.result if execution_result.success else execution_result.error)]
+                        [types.Part(text=result_text)]
                     )
 
                     # Extract final response after function execution
@@ -1148,11 +1155,20 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                                 final_response += follow_part.text
 
                     # Send function result back to continue the conversation
+                    # Ensure result is properly formatted for function response
+                    result_data = execution_result.result if execution_result.success else execution_result.error
+                    if isinstance(result_data, dict):
+                        formatted_result = json.dumps(result_data, indent=2)
+                    elif not isinstance(result_data, str):
+                        formatted_result = str(result_data)
+                    else:
+                        formatted_result = result_data
+                    
                     follow_up = chat.send_message([
                         types.Part(
                             function_response=types.FunctionResponse(
                                 name=part.function_call.name,
-                                response={"result": execution_result.result if execution_result.success else execution_result.error}
+                                response={"result": formatted_result}
                             )
                         )
                     ])
