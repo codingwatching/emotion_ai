@@ -282,7 +282,7 @@ AURA_MAX_OUTPUT_TOKENS=8192
 ```
 
 ### Advanced Configuration
-See `.env` file for complete configuration options.
+Set `.env` file for complete configuration options.
 
 ## 🧪 Testing
 
@@ -306,8 +306,35 @@ wrk -t12 -c400 -d30s http://localhost:8000/health
 
 ### Local Development
 ```bash
-./start_all.sh
+./start.sh
 ```
+
+   cd /emotion_ai
+
+   ```bash
+   # Edit the .env file to use your existing key
+   echo "GOOGLE_API_KEY=$GOOGLE_API_KEY" > .env.local
+   ```
+
+**Front End UI Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Run the app:
+
+```bash
+npm run dev
+```
+
+Go to-
+Local:   http://localhost:5173/
+
+Network: use --host to expose
 
 ### Production (Docker)
 ```bash

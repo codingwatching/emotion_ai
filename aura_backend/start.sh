@@ -48,7 +48,11 @@ for _ in {1..30}; do
     sleep 1
 done
 
-# Optional: Start frontend
+# Optional: Start frontend- this has to be made to run in the parent directory in another terminal
+if ! command -v npm &> /dev/null; then
+    error "npm is not installed! Please install Node.js and npm."
+    exit 1
+fi
 if [[ "$1" == "--with-frontend" ]]; then
     log "Starting frontend..."
     (cd .. && npm run dev) &

@@ -457,7 +457,12 @@ except Exception as e:
     sys.exit(1)
 
 # Internal Server instance
-mcp = FastMCP("Aura Advanced AI Companion")
+mcp = FastMCP(
+    name="Aura Advanced AI Companion",
+    description="An advanced AI companion with emotional intelligence and memory capabilities",
+    version="1.0.0"
+    # Settings will be passed to mcp.run()
+)
 
 # ============================================================================
 # MCP Response Helper Functions
@@ -466,18 +471,18 @@ mcp = FastMCP("Aura Advanced AI Companion")
 def create_mcp_response(data: Dict[str, Any], is_error: bool = False) -> types.CallToolResult:
     """
     Convert dictionary data to proper MCP CallToolResult format.
-    
+
     Args:
         data: Dictionary containing the response data
         is_error: Whether this is an error response
-        
+
     Returns:
         CallToolResult with properly formatted TextContent
     """
     return types.CallToolResult(
         content=[
             types.TextContent(
-                type="text", 
+                type="text",
                 text=json.dumps(data, indent=2, default=str)
             )
         ],
@@ -869,7 +874,7 @@ async def aura_capabilities() -> types.CallToolResult:
             "brainwave_patterns": ["Alpha", "Beta", "Gamma", "Theta", "Delta"]
         }
     }
-    
+
     return create_mcp_response(capabilities_data)
 
 # ============================================================================
@@ -880,14 +885,26 @@ if __name__ == "__main__":
     logger.info("🚀 Starting Aura Internal Server...")
     logger.info("🔗 Enabling sophisticated AI agent integration")
     logger.info("✨ Features: Memory Search, Emotional Analysis, Adaptive Sociobiological Emotional Knowledge Ecosystem Framework")
-    logger.info("🧠 Components: Vector DB, Internal File System, Emotional Intelligence")
-    logger.info("📊 Tools: 7 specialized MCP tools for external agent integration")
 
-    # Run the Internal Server
+    # Define server settings for the run() method
+    server_host = "0.0.0.0"  # Or "127.0.0.1" for local access only
+    server_port = 8000       # Choose an appropriate port
+
+    runtime_settings = {
+        "enable_logging": True,
+        "max_concurrent_tasks": 10,
+        "timeout_seconds": 30
+    }
+
+    logger.info(f"🌍 Aura Internal Server attempting to run on {server_host}:{server_port}")
+
     try:
-        mcp.run()
-    except KeyboardInterrupt:
-        logger.info("🛑 Internal Server stopped by user")
+        # Pass settings to the run() method as per FastMCP 2.3.4+ recommendations
+        mcp.run(
+            # host=server_host,
+            # port=server_port,
+            # **runtime_settings
+        )
     except Exception as e:
-        logger.error(f"❌ Internal Server error: {e}")
+        logger.error(f"❌ Failed to start Aura Internal Server: {e}")
         sys.exit(1)

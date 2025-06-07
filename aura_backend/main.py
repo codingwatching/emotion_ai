@@ -1092,10 +1092,10 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             chat = client.chats.create(
                 model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
                 config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
                     temperature=0.7,
                     max_output_tokens=int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '8192')),
-                    tools=tools if tools else None
+                    tools=tools if tools else None,
+                    system_instruction=system_instruction
                 )
             )
             active_chat_sessions[session_key] = chat
@@ -1124,51 +1124,20 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                         request.user_id
                     )
 
-                    # Format and send function result back to model
-                    # Send function result back to model
-                    function_result_text = format_function_call_result_for_model(execution_result)
+                    # Use the improved formatting function from the bridge
+                    formatted_result_text = format_function_call_result_for_model(execution_result)
+                    logger.info(f"📝 Formatted result: {formatted_result_text[:200]}...")  # Log first 200 chars
 
-                    # *** NEW LINE ***
-                    final_response += function_result_text + "\\n" # Append the raw tool result
+                    # Prepare the function result for the model
+                    # The model expects the raw result data, not the formatted text
+                    result_data = execution_result.result if execution_result.success else {"error": execution_result.error}
 
-                    # Send function result back to continue the conversation
-                    # Ensure result is converted to string for Part.text
-                    result_text = execution_result.result if execution_result.success else execution_result.error
-                    if isinstance(result_text, dict):
-                        result_text = json.dumps(result_text, indent=2)
-                    elif not isinstance(result_text, str):
-                        result_text = str(result_text)
-                    
-                    follow_up = chat.send_message(
-                        [types.Part(text=result_text)]
-                    )
-
-                    # Extract final response after function execution
-                    if (
-                        follow_up.candidates and
-                        follow_up.candidates[0].content is not None and
-                        hasattr(follow_up.candidates[0].content, "parts") and
-                        follow_up.candidates[0].content.parts
-                    ):
-                        for follow_part in follow_up.candidates[0].content.parts:
-                            if follow_part.text:
-                                final_response += follow_part.text
-
-                    # Send function result back to continue the conversation
-                    # Ensure result is properly formatted for function response
-                    result_data = execution_result.result if execution_result.success else execution_result.error
-                    if isinstance(result_data, dict):
-                        formatted_result = json.dumps(result_data, indent=2)
-                    elif not isinstance(result_data, str):
-                        formatted_result = str(result_data)
-                    else:
-                        formatted_result = result_data
-                    
+                    # Send function result back to model using function_response
                     follow_up = chat.send_message([
                         types.Part(
                             function_response=types.FunctionResponse(
                                 name=part.function_call.name,
-                                response={"result": formatted_result}
+                                response={"result": result_data}
                             )
                         )
                     ])
@@ -1281,7 +1250,7 @@ async def search_memories(request: SearchRequest):
 
 @app.get("/emotional-analysis/{user_id}")
 async def get_emotional_analysis(
-    user_id: str, 
+    user_id: str,
     period: str = "week",  # Options: hour, day, week, month, year, multi-year
     custom_days: Optional[int] = None
 ):
@@ -1296,14 +1265,14 @@ async def get_emotional_analysis(
             "year": 365,       # Last year
             "multi-year": 1825  # Last 5 years
         }
-        
+
         # Use custom days if provided, otherwise use period mapping
         days = custom_days if custom_days is not None else period_mapping.get(period, 7)
-        
+
         analysis = await vector_db.analyze_emotional_trends(user_id, days)
         analysis["period_type"] = period
         analysis["custom_days"] = custom_days
-        
+
         return analysis
 
     except Exception as e:

@@ -26,6 +26,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Import smart parameter handler
+try:
+    from smart_mcp_parameter_handler import get_smart_parameter_handler
+    smart_parameter_handler = get_smart_parameter_handler()
+except ImportError:
+    smart_parameter_handler = None
+    logger.warning("Smart parameter handler not available")
+
 @dataclass
 class ToolExecutionResult:
     """Result of executing an MCP tool through Gemini"""
@@ -273,6 +281,8 @@ class MCPGeminiBridge:
             ToolExecutionResult with execution outcome
         """
         start_time = datetime.now()
+        server = None
+        mcp_tool_name = None
 
         try:
             function_name = function_call.name
@@ -294,53 +304,41 @@ class MCPGeminiBridge:
             tool_info = self._tool_mapping[function_name]
             mcp_tool_name = tool_info['mcp_name']
             server = tool_info['server']
-
-            # Handle parameter unwrapping - check if arguments are wrapped in a 'params' key
-            if 'params' in arguments and len(arguments) == 1:
-                try:
-                    # Try to parse params as JSON string
-                    params_value = arguments['params']
-                    if isinstance(params_value, str):
-                        arguments = json.loads(params_value)
-                        logger.debug(f"🔄 Unwrapped JSON params for {function_name}: {arguments}")
-                    elif isinstance(params_value, dict):
-                        arguments = params_value
-                        logger.debug(f"🔄 Unwrapped dict params for {function_name}: {arguments}")
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning(f"⚠️ Could not unwrap params for {function_name}: {e}")
-                    # Continue with original arguments if parsing fails
+            original_tool = tool_info['original_tool']
 
             # Add user_id to arguments if not present and needed
             if 'user_id' not in arguments:
                 # Check if the tool requires user_id
-                original_tool = tool_info['original_tool']
                 parameters = original_tool.get('parameters', {})
                 properties = parameters.get('properties', {})
                 if 'user_id' in properties:
                     arguments['user_id'] = user_id
 
-            # Execute the MCP tool with appropriate parameter formatting
-            if server == 'aura-internal' and self.aura_internal_tools:
-                # Internal tools expect individual keyword arguments
-                result = await self.aura_internal_tools.execute_tool(mcp_tool_name, arguments)
+            # Use the smart parameter handler to format parameters correctly
+            if smart_parameter_handler:
+                # Get the tool's input schema for smart detection
+                tool_input_schema = original_tool.get('input_schema') or original_tool.get('parameters', {})
+
+                formatted_arguments = smart_parameter_handler.format_parameters(
+                    tool_name=mcp_tool_name,
+                    server_name=server,
+                    arguments=arguments,
+                    tool_schema=tool_input_schema
+                )
+                logger.debug(f"📤 Smart formatted arguments for {mcp_tool_name} on {server}: {formatted_arguments}")
             else:
-                # External MCP tools (FastMCP) have different parameter requirements
+                # Fallback to simple logic if handler not available
+                formatted_arguments = arguments
+                logger.warning("⚠️ Smart parameter handler not available, using raw arguments")
+
+            # Execute the MCP tool with properly formatted parameters
+            if server == 'aura-internal' and self.aura_internal_tools:
+                # Internal tools use the formatted arguments
+                result = await self.aura_internal_tools.execute_tool(mcp_tool_name, formatted_arguments)
+            else:
+                # External MCP tools use the formatted arguments
                 if hasattr(self.mcp_client_manager, 'call_tool'):
-                    # Check if tool expects parameters at all
-                    original_tool = tool_info['original_tool']
-                    parameters = original_tool.get('parameters', {})
-                    properties = parameters.get('properties', {})
-                    
-                    if not properties and not arguments:
-                        # Tool expects no parameters and we have no arguments - pass empty dict
-                        mcp_arguments = {}
-                        logger.debug(f"🔄 No parameters needed for {mcp_tool_name}: {mcp_arguments}")
-                    else:
-                        # Tool expects parameters - wrap in params structure
-                        mcp_arguments = {'params': arguments}
-                        logger.debug(f"🔄 Wrapping arguments for external tool {mcp_tool_name}: {mcp_arguments}")
-                    
-                    result = await self.mcp_client_manager.call_tool(mcp_tool_name, mcp_arguments)
+                    result = await self.mcp_client_manager.call_tool(mcp_tool_name, formatted_arguments)
                 else:
                     raise ValueError(f"Cannot execute external tool {mcp_tool_name}: MCP client not properly configured")
 
@@ -355,6 +353,17 @@ class MCPGeminiBridge:
 
             self._execution_history.append(execution_result)
             logger.info(f"✅ Successfully executed {function_name} in {execution_time:.2f}s")
+
+            # Record success for format learning
+            if smart_parameter_handler and 'format_type' in locals():
+                # Get the format type that was used
+                format_type = getattr(formatted_arguments, '_format_type', 'unknown')
+                smart_parameter_handler.record_success(
+                    server_name=server,
+                    tool_name=mcp_tool_name,
+                    format_type=format_type,
+                    success=True
+                )
 
             return execution_result
 
@@ -372,6 +381,24 @@ class MCPGeminiBridge:
 
             self._execution_history.append(execution_result)
             logger.error(f"❌ Failed to execute {function_call.name}: {error_msg}")
+
+            # Record failure for format learning
+            if smart_parameter_handler and server and mcp_tool_name:
+                # Try to detect which format was attempted
+                format_type = 'unknown'
+                if 'formatted_arguments' in locals():
+                    formatted_arguments = locals()['formatted_arguments']
+                    if 'params' in formatted_arguments and len(formatted_arguments) == 1:
+                        format_type = 'wrapped' if isinstance(formatted_arguments['params'], dict) else 'fastmcp'
+                    else:
+                        format_type = 'direct'
+
+                smart_parameter_handler.record_success(
+                    server_name=server,
+                    tool_name=mcp_tool_name,
+                    format_type=format_type,
+                    success=False
+                )
 
             return execution_result
 
@@ -432,7 +459,7 @@ class MCPGeminiBridge:
         total_executions = len(self._execution_history)
         successful_executions = len([r for r in self._execution_history if r.success])
 
-        return {
+        stats = {
             'total_functions': len(self._gemini_functions),
             'total_executions': total_executions,
             'successful_executions': successful_executions,
@@ -448,9 +475,17 @@ class MCPGeminiBridge:
             ]
         }
 
+        # Add parameter handling stats if available
+        if smart_parameter_handler:
+            stats['parameter_handling'] = smart_parameter_handler.get_format_stats()
+
+        return stats
+
 def format_function_call_result_for_model(result: ToolExecutionResult) -> str:
     """
     Format the tool execution result for inclusion in the model conversation.
+
+    Handles various result formats including complex nested structures from tools like brave_search.
 
     Args:
         result: ToolExecutionResult from function execution
@@ -459,16 +494,122 @@ def format_function_call_result_for_model(result: ToolExecutionResult) -> str:
         Formatted string for the model
     """
     if result.success:
-        # Format successful result
+        # Handle different result types
         if isinstance(result.result, dict):
-            if 'result' in result.result:
-                return f"Tool {result.tool_name} executed successfully:\n{json.dumps(result.result['result'], indent=2)}"
+            # Special handling for brave_search results
+            if result.tool_name and 'brave' in result.tool_name.lower():
+                return _format_brave_search_result(result.tool_name, result.result)
+
+            # Check if result is wrapped in a 'result' key
+            if 'result' in result.result and len(result.result) == 1:
+                actual_result = result.result['result']
             else:
-                return f"Tool {result.tool_name} executed successfully:\n{json.dumps(result.result, indent=2)}"
+                actual_result = result.result
+
+            # Format based on content
+            if isinstance(actual_result, (list, dict)) and actual_result:
+                # Pretty print complex structures
+                try:
+                    formatted = json.dumps(actual_result, indent=2, ensure_ascii=False)
+                    return f"Tool {result.tool_name} executed successfully:\n{formatted}"
+                except (TypeError, ValueError):
+                    # Fallback for non-JSON serializable objects
+                    return f"Tool {result.tool_name} executed successfully:\n{str(actual_result)}"
+            else:
+                # Simple result
+                return f"Tool {result.tool_name} executed successfully: {actual_result}"
+
         elif isinstance(result.result, str):
-            return f"Tool {result.tool_name} executed successfully:\n{result.result}"
+            # String results
+            if result.result.strip():
+                return f"Tool {result.tool_name} executed successfully:\n{result.result}"
+            else:
+                return f"Tool {result.tool_name} executed successfully (empty result)"
+
+        elif isinstance(result.result, list):
+            # List results
+            if result.result:
+                try:
+                    formatted = json.dumps(result.result, indent=2, ensure_ascii=False)
+                    return f"Tool {result.tool_name} executed successfully:\n{formatted}"
+                except (TypeError, ValueError):
+                    return f"Tool {result.tool_name} executed successfully:\n{str(result.result)}"
+            else:
+                return f"Tool {result.tool_name} executed successfully (empty list)"
+
         else:
+            # Other types
             return f"Tool {result.tool_name} executed successfully:\n{str(result.result)}"
     else:
-        # Format error result
-        return f"Tool {result.tool_name} failed: {result.error}"
+        # Format error result with more context
+        error_msg = f"Tool {result.tool_name} failed: {result.error}"
+        if result.execution_time:
+            error_msg += f" (after {result.execution_time:.2f}s)"
+        return error_msg
+
+def _format_brave_search_result(tool_name: str, result: Dict[str, Any]) -> str:
+    """
+    Special formatting for brave_search results to make them more readable.
+
+    Args:
+        tool_name: Name of the brave search tool
+        result: Raw result from brave search
+
+    Returns:
+        Formatted string for the model
+    """
+    try:
+        # Check if result has the expected structure
+        if isinstance(result, dict):
+            # Handle wrapped result
+            if 'result' in result and isinstance(result['result'], dict):
+                search_data = result['result']
+            else:
+                search_data = result
+
+            # Extract web results if available
+            web_results = search_data.get('web', {}).get('results', [])
+
+            if web_results:
+                formatted_results = [f"Tool {tool_name} found {len(web_results)} results:\n"]
+
+                for i, item in enumerate(web_results[:5], 1):  # Limit to first 5 results
+                    title = item.get('title', 'No title')
+                    url = item.get('url', 'No URL')
+                    description = item.get('description', 'No description')
+
+                    formatted_results.append(f"{i}. **{title}**")
+                    formatted_results.append(f"   URL: {url}")
+                    formatted_results.append(f"   {description}\n")
+
+                if len(web_results) > 5:
+                    formatted_results.append(f"... and {len(web_results) - 5} more results")
+
+                return "\n".join(formatted_results)
+
+            # Handle other result types (news, images, etc.)
+            elif any(key in search_data for key in ['news', 'images', 'videos']):
+                # Format other types of results
+                formatted_parts = [f"Tool {tool_name} results:\n"]
+
+                for key in ['news', 'images', 'videos']:
+                    if key in search_data and search_data[key].get('results'):
+                        results = search_data[key]['results']
+                        formatted_parts.append(f"\n{key.capitalize()}: {len(results)} items found")
+
+                return "\n".join(formatted_parts)
+
+            # Fallback to generic formatting
+            else:
+                return f"Tool {tool_name} executed successfully:\n{json.dumps(search_data, indent=2)}"
+
+        # Fallback for unexpected format
+        return f"Tool {tool_name} executed successfully:\n{str(result)}"
+
+    except Exception as e:
+        logger.warning(f"⚠️ Error formatting brave_search result: {e}")
+        # Fallback to simple JSON dump
+        try:
+            return f"Tool {tool_name} executed successfully:\n{json.dumps(result, indent=2)}"
+        except (TypeError, ValueError) as e:
+            return f"Tool {tool_name} executed successfully:\n{str(result)}"
