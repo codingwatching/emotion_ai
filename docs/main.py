@@ -1093,7 +1093,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
                 config=types.GenerateContentConfig(
                     temperature=0.7,
-                    max_output_tokens=int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '1000000')),
+                    max_output_tokens=int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '8192')),
                     tools=tools if tools else None,
                     system_instruction=system_instruction
                 )

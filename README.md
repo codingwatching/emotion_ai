@@ -33,7 +33,7 @@
 - **Personalized Recommendations** based on interaction history
 - **Data Export** in multiple formats (JSON, CSV, etc.)
 
-### MCP Client now fully functional!!! Next add bells and whistles to UI and get chat history working.
+### MCP Client now fully functional!!! Next add bells and whistles to UI and get chat history working. Memvid integration attempted- still testing.
 
 ![alt text](image-1.png)
 
