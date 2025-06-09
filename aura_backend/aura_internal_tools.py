@@ -9,6 +9,14 @@ eliminating the need for a separate MCP server process.
 from typing import Dict, Any, List
 import logging
 
+# Import memvid internal tools
+try:
+    from aura_internal_memvid_tools import get_aura_internal_memvid_tools, INTERNAL_MEMVID_AVAILABLE
+    MEMVID_TOOLS_AVAILABLE = True
+except ImportError:
+    MEMVID_TOOLS_AVAILABLE = False
+    get_aura_internal_memvid_tools = None
+
 logger = logging.getLogger(__name__)
 
 class AuraInternalTools:
@@ -17,12 +25,25 @@ class AuraInternalTools:
     def __init__(self, vector_db, file_system):
         self.vector_db = vector_db
         self.file_system = file_system
+
+        # Initialize memvid tools if available
+        self.memvid_tools = None
+        if MEMVID_TOOLS_AVAILABLE and get_aura_internal_memvid_tools is not None:
+            try:
+                self.memvid_tools = get_aura_internal_memvid_tools(vector_db.client)
+                logger.info("✅ Memvid internal tools initialized")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize memvid tools: {e}")
+
         self.tools = self._register_tools()
-        logger.info("✅ Aura internal tools initialized")
+        logger.info(f"✅ Aura internal tools initialized with {len(self.tools)} tools")
+
+        if self.memvid_tools:
+            logger.info("🎥 Memvid video compression tools available for Aura")
 
     def _register_tools(self) -> Dict[str, Dict[str, Any]]:
         """Register all Aura internal tools"""
-        return {
+        tools = {
             "aura.search_memories": {
                 "name": "aura.search_memories",
                 "description": "Search through Aura's conversation memories using semantic search",
@@ -83,6 +104,75 @@ class AuraInternalTools:
                 "handler": self.query_aseke_framework
             }
         }
+
+        # Add memvid tools if available
+        if self.memvid_tools:
+            memvid_tools = {
+                "aura.list_video_archives": {
+                    "name": "aura.list_video_archives",
+                    "description": "List all video memory archives with compression statistics",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    },
+                    "handler": self.list_video_archives
+                },
+                "aura.search_all_memories": {
+                    "name": "aura.search_all_memories",
+                    "description": "Search across ALL memory systems (active + video archives) using unified search",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "Search query"},
+                            "user_id": {"type": "string", "description": "User ID"},
+                            "max_results": {"type": "integer", "description": "Maximum results", "default": 10}
+                        },
+                        "required": ["query", "user_id"]
+                    },
+                    "handler": self.search_all_memories
+                },
+                "aura.archive_old_conversations": {
+                    "name": "aura.archive_old_conversations",
+                    "description": "Archive old conversations to compressed video format for efficient storage",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "user_id": {"type": "string", "description": "User ID (optional for all users)"},
+                            "codec": {"type": "string", "description": "Video codec (h264, h265)", "default": "h264"}
+                        },
+                        "required": []
+                    },
+                    "handler": self.archive_old_conversations
+                },
+                "aura.get_memory_statistics": {
+                    "name": "aura.get_memory_statistics",
+                    "description": "Get comprehensive memory system statistics including video compression metrics",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    },
+                    "handler": self.get_memory_statistics
+                },
+                "aura.create_knowledge_summary": {
+                    "name": "aura.create_knowledge_summary",
+                    "description": "Create a summary of content in a specific video archive",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "archive_name": {"type": "string", "description": "Name of the video archive"},
+                            "max_entries": {"type": "integer", "description": "Maximum entries to include", "default": 10}
+                        },
+                        "required": ["archive_name"]
+                    },
+                    "handler": self.create_knowledge_summary
+                }
+            }
+            tools.update(memvid_tools)
+            logger.info(f"🎥 Added {len(memvid_tools)} memvid tools to Aura's internal toolkit")
+
+        return tools
 
     async def search_memories(self, user_id: str, query: str, n_results: int = 5) -> Dict[str, Any]:
         """Search through conversation memories"""
@@ -216,3 +306,42 @@ class AuraInternalTools:
 
         handler = self.tools[tool_name]["handler"]
         return await handler(**arguments)
+
+    # ============================================================================
+    # Memvid Tool Handlers
+    # ============================================================================
+
+    async def list_video_archives(self) -> Dict[str, Any]:
+        """Handler for listing video archives"""
+        if not self.memvid_tools:
+            return {"status": "error", "message": "Memvid tools not available"}
+
+        return await self.memvid_tools.list_video_archives()
+
+    async def search_all_memories(self, query: str, user_id: str, max_results: int = 10) -> Dict[str, Any]:
+        """Handler for unified memory search"""
+        if not self.memvid_tools:
+            return {"status": "error", "message": "Memvid tools not available"}
+
+        return await self.memvid_tools.search_all_memories(query, user_id, max_results)
+
+    async def archive_old_conversations(self, user_id: str | None = None, codec: str = "h264") -> Dict[str, Any]:
+        """Handler for archiving conversations to video"""
+        if not self.memvid_tools:
+            return {"status": "error", "message": "Memvid tools not available"}
+
+        return await self.memvid_tools.archive_old_conversations(user_id, codec)
+
+    async def get_memory_statistics(self) -> Dict[str, Any]:
+        """Handler for getting memory statistics"""
+        if not self.memvid_tools:
+            return {"status": "error", "message": "Memvid tools not available"}
+
+        return await self.memvid_tools.get_memory_statistics()
+
+    async def create_knowledge_summary(self, archive_name: str, max_entries: int = 10) -> Dict[str, Any]:
+        """Handler for creating knowledge summaries"""
+        if not self.memvid_tools:
+            return {"status": "error", "message": "Memvid tools not available"}
+
+        return await self.memvid_tools.create_knowledge_summary(archive_name, max_entries)

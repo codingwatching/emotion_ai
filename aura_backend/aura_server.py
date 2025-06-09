@@ -34,12 +34,24 @@ import numpy as np
 from dotenv import load_dotenv
 import aiofiles
 
+# Memvid integration (FIXED VERSION)
+try:
+    from aura_memvid_mcp_tools_compatible_fixed import add_compatible_memvid_tools
+    MEMVID_AVAILABLE = True
+except ImportError:
+    MEMVID_AVAILABLE = False
+    add_compatible_memvid_tools = None
+    logging.warning("⚠️ Memvid-compatible tools not available")
+
 # Load environment variables
 load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+if MEMVID_AVAILABLE:
+    logger.info("✅ Memvid-compatible tools (FIXED VERSION) imported successfully")
 
 # ============================================================================
 # Data Models and Enums (Self-contained)
@@ -461,8 +473,15 @@ mcp = FastMCP(
     name="Aura Advanced AI Companion",
     description="An advanced AI companion with emotional intelligence and memory capabilities",
     version="1.0.0"
-    # Settings will be passed to mcp.run()
 )
+# Add Memvid-compatible tools (FIXED VERSION)
+if MEMVID_AVAILABLE and add_compatible_memvid_tools is not None:
+    try:
+        add_compatible_memvid_tools(mcp)
+        logger.info("✅ Added Memvid-compatible tools (FIXED VERSION) to Aura MCP server")
+    except Exception as e:
+        logger.error(f"❌ Failed to add Memvid tools: {e}")
+        logger.error(f"❌ Failed to add Memvid tools: {e}")
 
 # ============================================================================
 # MCP Response Helper Functions
@@ -886,25 +905,11 @@ if __name__ == "__main__":
     logger.info("🔗 Enabling sophisticated AI agent integration")
     logger.info("✨ Features: Memory Search, Emotional Analysis, Adaptive Sociobiological Emotional Knowledge Ecosystem Framework")
 
-    # Define server settings for the run() method
-    server_host = "0.0.0.0"  # Or "127.0.0.1" for local access only
-    server_port = 8000       # Choose an appropriate port
-
-    runtime_settings = {
-        "enable_logging": True,
-        "max_concurrent_tasks": 10,
-        "timeout_seconds": 30
-    }
-
-    logger.info(f"🌍 Aura Internal Server attempting to run on {server_host}:{server_port}")
+    logger.info("🌍 Aura Internal Server starting with FastMCP")
 
     try:
-        # Pass settings to the run() method as per FastMCP 2.3.4+ recommendations
-        mcp.run(
-            # host=server_host,
-            # port=server_port,
-            # **runtime_settings
-        )
+        # Run with minimal settings - FastMCP 2.3.4+ handles defaults properly
+        mcp.run()
     except Exception as e:
         logger.error(f"❌ Failed to start Aura Internal Server: {e}")
         sys.exit(1)

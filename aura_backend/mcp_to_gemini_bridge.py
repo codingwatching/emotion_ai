@@ -325,7 +325,7 @@ class MCPGeminiBridge:
                     arguments=arguments,
                     tool_schema=tool_input_schema
                 )
-                logger.debug(f"📤 Smart formatted arguments for {mcp_tool_name} on {server}: {formatted_arguments}")
+                logger.info(f"📤 Smart formatted arguments for {mcp_tool_name} on {server}: {formatted_arguments}")
             else:
                 # Fallback to simple logic if handler not available
                 formatted_arguments = arguments

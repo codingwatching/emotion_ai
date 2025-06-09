@@ -65,22 +65,44 @@ class SmartMCPParameterHandler:
                 logger.debug(f"📋 Using cached format '{cached_format.format_type}' for {tool_name}")
                 return self._apply_format(arguments, cached_format.format_type)
             
-            # No cache hit - analyze the schema
+            # Determine format type - try both schema and heuristics
+            schema_format = None
+            heuristic_format = None
+            
+            # Try schema detection first
             if tool_schema:
-                format_type = self._detect_format_from_schema(tool_schema, tool_name)
-                logger.info(f"🔍 Detected format '{format_type}' for {tool_name} from schema")
-                
-                # Cache the detection
-                self._cache_format(server_name, tool_name, format_type, tool_schema)
-                
-                return self._apply_format(arguments, format_type)
+                schema_format = self._detect_format_from_schema(tool_schema, tool_name)
+                logger.debug(f"🔍 Schema detected format '{schema_format}' for {tool_name}")
+            
+            # Always try heuristics as well
+            heuristic_format = self._detect_format_from_heuristics(
+                tool_name, server_name, arguments
+            )
+            logger.debug(f"🎯 Heuristics detected format '{heuristic_format}' for {tool_name}")
+            
+            # Choose the best format detection
+            if schema_format == 'fastmcp' or heuristic_format == 'fastmcp':
+                # If either detection method says FastMCP, use FastMCP
+                format_type = 'fastmcp'
+                logger.debug(f"🎯 Using FastMCP format for {tool_name} (schema: {schema_format}, heuristic: {heuristic_format})")
+            elif schema_format and schema_format != 'direct':
+                # Use schema detection if it's not 'direct' (which might be a fallback)
+                format_type = schema_format
+                logger.debug(f"🔍 Using schema format '{format_type}' for {tool_name}")
+            elif heuristic_format:
+                # Fall back to heuristics
+                format_type = heuristic_format
+                logger.debug(f"🎯 Using heuristic format '{format_type}' for {tool_name}")
             else:
-                # No schema available - use heuristics
-                format_type = self._detect_format_from_heuristics(
-                    tool_name, server_name, arguments
-                )
-                logger.info(f"🎯 Using heuristic format '{format_type}' for {tool_name}")
-                return self._apply_format(arguments, format_type)
+                # Default fallback
+                format_type = 'direct'
+                logger.debug(f"🔧 Using default format '{format_type}' for {tool_name}")
+            
+            # Cache the detection
+            if tool_schema:
+                self._cache_format(server_name, tool_name, format_type, tool_schema)
+            
+            return self._apply_format(arguments, format_type)
                 
         except Exception as e:
             logger.error(f"❌ Error formatting parameters for {tool_name}: {e}")
@@ -106,9 +128,26 @@ class SmartMCPParameterHandler:
             logger.debug(f"Tool {tool_name} expects no parameters")
             return 'direct'
         
+        # Check for $defs pattern (common in FastMCP tools with Pydantic models)
+        if '$defs' in input_schema or '$ref' in str(input_schema):
+            logger.debug(f"Tool {tool_name} uses $defs/$ref pattern - likely FastMCP")
+            return 'fastmcp'
+        
+        # Special case: if the tool has required params and the top-level schema 
+        # has required params, it's likely FastMCP format
+        required = input_schema.get('required', [])
+        if required and 'params' in required and len(required) == 1:
+            logger.debug(f"Tool {tool_name} has only 'params' as required - likely FastMCP")
+            return 'fastmcp'
+        
         # Check if there's a single 'params' property that contains all parameters
         if len(properties) == 1 and 'params' in properties:
             params_prop = properties['params']
+            
+            # Check if params has a $ref (Pydantic model reference)
+            if '$ref' in params_prop:
+                logger.debug(f"Tool {tool_name} uses $ref in params - FastMCP with Pydantic")
+                return 'fastmcp'
             
             # Check if params is an object with its own properties
             if params_prop.get('type') == 'object' and 'properties' in params_prop:
@@ -120,9 +159,15 @@ class SmartMCPParameterHandler:
                 logger.debug(f"Tool {tool_name} expects wrapped params")
                 return 'wrapped'
         
-        # Check for $defs pattern (common in FastMCP tools)
-        if '$defs' in input_schema or '$ref' in str(input_schema):
-            logger.debug(f"Tool {tool_name} uses $defs pattern - likely FastMCP")
+        # Check for Aura tools specifically (they use FastMCP with Pydantic models)
+        tool_lower = tool_name.lower()
+        if any(pattern in tool_lower for pattern in ['aura_', 'search_aura', 'store_aura', 'analyze_aura']):
+            logger.debug(f"Tool {tool_name} is an Aura tool - using FastMCP format")
+            return 'fastmcp'
+        
+        # Check if properties have anyOf patterns (common in Pydantic schemas)
+        if any('anyOf' in str(prop) for prop in properties.values()):
+            logger.debug(f"Tool {tool_name} uses anyOf patterns - likely FastMCP with Pydantic")
             return 'fastmcp'
         
         # Check if all properties are direct parameters
@@ -149,9 +194,18 @@ class SmartMCPParameterHandler:
         """
         # Check if tool name suggests a certain pattern
         tool_lower = tool_name.lower()
+        server_lower = server_name.lower()
         
-        # Common FastMCP tool patterns
+        # Aura companion tools always use FastMCP format
+        if 'aura' in server_lower and 'companion' in server_lower:
+            return 'fastmcp'
+        
+        # Other known FastMCP tool patterns
         if any(pattern in tool_lower for pattern in ['brave_', 'web_', 'search']):
+            return 'fastmcp'
+        
+        # Aura-specific tools
+        if any(pattern in tool_lower for pattern in ['aura_', 'search_aura', 'store_aura', 'analyze_aura']):
             return 'fastmcp'
         
         # Common direct parameter tools
@@ -159,11 +213,11 @@ class SmartMCPParameterHandler:
             return 'direct'
         
         # Check server implementation hints
-        if 'mcp-server' in server_name.lower() or 'fastmcp' in server_name.lower():
+        if 'mcp-server' in server_lower or 'fastmcp' in server_lower:
             return 'fastmcp'
         
         # JavaScript/TypeScript servers often use wrapped params
-        if any(hint in server_name.lower() for hint in ['npx', 'node', 'js', 'ts']):
+        if any(hint in server_lower for hint in ['npx', 'node', 'js', 'ts']):
             return 'wrapped'
         
         # Default to direct for Python servers
@@ -179,7 +233,16 @@ class SmartMCPParameterHandler:
         
         # Check if arguments are already in the expected format
         if format_type in ['wrapped', 'fastmcp'] and 'params' in arguments and len(arguments) == 1:
-            # Already wrapped correctly
+            # Already wrapped correctly - but make sure params is the right type
+            params_value = arguments['params']
+            if isinstance(params_value, str):
+                try:
+                    # Try to parse JSON string to object
+                    parsed_params = json.loads(params_value)
+                    return {'params': parsed_params}
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse params JSON string: {params_value}")
+                    return arguments
             return arguments
         
         # Apply formatting based on type
@@ -193,20 +256,41 @@ class SmartMCPParameterHandler:
                     try:
                         return json.loads(params_value)
                     except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse direct params JSON: {params_value}")
                         pass
             return arguments
             
         elif format_type == 'fastmcp':
-            # Wrap in params for FastMCP
+            # Wrap in params for FastMCP - ensure the params is a dict, not a string
             if 'params' not in arguments:
                 return {'params': arguments}
-            return arguments
+            else:
+                # Params already exists, but might be a string
+                params_value = arguments['params']
+                if isinstance(params_value, str):
+                    try:
+                        parsed_params = json.loads(params_value)
+                        return {'params': parsed_params}
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse FastMCP params JSON: {params_value}")
+                        return arguments
+                else:
+                    return arguments
             
         elif format_type == 'wrapped':
             # Simple wrapper
             if 'params' not in arguments:
                 return {'params': arguments}
-            return arguments
+            else:
+                # Params already exists, handle string case
+                params_value = arguments['params']
+                if isinstance(params_value, str):
+                    try:
+                        parsed_params = json.loads(params_value)
+                        return {'params': parsed_params}
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse wrapped params JSON: {params_value}")
+                return arguments
         
         # Default to returning as-is
         return arguments

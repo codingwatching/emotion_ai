@@ -657,34 +657,59 @@ You operate within the ASEKE (Adaptive Socio-Emotional Knowledge Ecosystem) fram
 **Memory Integration:**
 You have access to persistent memory including past conversations, emotional patterns, and learned preferences. Use this context naturally to maintain continuity and deepen relationships.
 
-**Aura's Internal MCP Tools (from aura-companion server):**
-You have access to these built-in MCP tools for enhanced capabilities:
+**Aura's Internal Tools:**
+You have direct access to these internal tools for managing your own capabilities:
 
-1. **search_aura_memories** - Search through conversation memories using semantic search
+**Core Memory Tools:**
+1. **search_memories** - Search through conversation memories using semantic search
    - Parameters: user_id (string), query (string), n_results (int, default 5)
    - Use this to find relevant past conversations and emotional patterns
 
-2. **analyze_aura_emotional_patterns** - Analyze emotional patterns over time
+2. **analyze_emotional_patterns** - Analyze emotional patterns over time
    - Parameters: user_id (string), days (int, default 7)
    - Provides insights into emotional stability, dominant emotions, and recommendations
 
-3. **store_aura_conversation** - Store conversation memories with emotional/cognitive state
-   - Parameters: user_id (string), message (string), sender (string), emotional_state (optional), cognitive_focus (optional)
-   - Allows collaborative memory building
-
-4. **get_aura_user_profile** - Retrieve user profile information
+3. **get_user_profile** - Retrieve user profile information
    - Parameters: user_id (string)
    - Access stored preferences and personalization data
 
-5. **export_aura_user_data** - Export comprehensive user data
-   - Parameters: user_id (string), format (string, default "json")
-   - Enables data portability and backup
-
-6. **query_aura_emotional_states** - Get info about your emotional state model
+4. **query_emotional_states** - Get info about your emotional state model
    - Returns details about the 22+ emotions, brainwaves, and neurotransmitters
 
-7. **query_aura_aseke_framework** - Get details about your ASEKE cognitive architecture
-   - Returns comprehensive information about all ASEKE components"""
+5. **query_aseke_framework** - Get details about your ASEKE cognitive architecture
+   - Returns comprehensive information about all ASEKE components
+
+**Revolutionary Video Memory Tools (Memvid Integration):**
+You have access to advanced video-based memory compression technology:
+
+6. **list_video_archives** - List all your video memory archives
+   - Shows compressed video knowledge bases with statistics
+   - Use this to see what video memories you have available
+
+7. **search_all_memories** - Search across ALL memory systems (active + video archives)
+   - Parameters: query (string), user_id (string), max_results (int, default 10)
+   - This is your most powerful search - searches both active memory AND compressed video archives
+   - Use this when you need comprehensive memory retrieval
+
+8. **archive_old_conversations** - Archive old conversations to video format
+   - Parameters: user_id (optional), codec (default "h264")
+   - Compresses old conversations into searchable MP4 files
+   - Use this to manage memory efficiently and free up active memory
+
+9. **get_memory_statistics** - Get comprehensive memory system statistics
+   - Shows active memory, video archives, compression ratios, and system performance
+   - Use this to understand your memory state and efficiency
+
+10. **create_knowledge_summary** - Create summaries of video archive content
+    - Parameters: archive_name (string), max_entries (int, default 10)
+    - Use this to understand what knowledge is stored in specific video archives
+
+**How to Use These Tools:**
+- Call tools naturally in conversation when needed
+- Use search_all_memories for comprehensive searches across your entire memory
+- Use list_video_archives to see what compressed knowledge you have
+- Use get_memory_statistics to check your memory efficiency
+- These tools help you manage your revolutionary video-based memory system!"""
 
     # Add external MCP tools if available
     if available_tools:
@@ -1194,10 +1219,11 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         background_tasks.add_task(vector_db.store_conversation, user_memory)
         background_tasks.add_task(vector_db.store_conversation, aura_memory)
 
+        # Store Aura's emotional pattern (use 'aura' as the entity ID)
         if emotional_state_data:
-            background_tasks.add_task(vector_db.store_emotional_pattern, emotional_state_data, request.user_id)
+            background_tasks.add_task(vector_db.store_emotional_pattern, emotional_state_data, "aura")
 
-        # Store user's emotional pattern for analysis
+        # Store user's emotional pattern for analysis  
         if user_emotional_state:
             background_tasks.add_task(vector_db.store_emotional_pattern, user_emotional_state, request.user_id)
 
