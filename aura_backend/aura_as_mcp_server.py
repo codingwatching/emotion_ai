@@ -163,13 +163,32 @@ TOOL_DEFINITIONS = [
 ]
 
 class SimpleMCPServer:
-    """A simplified Internal Server implementation using direct JSON-RPC over stdout/stdin"""
+    """
+    A simplified Internal Server implementation using direct JSON-RPC over stdout/stdin.
 
-    def __init__(self):
+    Provides a lightweight MCP server interface for Aura's capabilities without
+    requiring external dependencies. Communicates via JSON-RPC protocol over
+    standard input/output streams.
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialize the Simple MCP Server.
+
+        Sets up tool definitions and prepares the server for handling requests.
+        """
         self.tools = {tool["name"]: tool for tool in TOOL_DEFINITIONS}
 
     async def handle_initialize(self, params: Dict[str, Any] = {}) -> Dict[str, Any]:
-        """Handle initialize request"""
+        """
+        Handle initialize request from MCP client.
+
+        Args:
+            params: Initialization parameters from the client
+
+        Returns:
+            Server information including name and version
+        """
         return {
             "server": {
                 "name": "Aura Advanced AI Companion",
@@ -178,13 +197,29 @@ class SimpleMCPServer:
         }
 
     async def handle_list_tools(self, params: Dict[str, Any] = {}) -> Dict[str, Any]:
-        """Handle list_tools request"""
+        """
+        Handle list_tools request to enumerate available tools.
+
+        Args:
+            params: Request parameters (typically empty for list_tools)
+
+        Returns:
+            Dictionary containing list of available tool definitions
+        """
         return {
             "tools": list(self.tools.values())
         }
 
     async def handle_call_tool(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle call_tool request"""
+        """
+        Handle call_tool request to execute a specific tool.
+
+        Args:
+            params: Tool execution parameters including tool name and arguments
+
+        Returns:
+            Tool execution results or error information
+        """
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
 
@@ -202,7 +237,19 @@ class SimpleMCPServer:
             return {"error": "Tool name is not a string"}
 
     async def _mock_tool_execution(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Mock tool execution - in a real implementation, call actual functions"""
+        """
+        Mock tool execution for demonstration purposes.
+
+        In a real implementation, this would call actual Aura functions
+        and return real data from the memory and emotional systems.
+
+        Args:
+            tool_name: Name of the tool to execute
+            arguments: Arguments provided for tool execution
+
+        Returns:
+            Mock results simulating actual tool execution
+        """
         if tool_name == "search_aura_memories":
             return {
                 "status": "success",
@@ -251,7 +298,18 @@ class SimpleMCPServer:
             }
 
     async def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle an incoming JSON-RPC request"""
+        """
+        Handle an incoming JSON-RPC request.
+
+        Routes the request to the appropriate handler based on the method
+        and returns a properly formatted JSON-RPC response.
+
+        Args:
+            request: JSON-RPC request dictionary with method, params, and id
+
+        Returns:
+            JSON-RPC response dictionary with result or error
+        """
         request_id = request.get("id")
         method = request.get("method")
         params = request.get("params", {})
@@ -291,8 +349,14 @@ class SimpleMCPServer:
 
         return response
 
-    async def process_input(self):
-        """Process input from stdin and write responses to stdout"""
+    async def process_input(self) -> None:
+        """
+        Process input from stdin and write responses to stdout.
+
+        Continuously reads JSON-RPC requests from standard input,
+        processes them, and writes responses to standard output.
+        Uses asyncio for non-blocking I/O operations.
+        """
         # Set up non-blocking stdin
         loop = asyncio.get_event_loop()
         reader = asyncio.StreamReader()
@@ -335,8 +399,13 @@ class SimpleMCPServer:
                 sys.stdout.write(json.dumps(response) + "\n")
                 sys.stdout.flush()
 
-async def main():
-    """Main function"""
+async def main() -> None:
+    """
+    Main function to start the Aura Internal Server.
+
+    Parses command line arguments, configures logging,
+    and starts the server to process MCP requests.
+    """
     parser = argparse.ArgumentParser(description="Aura Internal Server")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()

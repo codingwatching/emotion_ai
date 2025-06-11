@@ -536,10 +536,14 @@ _aura_real_memvid = None
 def get_aura_real_memvid(existing_chroma_client=None):
     """
     Get or create the real memvid system instance
-    FIXED: Now accepts existing ChromaDB client to prevent conflicts
+    FIXED: Now properly manages shared ChromaDB client to prevent conflicts
     """
     global _aura_real_memvid
     if _aura_real_memvid is None:
+        _aura_real_memvid = AuraRealMemvid(existing_chroma_client=existing_chroma_client)
+    elif existing_chroma_client is not None and _aura_real_memvid.chroma_client != existing_chroma_client:
+        # Reset instance if a different client is provided to ensure consistency
+        logger.info("🔄 Resetting memvid instance to use provided ChromaDB client")
         _aura_real_memvid = AuraRealMemvid(existing_chroma_client=existing_chroma_client)
     return _aura_real_memvid
 

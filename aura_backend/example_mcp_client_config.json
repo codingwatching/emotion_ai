@@ -41,7 +41,7 @@
         "--client-type",
         "persistent",
         "--data-dir",
-        "/home/ty/Repositories/chroma-db"
+        "/home/ty/Repositories/ai_workspace/chroma.sqlite3"
       ]
     }
   }

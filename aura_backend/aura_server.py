@@ -34,14 +34,17 @@ import numpy as np
 from dotenv import load_dotenv
 import aiofiles
 
-# Memvid integration (FIXED VERSION)
+# Memvid integration (COMPATIBLE FIXED VERSION)
 try:
     from aura_memvid_mcp_tools_compatible_fixed import add_compatible_memvid_tools
     MEMVID_AVAILABLE = True
 except ImportError:
     MEMVID_AVAILABLE = False
     add_compatible_memvid_tools = None
-    logging.warning("⚠️ Memvid-compatible tools not available")
+    logging.warning("⚠️ Memvid tools not available")
+
+# Import the robust vector DB with SQLite-level concurrency control
+from robust_vector_db import RobustAuraVectorDB as EnhancedAuraVectorDB
 
 # Load environment variables
 load_dotenv()
@@ -51,7 +54,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 if MEMVID_AVAILABLE:
-    logger.info("✅ Memvid-compatible tools (FIXED VERSION) imported successfully")
+    logger.info("✅ Memvid tools imported successfully")
 
 # ============================================================================
 # Data Models and Enums (Self-contained)
@@ -142,26 +145,18 @@ class AuraConversationStore(BaseModel):
 # Aura Components (Self-contained for MCP)
 # ============================================================================
 
-class AuraVectorDB:
-    """Self-contained vector database for Internal Server"""
+# Use the enhanced vector DB with inter-process locking
+AuraVectorDB = EnhancedAuraVectorDB
+
+# Additional methods for MCP server compatibility
+class AuraVectorDBCompat(EnhancedAuraVectorDB):
+    """Compatibility layer for MCP server with embedded model"""
 
     def __init__(self, persist_directory: str = "./aura_chroma_db"):
-        self.persist_directory = Path(persist_directory)
-        self.persist_directory.mkdir(exist_ok=True)
-
-        self.client = chromadb.PersistentClient(
-            path=str(self.persist_directory),
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True
-            )
-        )
-
-        # Initialize embedding model
+        super().__init__(persist_directory=persist_directory)
+        # Initialize embedding model for MCP server
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-
-        # Initialize collections
-        self._init_collections()
+        logger.info("✅ MCP Server using EnhancedAuraVectorDB with inter-process locking")
 
     def _init_collections(self):
         """Initialize vector database collections"""
@@ -469,18 +464,14 @@ except Exception as e:
     sys.exit(1)
 
 # Internal Server instance
-mcp = FastMCP(
-    name="Aura Advanced AI Companion",
-    description="An advanced AI companion with emotional intelligence and memory capabilities",
-    version="1.0.0"
-)
+mcp = FastMCP("Aura Advanced AI Companion")
+
 # Add Memvid-compatible tools (FIXED VERSION)
 if MEMVID_AVAILABLE and add_compatible_memvid_tools is not None:
     try:
         add_compatible_memvid_tools(mcp)
-        logger.info("✅ Added Memvid-compatible tools (FIXED VERSION) to Aura MCP server")
+        logger.info("✅ Added Memvid tools to Aura MCP server")
     except Exception as e:
-        logger.error(f"❌ Failed to add Memvid tools: {e}")
         logger.error(f"❌ Failed to add Memvid tools: {e}")
 
 # ============================================================================
@@ -908,8 +899,10 @@ if __name__ == "__main__":
     logger.info("🌍 Aura Internal Server starting with FastMCP")
 
     try:
-        # Run with minimal settings - FastMCP 2.3.4+ handles defaults properly
-        mcp.run()
+        # Run with proper settings for FastMCP 2.3.4+
+        mcp.run(
+            transport="stdio"
+        )
     except Exception as e:
         logger.error(f"❌ Failed to start Aura Internal Server: {e}")
         sys.exit(1)

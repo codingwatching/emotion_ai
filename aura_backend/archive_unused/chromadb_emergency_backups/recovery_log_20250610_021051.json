@@ -1,0 +1,14 @@
+{
+  "started_at": "2025-06-10T02:10:51.760144",
+  "steps": [
+    "Creating emergency backup",
+    "Extracting salvageable data",
+    "Performing nuclear database reset",
+    "Recovery completed successfully"
+  ],
+  "success": true,
+  "backup_path": "chromadb_emergency_backups/emergency_backup_20250610_021051",
+  "extracted_data_path": null,
+  "extracted_documents": 0,
+  "completed_at": "2025-06-10T02:10:51.805905"
+}

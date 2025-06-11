@@ -9,6 +9,7 @@ dependencies = [
     "chromadb>=0.5.23",
     "ebooklib>=0.19",
     "faiss-cpu>=1.11.0",
+    "faiss-gpu-cu12>=1.11.0",
     "fastapi>=0.115.6",
     "fastmcp>=2.5.2",
     "google-genai>=1.17.0",

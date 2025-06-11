@@ -9,7 +9,7 @@ from typing import Dict, List, Any, Optional
 import json
 import logging
 
-# Import the hybrid system
+# Import the hybrid system. Was moved to archive
 from aura_memvid_hybrid import AuraMemvidHybrid
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def get_hybrid_system():
 
 def add_memvid_tools(mcp_server):
     """Add memvid tools to existing MCP server"""
-    
+
     @mcp_server.tool()
     async def search_hybrid_memory(params: MemvidSearchParams) -> types.CallToolResult:
         """
@@ -51,19 +51,19 @@ def add_memvid_tools(mcp_server):
                 user_id=params.user_id,
                 max_results=params.max_results
             )
-            
+
             response_data = {
                 "status": "success",
                 "results": results
             }
-            
+
             return types.CallToolResult(
                 content=[types.TextContent(
                     type="text",
                     text=json.dumps(response_data, indent=2, default=str)
                 )]
             )
-            
+
         except Exception as e:
             logger.error(f"Error in hybrid memory search: {e}")
             return types.CallToolResult(
@@ -73,7 +73,7 @@ def add_memvid_tools(mcp_server):
                 )],
                 isError=True
             )
-    
+
     @mcp_server.tool()
     async def archive_old_memories(params: MemvidArchiveParams) -> types.CallToolResult:
         """
@@ -82,19 +82,19 @@ def add_memvid_tools(mcp_server):
         try:
             hybrid_system = get_hybrid_system()
             result = hybrid_system.archive_old_memories(params.archive_name)
-            
+
             response_data = {
                 "status": "success",
                 "archival_result": result
             }
-            
+
             return types.CallToolResult(
                 content=[types.TextContent(
                     type="text",
                     text=json.dumps(response_data, indent=2, default=str)
                 )]
             )
-            
+
         except Exception as e:
             logger.error(f"Error archiving memories: {e}")
             return types.CallToolResult(
@@ -104,7 +104,7 @@ def add_memvid_tools(mcp_server):
                 )],
                 isError=True
             )
-    
+
     @mcp_server.tool()
     async def import_knowledge_base(params: KnowledgeImportParams) -> types.CallToolResult:
         """
@@ -116,19 +116,19 @@ def add_memvid_tools(mcp_server):
                 params.source_path,
                 params.archive_name
             )
-            
+
             response_data = {
                 "status": "success",
                 "import_result": result
             }
-            
+
             return types.CallToolResult(
                 content=[types.TextContent(
                     type="text",
                     text=json.dumps(response_data, indent=2, default=str)
                 )]
             )
-            
+
         except Exception as e:
             logger.error(f"Error importing knowledge: {e}")
             return types.CallToolResult(
@@ -138,7 +138,7 @@ def add_memvid_tools(mcp_server):
                 )],
                 isError=True
             )
-    
+
     @mcp_server.tool()
     async def get_hybrid_system_stats() -> types.CallToolResult:
         """
@@ -147,19 +147,19 @@ def add_memvid_tools(mcp_server):
         try:
             hybrid_system = get_hybrid_system()
             stats = hybrid_system.get_system_stats()
-            
+
             response_data = {
                 "status": "success",
                 "stats": stats
             }
-            
+
             return types.CallToolResult(
                 content=[types.TextContent(
                     type="text",
                     text=json.dumps(response_data, indent=2, default=str)
                 )]
             )
-            
+
         except Exception as e:
             logger.error(f"Error getting stats: {e}")
             return types.CallToolResult(
@@ -169,5 +169,5 @@ def add_memvid_tools(mcp_server):
                 )],
                 isError=True
             )
-    
+
     logger.info("✅ Added Memvid tools to Aura MCP server")

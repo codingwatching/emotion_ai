@@ -56,6 +56,10 @@ from mcp_integration import (
 )
 from aura_internal_tools import AuraInternalTools
 
+# Import the new persistence services
+from conversation_persistence_service import ConversationPersistenceService, ConversationExchange
+from memvid_archival_service import MemvidArchivalService
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -615,6 +619,10 @@ vector_db = AuraVectorDB()
 aura_file_system = AuraFileSystem()
 state_manager = AuraStateManager(vector_db, aura_file_system)
 aura_internal_tools = AuraInternalTools(vector_db, aura_file_system)
+
+# Initialize the new persistence services
+conversation_persistence = ConversationPersistenceService(vector_db, aura_file_system)
+memvid_archival = MemvidArchivalService()
 
 # Global MCP-Gemini bridge (will be initialized after MCP client startup)
 mcp_gemini_bridge: Optional[MCPGeminiBridge] = None
@@ -1234,15 +1242,85 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         raise HTTPException(status_code=500, detail=str(e))
 @app.post("/search")
 async def search_memories(request: SearchRequest):
-    """Search through conversation memories"""
+    """Search through conversation memories using Aura's internal MCP tools"""
     try:
-        results = await vector_db.search_conversations(
+        # Use Aura's internal memory search tools for comprehensive search
+        # This includes video archives and unified memory search capabilities
+        if aura_internal_tools:
+            # Try the advanced search_all_memories first (includes video archives)
+            try:
+                advanced_result = await aura_internal_tools.execute_tool(
+                    "aura.search_all_memories",
+                    {
+                        "query": request.query,
+                        "user_id": request.user_id,
+                        "max_results": request.n_results
+                    }
+                )
+
+                if advanced_result and advanced_result.get("status") == "success":
+                    memories = advanced_result.get("memories", [])
+                    # Convert to expected frontend format
+                    formatted_results = []
+                    for memory in memories:
+                        formatted_results.append({
+                            "content": memory.get("content", ""),
+                            "metadata": memory.get("metadata", {}),
+                            "similarity": memory.get("similarity", 0.0)
+                        })
+
+                    logger.info(f"🔍 Advanced search found {len(formatted_results)} memories using video + active search")
+                    return {
+                        "results": formatted_results,
+                        "query": request.query,
+                        "total_found": len(formatted_results),
+                        "search_type": "unified_memory_search",
+                        "includes_video_archives": True
+                    }
+
+            except Exception as e:
+                logger.warning(f"⚠️ Advanced search failed, falling back to basic search: {e}")
+
+            # Fallback to basic memory search if advanced fails
+            try:
+                basic_result = await aura_internal_tools.execute_tool(
+                    "aura.search_memories",
+                    {
+                        "query": request.query,
+                        "user_id": request.user_id,
+                        "n_results": request.n_results
+                    }
+                )
+
+                if basic_result and basic_result.get("status") == "success":
+                    memories = basic_result.get("memories", [])
+                    logger.info(f"🔍 Basic search found {len(memories)} memories using active search")
+                    return {
+                        "results": memories,
+                        "query": request.query,
+                        "total_found": len(memories),
+                        "search_type": "active_memory_search",
+                        "includes_video_archives": False
+                    }
+
+            except Exception as e:
+                logger.warning(f"⚠️ Basic MCP search failed, using direct persistence: {e}")
+
+        # Final fallback to direct persistence service if MCP tools fail
+        results = await conversation_persistence.safe_search_conversations(
             query=request.query,
             user_id=request.user_id,
             n_results=request.n_results
         )
 
-        return {"results": results}
+        logger.info(f"🔍 Direct persistence search found {len(results)} memories")
+        return {
+            "results": results,
+            "query": request.query,
+            "total_found": len(results),
+            "search_type": "persistence_fallback",
+            "includes_video_archives": False
+        }
 
     except Exception as e:
         logger.error(f"❌ Failed to search memories: {e}")
@@ -1292,53 +1370,11 @@ async def export_user_data(user_id: str, format: str = "json"):
 
 @app.get("/chat-history/{user_id}")
 async def get_chat_history(user_id: str, limit: int = 50):
-    """Get chat history for a user"""
+    """Get chat history for a user with thread-safe database access"""
     try:
-        # Get recent conversations from vector DB
-        results = vector_db.conversations.get(
-            where={"user_id": user_id},
-            limit=limit,
-            include=["documents", "metadatas"]
-        )
-
-        if not results or not results.get('documents') or not isinstance(results['documents'], list):
-            return {"sessions": [], "total": 0}
-
-        # Group by session
-        sessions = {}
-        for i, doc in enumerate(results['documents']):
-            metadata = results['metadatas'][i] if results.get('metadatas') and results['metadatas'] is not None else {}
-            session_id = metadata.get('session_id', 'unknown')
-
-            if session_id not in sessions:
-                sessions[session_id] = {
-                    "session_id": session_id,
-                    "messages": [],
-                    "start_time": metadata.get('timestamp', ''),
-                    "last_time": metadata.get('timestamp', '')
-                }
-
-            sessions[session_id]["messages"].append({
-                "content": doc,
-                "sender": metadata.get('sender', 'unknown'),
-                "timestamp": metadata.get('timestamp', ''),
-                "emotion": metadata.get('emotion_name', 'Normal')
-            })
-
-            # Update session times
-            if metadata.get('timestamp', '') < sessions[session_id]["start_time"]:
-                sessions[session_id]["start_time"] = metadata.get('timestamp', '')
-            if metadata.get('timestamp', '') > sessions[session_id]["last_time"]:
-                sessions[session_id]["last_time"] = metadata.get('timestamp', '')
-
-        # Convert to list and sort by last activity
-        session_list = list(sessions.values())
-        session_list.sort(key=lambda x: x["last_time"], reverse=True)
-
-        return {
-            "sessions": session_list,
-            "total": len(session_list)
-        }
+        # Use the persistence service's thread-safe method
+        result = await conversation_persistence.safe_get_chat_history(user_id, limit)
+        return result
 
     except Exception as e:
         logger.error(f"❌ Failed to get chat history: {e}")
@@ -1471,6 +1507,54 @@ async def get_mcp_system_status():
             "status": "error",
             "error": str(e),
             "initialized": False
+        }
+
+@app.get("/persistence/health")
+async def get_persistence_health():
+    """Get persistence layer health status"""
+    try:
+        metrics = await conversation_persistence.get_persistence_metrics()
+
+        # Import the health check class here to avoid import issues
+        from conversation_persistence_service import PersistenceHealthCheck
+        health_checker = PersistenceHealthCheck(conversation_persistence)
+        health_status = await health_checker.check_health()
+
+        return {
+            "status": "healthy" if health_status["healthy"] else "unhealthy",
+            "metrics": metrics,
+            "health_check": health_status,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get persistence health: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/memvid/status")
+async def get_memvid_status():
+    """Get memvid archival service status"""
+    try:
+        # Get basic status info
+        archives = await memvid_archival.list_archives()
+
+        return {
+            "status": "operational",
+            "archives_count": len(archives),
+            "archives": archives[:5],  # Show first 5 archives
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get memvid status: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
         }
 
 if __name__ == "__main__":

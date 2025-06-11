@@ -15,11 +15,12 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Union
 from dataclasses import dataclass, asdict
 from enum import Enum
 import uuid
 from contextlib import asynccontextmanager
+import asyncio
 
 import chromadb
 from chromadb.config import Settings
@@ -36,8 +37,6 @@ from dotenv import load_dotenv
 import os
 import aiofiles
 
-
-
 # Import MCP-Gemini Bridge
 from mcp_to_gemini_bridge import MCPGeminiBridge, format_function_call_result_for_model
 
@@ -47,7 +46,6 @@ from mcp_system import (
     shutdown_mcp_system,
     get_mcp_status,
     get_mcp_bridge,
-    # get_mcp_client,
     get_all_available_tools
 )
 from mcp_integration import (
@@ -55,6 +53,13 @@ from mcp_integration import (
     mcp_router,
 )
 from aura_internal_tools import AuraInternalTools
+
+# Import the new persistence services
+from conversation_persistence_service import ConversationPersistenceService, ConversationExchange
+from memvid_archival_service import MemvidArchivalService
+
+# Import the robust vector DB with SQLite-level concurrency control
+from robust_vector_db import RobustAuraVectorDB as AuraVectorDB
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -134,278 +139,6 @@ class ConversationMemory:
         if self.session_id is None:
             self.session_id = str(uuid.uuid4())
 
-class AuraVectorDB:
-    """Advanced vector database for Aura's memory and knowledge management"""
-
-    def __init__(self, persist_directory: str = "./aura_chroma_db"):
-        self.persist_directory = Path(persist_directory)
-        self.persist_directory.mkdir(exist_ok=True)
-
-        self.client = chromadb.PersistentClient(
-            path=str(self.persist_directory),
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True
-            )
-        )
-
-        # Initialize collections
-        self._init_collections()
-
-    def _init_collections(self):
-        """Initialize vector database collections"""
-        try:
-            # Conversation memory collection
-            self.conversations = self.client.get_or_create_collection(
-                name="aura_conversations",
-                metadata={"description": "Conversation history with semantic search"}
-            )
-
-            # Emotional patterns collection
-            self.emotional_patterns = self.client.get_or_create_collection(
-                name="aura_emotional_patterns",
-                metadata={"description": "Historical emotional state patterns"}
-            )
-
-            # Cognitive patterns collection
-            self.cognitive_patterns = self.client.get_or_create_collection(
-                name="aura_cognitive_patterns",
-                metadata={"description": "Cognitive focus and ASEKE component tracking"}
-            )
-
-            # Knowledge substrate collection
-            self.knowledge_substrate = self.client.get_or_create_collection(
-                name="aura_knowledge_substrate",
-                metadata={"description": "Shared knowledge and insights"}
-            )
-
-            logger.info("✅ Vector database collections initialized successfully")
-
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize vector collections: {e}")
-            raise
-
-    async def store_conversation(self, memory: ConversationMemory) -> str:
-        """Store conversation memory with automatic embedding generation"""
-        try:
-            # Generate embedding if not provided
-            if memory.embedding is None:
-                memory.embedding = embedding_model.encode(memory.message).tolist()
-
-            # Create unique ID
-            if memory.timestamp is None:
-                memory.timestamp = datetime.now()
-            doc_id = f"{memory.user_id}_{memory.timestamp.isoformat()}_{uuid.uuid4().hex[:8]}"
-
-            # Prepare metadata
-            metadata = {
-                "user_id": memory.user_id,
-                "sender": memory.sender,
-                "timestamp": memory.timestamp.isoformat(),
-                "session_id": memory.session_id
-            }
-
-            # Add emotional state if present
-            if memory.emotional_state:
-                metadata.update({
-                    "emotion_name": memory.emotional_state.name,
-                    "emotion_intensity": memory.emotional_state.intensity.value,
-                    "brainwave": memory.emotional_state.brainwave,
-                    "neurotransmitter": memory.emotional_state.neurotransmitter
-                })
-
-            # Add cognitive state if present
-            if memory.cognitive_state:
-                metadata.update({
-                    "cognitive_focus": memory.cognitive_state.focus.value,
-                    "cognitive_description": memory.cognitive_state.description
-                })
-
-            # Store in vector database
-            self.conversations.add(
-                documents=[memory.message],
-                embeddings=memory.embedding,
-                metadatas=[metadata],
-                ids=[doc_id]
-            )
-
-            logger.info(f"📝 Stored conversation memory: {doc_id}")
-            return doc_id
-
-        except Exception as e:
-            logger.error(f"❌ Failed to store conversation memory: {e}")
-            raise
-    async def search_conversations(
-        self,
-        query: str,
-        user_id: str,
-        n_results: int = 5,
-        where_filter: Optional[Dict] = None
-    ) -> List[Dict]:
-        """Semantic search through conversation history"""
-        try:
-            # Generate query embedding
-            query_embedding = embedding_model.encode(query).tolist()
-
-            # Prepare where filter with proper typing for ChromaDB
-            base_filter: Dict[str, Any] = {"user_id": {"$eq": user_id}}
-            if where_filter:
-                base_filter.update(where_filter)
-
-            # Perform semantic search
-            results = self.conversations.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results,
-                where=base_filter,
-                include=["documents", "metadatas", "distances"]
-            )
-
-            # Format results
-            formatted_results = []
-            if (results is not None and
-                results.get('documents') is not None and
-                isinstance(results['documents'], list) and
-                results['documents'] and
-                results.get('metadatas') is not None and
-                results['metadatas'] and
-                results.get('distances') is not None and
-                results['distances']):
-                for i, doc in enumerate(results['documents'][0]):
-                    formatted_results.append({
-                        "content": doc,
-                        "metadata": results['metadatas'][0][i],
-                        "similarity": 1 - results['distances'][0][i]  # Convert distance to similarity
-                    })
-
-            logger.info(f"🔍 Found {len(formatted_results)} relevant memories for query: {query}")
-            return formatted_results
-
-        except Exception as e:
-            logger.error(f"❌ Failed to search conversations: {e}")
-            return []
-    async def store_emotional_pattern(self, emotional_state: EmotionalStateData, user_id: str) -> str:
-        """Store emotional state pattern for analysis"""
-        try:
-            # Create embedding from emotional context
-            emotion_text = f"{emotional_state.name} {emotional_state.description} {emotional_state.brainwave} {emotional_state.neurotransmitter}"
-            embedding = embedding_model.encode(emotion_text).tolist()
-
-            # Ensure timestamp is set
-            if emotional_state.timestamp is None:
-                emotional_state.timestamp = datetime.now()
-            doc_id = f"emotion_{user_id}_{emotional_state.timestamp.isoformat()}_{uuid.uuid4().hex[:8]}"
-
-            metadata = {
-                "user_id": user_id,
-                "emotion_name": emotional_state.name,
-                "intensity": emotional_state.intensity.value,
-                "brainwave": emotional_state.brainwave,
-                "neurotransmitter": emotional_state.neurotransmitter,
-                "timestamp": emotional_state.timestamp.isoformat(),
-                "formula": emotional_state.formula
-            }
-
-            self.emotional_patterns.add(
-                documents=[emotion_text],
-                embeddings=[embedding],
-                metadatas=[metadata],
-                ids=[doc_id]
-            )
-
-            logger.info(f"🎭 Stored emotional pattern: {emotional_state.name} ({emotional_state.intensity.value})")
-            return doc_id
-
-        except Exception as e:
-            logger.error(f"❌ Failed to store emotional pattern: {e}")
-            raise
-
-    async def analyze_emotional_trends(self, user_id: str, days: int = 7) -> Dict[str, Any]:
-        """Analyze emotional patterns over time"""
-        try:
-            # Get recent emotional data
-            cutoff_date = datetime.now() - timedelta(days=days)
-
-            results = self.emotional_patterns.get(
-                where={
-                    "$and": [
-                        {"user_id": {"$eq": user_id}},
-                        {"timestamp": {"$gte": cutoff_date.isoformat()}}
-                    ]
-                },
-                include=["metadatas"]
-            )
-
-            if not results['metadatas']:
-                return {"message": "No emotional data found for analysis"}
-
-            # Analyze patterns
-            emotions = [str(meta['emotion_name']) for meta in results['metadatas']]
-            intensities = [str(meta['intensity']) for meta in results['metadatas']]
-            brainwaves = [str(meta['brainwave']) for meta in results['metadatas']]
-
-            analysis = {
-                "period_days": days,
-                "total_entries": len(emotions),
-                "dominant_emotions": self._get_top_items(emotions, 3),
-                "intensity_distribution": self._get_distribution(intensities),
-                "brainwave_patterns": self._get_distribution(brainwaves),
-                "emotional_stability": self._calculate_stability(emotions),
-                "recommendations": self._generate_emotional_recommendations(emotions, intensities)
-            }
-
-            logger.info(f"📊 Generated emotional analysis for user {user_id}")
-            return analysis
-
-        except Exception as e:
-            logger.error(f"❌ Failed to analyze emotional trends: {e}")
-            return {"error": str(e)}
-    def _get_top_items(self, items: List[str], top_n: int) -> List[Tuple[str, int]]:
-        """Get top N most frequent items"""
-        from collections import Counter
-        counter = Counter(items)
-        return counter.most_common(top_n)
-
-    def _get_distribution(self, items: List[str]) -> Dict[str, int]:
-        """Get distribution of items"""
-        from collections import Counter
-        return dict(Counter(items))
-
-    def _calculate_stability(self, emotions: List[str]) -> float:
-        """Calculate emotional stability score (0-1, higher = more stable)"""
-        if len(emotions) <= 1:
-            return 1.0
-
-        from collections import Counter
-        emotion_counts = Counter(emotions)
-        entropy = -sum((count/len(emotions)) * np.log2(count/len(emotions))
-                      for count in emotion_counts.values())
-        max_entropy = np.log2(len(emotion_counts))
-
-        # Normalize entropy to 0-1 and invert (higher = more stable)
-        return 1 - (entropy / max_entropy if max_entropy > 0 else 0)
-
-    def _generate_emotional_recommendations(self, emotions: List[str], intensities: List[str]) -> List[str]:
-        """Generate emotional well-being recommendations"""
-        recommendations = []
-
-        # High intensity emotions
-        high_intensity_count = intensities.count("High")
-        if high_intensity_count > len(intensities) * 0.7:
-            recommendations.append("Consider emotional regulation techniques - high intensity emotions detected")
-
-        # Negative emotion patterns
-        negative_emotions = ["Angry", "Sad", "Fear", "Disgust"]
-        negative_count = sum(1 for emotion in emotions if emotion in negative_emotions)
-        if negative_count > len(emotions) * 0.5:
-            recommendations.append("Focus on positive emotional experiences and self-care activities")
-
-        # Lack of variety
-        unique_emotions = len(set(emotions))
-        if unique_emotions < 3 and len(emotions) > 5:
-            recommendations.append("Explore diverse experiences to expand emotional range")
-
-        return recommendations or ["Emotional patterns appear balanced - continue current approach"]
-
 class AuraFileSystem:
     """Enhanced file system operations for Aura"""
 
@@ -461,11 +194,9 @@ class AuraFileSystem:
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"conversation_export_{user_id}_{timestamp}.{format}"
-            export_path = self.base_path / "aura_data/exports" / filename
+            export_path = self.base_path / "exports" / filename
 
             # This would integrate with the vector DB to get conversation history
-            # For now, creating a placeholder structure
-            # This should not be a placeholder anymore as the db is functional!!!
             export_data = {
                 "user_id": user_id,
                 "export_timestamp": datetime.now().isoformat(),
@@ -549,9 +280,6 @@ class AuraStateManager:
             # Log the recommendation details and store for potential future use
             logger.info(f"🔔 Emotional support recommendation for {user_id}: {recommendation['suggestion']}")
 
-            # TODO: Could store recommendation in database for analysis or trigger gentle conversation adjustments
-            # For now, we log the recommendation for monitoring emotional transition patterns
-
     async def on_cognitive_focus_change(
         self,
         user_id: str,
@@ -576,11 +304,11 @@ class AuraStateManager:
                 "timestamp": new_focus.timestamp.isoformat()
             }
 
-            self.vector_db.cognitive_patterns.add(
-                documents=[focus_text],
-                embeddings=[embedding],
-                metadatas=[metadata],
-                ids=[doc_id]
+            await self.vector_db.store_cognitive_pattern(
+                focus_text,
+                embedding,
+                metadata,
+                doc_id
             )
 
             logger.info(f"🧠 Stored cognitive focus: {new_focus.focus.value}")
@@ -610,13 +338,13 @@ class ExecuteToolRequest(BaseModel):
     arguments: Dict[str, Any]
     user_id: str
 
-# Initialize global components
-vector_db = AuraVectorDB()
-aura_file_system = AuraFileSystem()
-state_manager = AuraStateManager(vector_db, aura_file_system)
-aura_internal_tools = AuraInternalTools(vector_db, aura_file_system)
-
-# Global MCP-Gemini bridge (will be initialized after MCP client startup)
+# Global variables (initialized in lifespan)
+vector_db: Optional[AuraVectorDB] = None
+aura_file_system: Optional[AuraFileSystem] = None
+state_manager: Optional[AuraStateManager] = None
+aura_internal_tools: Optional[AuraInternalTools] = None
+conversation_persistence: Optional[ConversationPersistenceService] = None
+memvid_archival: Optional[MemvidArchivalService] = None
 mcp_gemini_bridge: Optional[MCPGeminiBridge] = None
 
 # Session management for persistent chat contexts
@@ -958,8 +686,21 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting Aura Backend...")
 
-    # Initialize Aura internal tools with global components
-    global aura_internal_tools, mcp_gemini_bridge, global_tool_version
+    # Initialize global components (prevents duplicate initialization)
+    global vector_db, aura_file_system, state_manager, aura_internal_tools
+    global conversation_persistence, memvid_archival, mcp_gemini_bridge, global_tool_version
+
+    # Initialize with robust vector database with SQLite-level concurrency control
+    vector_db = AuraVectorDB()
+    logger.info("✅ Using RobustAuraVectorDB with SQLite-level concurrency control")
+
+    aura_file_system = AuraFileSystem()
+    state_manager = AuraStateManager(vector_db, aura_file_system)
+    aura_internal_tools = AuraInternalTools(vector_db, aura_file_system)
+
+    # Initialize the new persistence services
+    conversation_persistence = ConversationPersistenceService(vector_db, aura_file_system)
+    memvid_archival = MemvidArchivalService()
 
     # Initialize the complete MCP system
     mcp_status = await initialize_mcp_system(aura_internal_tools)
@@ -992,6 +733,11 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("🛑 Shutting down Aura Backend...")
     await shutdown_mcp_system()
+
+    # Gracefully close the enhanced vector database
+    if vector_db:
+        await vector_db.close()
+
     logger.info("✅ Aura Backend shutdown complete")
 
 # FastAPI app
@@ -1029,12 +775,29 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "vector_db": "connected",
-        "aura_file_system": "operational"
-    }
+    """Enhanced health check with vector database status"""
+    try:
+        # Get vector database health status
+        db_status = "connected"
+        if vector_db:
+            health_info = await vector_db.health_check()
+            db_status = health_info.get("status", "unknown")
+
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "vector_db": db_status,
+            "aura_file_system": "operational"
+        }
+    except Exception as e:
+        logger.error(f"❌ Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "vector_db": "error",
+            "aura_file_system": "operational",
+            "error": str(e)
+        }
 
 @app.post("/conversation", response_model=ConversationResponse)
 async def process_conversation(request: ConversationRequest, background_tasks: BackgroundTasks):
@@ -1043,12 +806,14 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         session_id = request.session_id or str(uuid.uuid4())
 
         # Load user profile for context
-        user_profile = await aura_file_system.load_user_profile(request.user_id)
+        user_profile = None
+        if aura_file_system:
+            user_profile = await aura_file_system.load_user_profile(request.user_id)
 
-        # Search relevant memories for context
+        # Search relevant memories for context using thread-safe method
         memory_context = ""
-        if len(request.message.split()) > 3:
-            relevant_memories = await vector_db.search_conversations(
+        if len(request.message.split()) > 3 and conversation_persistence:
+            relevant_memories = await conversation_persistence.safe_search_conversations(
                 query=request.message,
                 user_id=request.user_id,
                 n_results=3
@@ -1215,26 +980,36 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             session_id=session_id
         )
 
-        # Store memories and update profile in background
-        background_tasks.add_task(vector_db.store_conversation, user_memory)
-        background_tasks.add_task(vector_db.store_conversation, aura_memory)
+        # Create conversation exchange object for atomic persistence
+        conversation_exchange = ConversationExchange(
+            user_memory=user_memory,
+            ai_memory=aura_memory,
+            user_emotional_state=user_emotional_state,
+            ai_emotional_state=emotional_state_data,
+            ai_cognitive_state=cognitive_state_data,
+            session_id=session_id
+        )
 
-        # Store Aura's emotional pattern (use 'aura' as the entity ID)
-        if emotional_state_data:
-            background_tasks.add_task(vector_db.store_emotional_pattern, emotional_state_data, "aura")
+        # Use the new persistence service for atomic, properly sequenced storage
+        async def persist_with_logging():
+            """Wrapper to log persistence results for monitoring"""
+            try:
+                if conversation_persistence:
+                    result = await conversation_persistence.persist_conversation_exchange(conversation_exchange)
+                    if result["success"]:
+                        logger.info(f"✅ Successfully persisted conversation exchange for {request.user_id}")
+                        logger.debug(f"   Stored components: {result['stored_components']}")
+                        logger.debug(f"   Duration: {result['duration_ms']:.1f}ms")
+                    else:
+                        logger.warning(f"⚠️ Persistence had issues for {request.user_id}: {result['errors']}")
+                else:
+                    logger.warning(f"⚠️ Conversation persistence service not initialized for {request.user_id}")
+            except Exception as e:
+                logger.error(f"❌ Critical persistence failure for {request.user_id}: {e}")
 
-        # Store user's emotional pattern for analysis  
-        if user_emotional_state:
-            background_tasks.add_task(vector_db.store_emotional_pattern, user_emotional_state, request.user_id)
+        background_tasks.add_task(persist_with_logging)
 
-        # Update user profile
-        if user_profile is None:
-            user_profile = {"name": request.user_id, "created_at": datetime.now().isoformat()}
-
-        user_profile["last_interaction"] = datetime.now().isoformat()
-        user_profile["total_messages"] = str(int(user_profile.get("total_messages", 0)) + 1)
-
-        background_tasks.add_task(aura_file_system.save_user_profile, request.user_id, user_profile)
+        # Note: User profile updates are now handled by the ConversationPersistenceService
 
         # Format response
         response = ConversationResponse(
@@ -1260,15 +1035,96 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         raise HTTPException(status_code=500, detail=str(e))
 @app.post("/search")
 async def search_memories(request: SearchRequest):
-    """Search through conversation memories"""
+    """Search through conversation memories using Aura's internal MCP tools"""
     try:
-        results = await vector_db.search_conversations(
-            query=request.query,
-            user_id=request.user_id,
-            n_results=request.n_results
-        )
+        # Use Aura's internal memory search tools for comprehensive search
+        # This includes video archives and unified memory search capabilities
+        if aura_internal_tools:
+            # Try the advanced search_all_memories first (includes video archives)
+            try:
+                advanced_result = await aura_internal_tools.execute_tool(
+                    "aura.search_all_memories",
+                    {
+                        "query": request.query,
+                        "user_id": request.user_id,
+                        "max_results": request.n_results
+                    }
+                )
 
-        return {"results": results}
+                if advanced_result and advanced_result.get("status") == "success":
+                    memories = advanced_result.get("memories", [])
+                    # Convert to expected frontend format
+                    formatted_results = []
+                    for memory in memories:
+                        formatted_results.append({
+                            "content": memory.get("content", ""),
+                            "metadata": memory.get("metadata", {}),
+                            "similarity": memory.get("similarity", 0.0)
+                        })
+
+                    logger.info(f"🔍 Advanced search found {len(formatted_results)} memories using video + active search")
+                    return {
+                        "results": formatted_results,
+                        "query": request.query,
+                        "total_found": len(formatted_results),
+                        "search_type": "unified_memory_search",
+                        "includes_video_archives": True
+                    }
+
+            except Exception as e:
+                logger.warning(f"⚠️ Advanced search failed, falling back to basic search: {e}")
+
+            # Fallback to basic memory search if advanced fails
+            try:
+                basic_result = await aura_internal_tools.execute_tool(
+                    "aura.search_memories",
+                    {
+                        "query": request.query,
+                        "user_id": request.user_id,
+                        "n_results": request.n_results
+                    }
+                )
+
+                if basic_result and basic_result.get("status") == "success":
+                    memories = basic_result.get("memories", [])
+                    logger.info(f"🔍 Basic search found {len(memories)} memories using active search")
+                    return {
+                        "results": memories,
+                        "query": request.query,
+                        "total_found": len(memories),
+                        "search_type": "active_memory_search",
+                        "includes_video_archives": False
+                    }
+
+            except Exception as e:
+                logger.warning(f"⚠️ Basic MCP search failed, using direct persistence: {e}")
+
+        # Final fallback to direct persistence service if MCP tools fail
+        if conversation_persistence:
+            results = await conversation_persistence.safe_search_conversations(
+                query=request.query,
+                user_id=request.user_id,
+                n_results=request.n_results
+            )
+
+            logger.info(f"🔍 Direct persistence search found {len(results)} memories")
+            return {
+                "results": results,
+                "query": request.query,
+                "total_found": len(results),
+                "search_type": "persistence_fallback",
+                "includes_video_archives": False
+            }
+        else:
+            logger.error("❌ Conversation persistence service not available")
+            return {
+                "results": [],
+                "query": request.query,
+                "total_found": 0,
+                "search_type": "no_persistence_available",
+                "includes_video_archives": False,
+                "error": "Persistence service not initialized"
+            }
 
     except Exception as e:
         logger.error(f"❌ Failed to search memories: {e}")
@@ -1295,6 +1151,9 @@ async def get_emotional_analysis(
         # Use custom days if provided, otherwise use period mapping
         days = custom_days if custom_days is not None else period_mapping.get(period, 7)
 
+        if not vector_db:
+            raise HTTPException(status_code=500, detail="Vector database not initialized")
+
         analysis = await vector_db.analyze_emotional_trends(user_id, days)
         analysis["period_type"] = period
         analysis["custom_days"] = custom_days
@@ -1309,6 +1168,9 @@ async def get_emotional_analysis(
 async def export_user_data(user_id: str, format: str = "json"):
     """Export user conversation history and patterns"""
     try:
+        if not aura_file_system:
+            raise HTTPException(status_code=500, detail="File system not initialized")
+
         export_path = await aura_file_system.export_conversation_history(user_id, format)
         return {"export_path": export_path, "message": "Export completed successfully"}
 
@@ -1318,53 +1180,14 @@ async def export_user_data(user_id: str, format: str = "json"):
 
 @app.get("/chat-history/{user_id}")
 async def get_chat_history(user_id: str, limit: int = 50):
-    """Get chat history for a user"""
+    """Get chat history for a user with thread-safe database access"""
     try:
-        # Get recent conversations from vector DB
-        results = vector_db.conversations.get(
-            where={"user_id": user_id},
-            limit=limit,
-            include=["documents", "metadatas"]
-        )
+        if not conversation_persistence:
+            raise HTTPException(status_code=500, detail="Conversation persistence service not initialized")
 
-        if not results or not results.get('documents') or not isinstance(results['documents'], list):
-            return {"sessions": [], "total": 0}
-
-        # Group by session
-        sessions = {}
-        for i, doc in enumerate(results['documents']):
-            metadata = results['metadatas'][i] if results.get('metadatas') and results['metadatas'] is not None else {}
-            session_id = metadata.get('session_id', 'unknown')
-
-            if session_id not in sessions:
-                sessions[session_id] = {
-                    "session_id": session_id,
-                    "messages": [],
-                    "start_time": metadata.get('timestamp', ''),
-                    "last_time": metadata.get('timestamp', '')
-                }
-
-            sessions[session_id]["messages"].append({
-                "content": doc,
-                "sender": metadata.get('sender', 'unknown'),
-                "timestamp": metadata.get('timestamp', ''),
-                "emotion": metadata.get('emotion_name', 'Normal')
-            })
-
-            # Update session times
-            if metadata.get('timestamp', '') < sessions[session_id]["start_time"]:
-                sessions[session_id]["start_time"] = metadata.get('timestamp', '')
-            if metadata.get('timestamp', '') > sessions[session_id]["last_time"]:
-                sessions[session_id]["last_time"] = metadata.get('timestamp', '')
-
-        # Convert to list and sort by last activity
-        session_list = list(sessions.values())
-        session_list.sort(key=lambda x: x["last_time"], reverse=True)
-
-        return {
-            "sessions": session_list,
-            "total": len(session_list)
-        }
+        # Use the persistence service's thread-safe method
+        result = await conversation_persistence.safe_get_chat_history(user_id, limit)
+        return result
 
     except Exception as e:
         logger.error(f"❌ Failed to get chat history: {e}")
@@ -1372,29 +1195,38 @@ async def get_chat_history(user_id: str, limit: int = 50):
 
 @app.delete("/chat-history/{user_id}/{session_id}")
 async def delete_chat_session(user_id: str, session_id: str):
-    """Delete a specific chat session"""
+    """Delete a specific chat session using enhanced database operations"""
     try:
-        # Get all messages for this session
-        results = vector_db.conversations.get(
-            where={
-                "user_id": user_id,
-                "session_id": session_id
-            },
-            include=["documents", "metadatas"]
-        )
+        if not vector_db or not vector_db.conversations:
+            raise HTTPException(status_code=500, detail="Vector database not properly initialized")
 
-        if results and results.get('ids'):
-            # Delete all messages in this session
-            vector_db.conversations.delete(ids=results['ids'])
+        # Use safe operation wrapper for database access
+        async with vector_db._safe_operation("delete_chat_session"):
+            # Get all messages for this session
+            results = vector_db.conversations.get(
+                where={
+                    "$and": [
+                        {"user_id": {"$eq": user_id}},
+                        {"session_id": {"$eq": session_id}}
+                    ]
+                },
+                include=["documents", "metadatas"]
+            )
 
-            # Also remove from active sessions if present
-            session_key = f"{user_id}_{session_id}"
-            if session_key in active_chat_sessions:
-                del active_chat_sessions[session_key]
+            if results and results.get('ids'):
+                # Delete all messages in this session
+                vector_db.conversations.delete(ids=results['ids'])
 
-            return {"message": f"Deleted session {session_id}", "deleted_count": len(results['ids'])}
-        else:
-            return {"message": "Session not found", "deleted_count": 0}
+                # Also remove from active sessions if present
+                session_key = f"{user_id}_{session_id}"
+                if session_key in active_chat_sessions:
+                    del active_chat_sessions[session_key]
+                if session_key in session_tool_versions:
+                    del session_tool_versions[session_key]
+
+                return {"message": f"Deleted session {session_id}", "deleted_count": len(results['ids'])}
+            else:
+                return {"message": "Session not found", "deleted_count": 0}
 
     except Exception as e:
         logger.error(f"❌ Failed to delete chat session: {e}")
@@ -1498,6 +1330,119 @@ async def get_mcp_system_status():
             "error": str(e),
             "initialized": False
         }
+
+@app.get("/persistence/health")
+async def get_persistence_health():
+    """Get persistence layer health status"""
+    try:
+        if not conversation_persistence:
+            return {
+                "status": "not_initialized",
+                "error": "Conversation persistence service not initialized",
+                "timestamp": datetime.now().isoformat()
+            }
+
+        metrics = await conversation_persistence.get_persistence_metrics()
+
+        # Import the health check class here to avoid import issues
+        from conversation_persistence_service import PersistenceHealthCheck
+        health_checker = PersistenceHealthCheck(conversation_persistence)
+        health_status = await health_checker.check_health()
+
+        return {
+            "status": "healthy" if health_status["healthy"] else "unhealthy",
+            "metrics": metrics,
+            "health_check": health_status,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get persistence health: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/memvid/status")
+async def get_memvid_status():
+    """Get memvid archival service status"""
+    try:
+        if not memvid_archival:
+            return {
+                "status": "not_initialized",
+                "error": "Memvid archival service not initialized",
+                "timestamp": datetime.now().isoformat()
+            }
+
+        # Get basic status info
+        archives = await memvid_archival.list_archives()
+
+        return {
+            "status": "operational",
+            "archives_count": len(archives),
+            "archives": archives[:5],  # Show first 5 archives
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get memvid status: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/vector-db/health")
+async def get_vector_db_health():
+    """Get detailed vector database health information"""
+    try:
+        if not vector_db:
+            return {
+                "status": "not_initialized",
+                "error": "Vector database not initialized",
+                "timestamp": datetime.now().isoformat()
+            }
+
+        health_info = await vector_db.health_check()
+        return health_info
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get vector database health: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.post("/vector-db/optimize")
+async def optimize_vector_db():
+    """Trigger vector database optimization"""
+    try:
+        if not vector_db:
+            raise HTTPException(status_code=500, detail="Vector database not initialized")
+
+        # Perform SQLite optimization through the enhanced database
+        async with vector_db._safe_operation("optimize_database"):
+            import sqlite3
+            sqlite_path = vector_db.persist_directory / "chroma.sqlite3"
+            if sqlite_path.exists():
+                conn = sqlite3.connect(str(sqlite_path))
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA optimize")
+                cursor.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.commit()
+                conn.close()
+
+        return {
+            "status": "success",
+            "message": "Database optimization completed",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to optimize vector database: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

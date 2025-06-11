@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-06-10T17:59:34.897256",
+  "backup_path": "chromadb_backups/backup_20250610_175934",
+  "original_path": "aura_chroma_db",
+  "collections_found": 0,
+  "sample_embeddings_found": 0,
+  "collections": [],
+  "status": "Recovery completed - database rebuilt",
+  "next_steps": [
+    "The database has been reset to a clean state",
+    "Previous data has been backed up",
+    "The system will recreate collections on next startup",
+    "Monitor for any recurring errors"
+  ]
+}
