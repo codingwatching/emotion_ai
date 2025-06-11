@@ -308,7 +308,9 @@ class RobustAuraVectorDB:
             if memory.embedding is None:
                 from sentence_transformers import SentenceTransformer
                 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-                memory.embedding = embedding_model.encode(memory.message).tolist()
+                # Convert to list and ensure all values are Python native types
+                embedding_array = embedding_model.encode(memory.message)
+                memory.embedding = [float(x) for x in embedding_array.tolist()]
 
             # Create unique ID
             if memory.timestamp is None:
@@ -362,7 +364,9 @@ class RobustAuraVectorDB:
             # Generate query embedding
             from sentence_transformers import SentenceTransformer
             embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            query_embedding = embedding_model.encode(query).tolist()
+            # Convert to list and ensure all values are Python native types
+            embedding_array = embedding_model.encode(query)
+            query_embedding = [float(x) for x in embedding_array.tolist()]
 
             # Prepare filter
             base_filter: Dict[str, Any] = {"user_id": {"$eq": user_id}}
@@ -397,7 +401,9 @@ class RobustAuraVectorDB:
 
             from sentence_transformers import SentenceTransformer
             embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            embedding = embedding_model.encode(emotion_text).tolist()
+            # Convert to list and ensure all values are Python native types
+            embedding_array = embedding_model.encode(emotion_text)
+            embedding = [float(x) for x in embedding_array.tolist()]
 
             # Create ID
             if emotional_state.timestamp is None:

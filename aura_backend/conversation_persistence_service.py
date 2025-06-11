@@ -340,6 +340,163 @@ class ConversationPersistenceService:
 
             return results
 
+    async def persist_conversation_exchange_immediate(
+        self,
+        exchange: ConversationExchange,
+        update_profile: bool = True,
+        timeout: float = 5.0
+    ) -> Dict[str, Any]:
+        """
+        Immediate persistence with timeout for critical chat history saving.
+        
+        This method prioritizes speed and reliability for real-time chat history storage.
+        It uses optimized settings and aggressive error recovery to ensure conversations
+        are saved consistently like the first conversation.
+
+        Args:
+            exchange: Complete conversation exchange data
+            update_profile: Whether to update user profile after storage
+            timeout: Maximum time to spend on persistence (seconds)
+
+        Returns:
+            Dictionary containing storage results and any errors
+        """
+        start_time = datetime.now()
+        
+        try:
+            # Use timeout wrapper for critical persistence
+            result = await asyncio.wait_for(
+                self._persist_conversation_exchange_optimized(exchange, update_profile),
+                timeout=timeout
+            )
+            
+            # Add timing information
+            duration = (datetime.now() - start_time).total_seconds() * 1000
+            result["duration_ms"] = duration
+            result["method"] = "immediate_optimized"
+            
+            return result
+            
+        except asyncio.TimeoutError:
+            duration = (datetime.now() - start_time).total_seconds() * 1000
+            logger.error(f"⏱️ Immediate persistence timeout after {timeout}s for {exchange.user_memory.user_id}")
+            
+            return {
+                "success": False,
+                "stored_components": [],
+                "errors": [f"Persistence timeout after {timeout}s"],
+                "duration_ms": duration,
+                "retry_count": 0,
+                "method": "immediate_timeout"
+            }
+            
+        except Exception as e:
+            duration = (datetime.now() - start_time).total_seconds() * 1000
+            logger.error(f"❌ Immediate persistence failed for {exchange.user_memory.user_id}: {e}")
+            
+            return {
+                "success": False,
+                "stored_components": [],
+                "errors": [str(e)],
+                "duration_ms": duration,
+                "retry_count": 0,
+                "method": "immediate_exception"
+            }
+
+    async def _persist_conversation_exchange_optimized(
+        self,
+        exchange: ConversationExchange,
+        update_profile: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Optimized persistence method for immediate execution.
+        
+        Uses reduced delays and streamlined error handling for speed.
+        """
+        async with self._write_semaphore:
+            results = {
+                "success": True,
+                "stored_components": [],
+                "errors": [],
+                "retry_count": 0
+            }
+
+            # Reduced retry count for immediate persistence (prioritize speed)
+            max_immediate_retries = 2
+            
+            for attempt in range(max_immediate_retries):
+                try:
+                    results["retry_count"] = attempt
+
+                    # Reduced delay for immediate persistence
+                    if attempt > 0:
+                        delay = self.compaction_delay * 0.5  # Faster retry for immediate mode
+                        logger.debug(f"🔄 Immediate retry {attempt + 1} after {delay:.1f}s")
+                        await asyncio.sleep(delay)
+
+                    # Optimized storage sequence
+                    await self._store_conversation_pair_optimized(exchange, results)
+                    
+                    # Store emotional patterns (non-blocking for immediate mode)
+                    try:
+                        await self._store_emotional_patterns(exchange, results)
+                    except Exception as emotion_error:
+                        logger.warning(f"⚠️ Emotional pattern storage failed (non-critical): {emotion_error}")
+                        results["errors"].append(f"emotional_patterns: {emotion_error}")
+
+                    # Update user profile (non-blocking for immediate mode)
+                    if update_profile:
+                        try:
+                            await self._update_user_profile(exchange, results)
+                        except Exception as profile_error:
+                            logger.warning(f"⚠️ Profile update failed (non-critical): {profile_error}")
+                            results["errors"].append(f"profile_update: {profile_error}")
+
+                    # Update metrics on success
+                    self._metrics["total_exchanges_stored"] += 1
+                    self._consecutive_failures = 0
+
+                    logger.debug(f"✅ Immediate persistence successful for {exchange.user_memory.user_id}")
+                    break  # Success - exit retry loop
+
+                except Exception as e:
+                    logger.error(f"❌ Immediate persistence attempt {attempt + 1} failed: {e}")
+                    results["errors"].append(f"attempt_{attempt + 1}: {e}")
+
+                    # For immediate persistence, don't spend time on recovery
+                    if attempt == max_immediate_retries - 1:
+                        results["success"] = False
+                        self._metrics["failed_stores"] += 1
+
+            return results
+
+    async def _store_conversation_pair_optimized(
+        self,
+        exchange: ConversationExchange,
+        results: Dict[str, Any]
+    ) -> None:
+        """
+        Optimized conversation pair storage for immediate persistence.
+        
+        Uses minimal delays while maintaining data integrity.
+        """
+        try:
+            # Store user message first
+            user_doc_id = await self.vector_db.store_conversation(exchange.user_memory)
+            results["stored_components"].append(f"user_message:{user_doc_id}")
+
+            # Minimal delay for immediate persistence
+            await asyncio.sleep(self.compaction_delay * 0.3)
+
+            # Store AI response
+            ai_doc_id = await self.vector_db.store_conversation(exchange.ai_memory)
+            results["stored_components"].append(f"ai_message:{ai_doc_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to store optimized conversation pair: {e}")
+            results["errors"].append(f"conversation_storage: {e}")
+            raise
+
     async def _store_conversation_pair(
         self,
         exchange: ConversationExchange,

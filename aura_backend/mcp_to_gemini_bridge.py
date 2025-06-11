@@ -14,6 +14,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 import json
 from datetime import datetime
+import numpy as np
 
 # Google Gemini imports
 from google.genai import types
@@ -26,7 +27,36 @@ except ImportError:
     MCP_AVAILABLE = False
     Tool = None  # No fallback Tool class; handle absence where needed
 
-logger = logging.getLogger(__name__)
+# Import JSON serialization fix for NumPy types
+logger = logging.getLogger(__name__) # Initialize logger earlier
+
+try:
+    from json_serialization_fix import convert_numpy_to_python, ensure_json_serializable
+except ImportError:
+    logger.warning("JSON serialization fix not available, using fallback")
+    # Fallback implementation
+    def convert_numpy_to_python(obj: Any) -> Any:
+        """Convert NumPy types to native Python types"""
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, dict):
+            return {key: convert_numpy_to_python(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_numpy_to_python(item) for item in obj]
+        elif isinstance(obj, tuple):
+            return tuple(convert_numpy_to_python(item) for item in obj)
+        else:
+            return obj
+
+    def ensure_json_serializable(data: Any) -> Any:
+        """Ensure data is JSON serializable"""
+        return convert_numpy_to_python(data)
 
 # Import smart parameter handler
 try:
@@ -281,7 +311,7 @@ class MCPGeminiBridge:
     ) -> ToolExecutionResult:
         """
         Execute a Gemini function call with retry logic to handle known Gemini 2.5 tool calling issues.
-        
+
         This method implements comprehensive error handling for the documented Gemini 2.5 problem
         where tool calls randomly fail or get cut off with no error messages.
 
@@ -302,15 +332,15 @@ class MCPGeminiBridge:
     ) -> ToolExecutionResult:
         """
         Enhanced function call execution with retry logic for Gemini 2.5 stability issues.
-        
+
         Implements exponential backoff and multiple retry strategies to handle:
         - Random tool call failures
-        - Response cutoffs with no error messages  
+        - Response cutoffs with no error messages
         - Concurrent tool execution issues
         """
         start_time = datetime.now()
         last_error = None
-        
+
         for attempt in range(TOOL_CALL_MAX_RETRIES + 1):  # +1 for initial attempt
             try:
                 if attempt > 0:
@@ -319,17 +349,17 @@ class MCPGeminiBridge:
                         delay = TOOL_CALL_RETRY_DELAY * (2 ** (attempt - 1))
                     else:
                         delay = TOOL_CALL_RETRY_DELAY
-                    
+
                     logger.info(f"🔄 Retry attempt {attempt}/{TOOL_CALL_MAX_RETRIES} for {function_call.name} after {delay:.1f}s")
                     await asyncio.sleep(delay)
-                
+
                 # Execute with timeout to handle hanging calls
                 try:
                     result = await asyncio.wait_for(
                         self._execute_single_function_call(function_call, user_id),
                         timeout=TOOL_CALL_TIMEOUT
                     )
-                    
+
                     if result.success:
                         if attempt > 0:
                             logger.info(f"✅ Tool {function_call.name} succeeded on retry attempt {attempt}")
@@ -337,19 +367,19 @@ class MCPGeminiBridge:
                     else:
                         last_error = result.error
                         logger.warning(f"⚠️ Tool {function_call.name} failed on attempt {attempt + 1}: {result.error}")
-                        
+
                 except asyncio.TimeoutError:
                     last_error = f"Tool execution timed out after {TOOL_CALL_TIMEOUT}s"
                     logger.error(f"⏱️ Tool {function_call.name} timed out on attempt {attempt + 1}")
-                    
+
             except Exception as e:
                 last_error = str(e)
                 logger.error(f"❌ Unexpected error on attempt {attempt + 1} for {function_call.name}: {e}")
-        
+
         # All retries exhausted
         execution_time = (datetime.now() - start_time).total_seconds()
         logger.error(f"💥 Tool {function_call.name} failed after {TOOL_CALL_MAX_RETRIES + 1} attempts")
-        
+
         return ToolExecutionResult(
             tool_name=function_call.name or "",
             success=False,
@@ -446,10 +476,13 @@ class MCPGeminiBridge:
             logger.debug(f"✅ Tool {function_name} executed successfully in {execution_time:.2f}s")
             logger.debug(f"📋 Result type: {type(result)}")
 
+            # Clean result to ensure JSON serializability
+            cleaned_result = ensure_json_serializable(result)
+
             execution_result = ToolExecutionResult(
                 tool_name=function_name,
                 success=True,
-                result=result,
+                result=cleaned_result,
                 execution_time=execution_time
             )
 

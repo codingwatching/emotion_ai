@@ -1,0 +1,17 @@
+{
+  "Current Chat with Ty - Memory Testing": {
+    "name": "Current Chat with Ty - Memory Testing",
+    "archive_type": "conversations",
+    "description": "Ongoing conversation with Ty about memory systems and chat history saving, specifically testing custom archiving capabilities.",
+    "content_criteria": {
+      "query": "current conversation with Ty about memory and chat history",
+      "content_type": "any",
+      "time_range": "all",
+      "max_results": 50
+    },
+    "priority": "medium",
+    "auto_update": false,
+    "retention_days": null,
+    "tags": []
+  }
+}

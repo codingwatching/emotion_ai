@@ -40,6 +40,36 @@ import aiofiles
 # Import MCP-Gemini Bridge
 from mcp_to_gemini_bridge import MCPGeminiBridge, format_function_call_result_for_model
 
+# Import JSON serialization fix for NumPy types
+try:
+    from json_serialization_fix import convert_numpy_to_python, ensure_json_serializable
+except ImportError:
+    logging.warning("JSON serialization fix not available, using fallback")
+    # Fallback implementation
+    def ensure_json_serializable(data: Any) -> Any:
+        """Basic fallback for JSON serialization"""
+        import numpy as np
+
+        def convert_numpy(obj):
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, np.bool_):
+                return bool(obj)
+            elif isinstance(obj, dict):
+                return {key: convert_numpy(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy(item) for item in obj]
+            elif isinstance(obj, tuple):
+                return tuple(convert_numpy(item) for item in obj)
+            else:
+                return obj
+
+        return convert_numpy(data)
+
 # Import MCP integration
 from mcp_system import (
     initialize_mcp_system,
@@ -811,7 +841,6 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
     - Session recovery mechanisms
     """
     # Configuration for enhanced error handling
-    conversation_persistence_retries = int(os.getenv('CONVERSATION_PERSISTENCE_RETRIES', '2'))
     session_recovery_enabled = os.getenv('SESSION_RECOVERY_ENABLED', 'true').lower() == 'true'
     session_key: Optional[str] = None  # Initialize session_key to ensure it's always bound
 
@@ -934,33 +963,91 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             session_id=session_id
         )
 
-        # Enhanced persistence with retry logic
-        async def persist_with_enhanced_logging():
-            """Enhanced persistence wrapper with retry logic for conversation persistence issues"""
-            for attempt in range(conversation_persistence_retries + 1):
-                try:
-                    if conversation_persistence:
-                        result = await conversation_persistence.persist_conversation_exchange(conversation_exchange)
-                        if result["success"]:
-                            logger.info(f"✅ Successfully persisted conversation exchange for {request.user_id} (attempt {attempt + 1})")
-                            logger.debug(f"   Stored components: {result['stored_components']}")
-                            logger.debug(f"   Duration: {result['duration_ms']:.1f}ms")
-                            return  # Success - exit retry loop
-                        else:
-                            logger.warning(f"⚠️ Persistence had issues for {request.user_id} (attempt {attempt + 1}): {result['errors']}")
-                            if attempt < conversation_persistence_retries:
-                                await asyncio.sleep(0.5 * (attempt + 1))  # Brief delay before retry
-                    else:
-                        logger.warning(f"⚠️ Conversation persistence service not initialized for {request.user_id}")
-                        return
-                except Exception as e:
-                    logger.error(f"❌ Persistence failure for {request.user_id} (attempt {attempt + 1}): {e}")
-                    if attempt < conversation_persistence_retries:
-                        await asyncio.sleep(1.0 * (attempt + 1))  # Increasing delay for retries
-                    else:
-                        logger.error(f"💥 All persistence attempts failed for {request.user_id}")
+        # IMMEDIATE PERSISTENCE - Use optimized immediate persistence for reliable chat history saving
+        persistence_success = False
+        immediate_persistence_enabled = os.getenv('IMMEDIATE_PERSISTENCE_ENABLED', 'true').lower() == 'true'
+        persistence_timeout = float(os.getenv('PERSISTENCE_TIMEOUT', '5.0'))
+        emergency_retries = int(os.getenv('EMERGENCY_PERSISTENCE_RETRIES', '2'))
 
-        background_tasks.add_task(persist_with_enhanced_logging)
+        if conversation_persistence and immediate_persistence_enabled:
+            try:
+                logger.info(f"💾 Starting optimized immediate persistence for {request.user_id}")
+
+                # Use the new immediate persistence method
+                result = await conversation_persistence.persist_conversation_exchange_immediate(
+                    conversation_exchange,
+                    update_profile=True,
+                    timeout=persistence_timeout
+                )
+
+                if result["success"]:
+                    persistence_success = True
+                    logger.info(f"✅ Chat history saved immediately for {request.user_id}")
+                    logger.debug(f"   Method: {result.get('method', 'immediate')}")
+                    logger.debug(f"   Stored components: {result['stored_components']}")
+                    logger.debug(f"   Duration: {result['duration_ms']:.1f}ms")
+                else:
+                    logger.warning(f"⚠️ Immediate persistence had issues for {request.user_id}: {result['errors']}")
+
+                    # Emergency fallback with retries
+                    for emergency_attempt in range(emergency_retries):
+                        try:
+                            await asyncio.sleep(0.3 * (emergency_attempt + 1))
+                            logger.info(f"🚑 Emergency persistence attempt {emergency_attempt + 1}/{emergency_retries}")
+
+                            emergency_result = await conversation_persistence.persist_conversation_exchange_immediate(
+                                conversation_exchange,
+                                update_profile=True,
+                                timeout=persistence_timeout * 0.8  # Shorter timeout for emergency
+                            )
+
+                            if emergency_result["success"]:
+                                persistence_success = True
+                                logger.info(f"✅ Emergency persistence succeeded for {request.user_id} (attempt {emergency_attempt + 1})")
+                                break
+                            else:
+                                logger.warning(f"⚠️ Emergency attempt {emergency_attempt + 1} failed: {emergency_result['errors']}")
+
+                        except Exception as emergency_error:
+                            logger.error(f"❌ Emergency attempt {emergency_attempt + 1} exception: {emergency_error}")
+
+                    if not persistence_success:
+                        logger.error(f"💥 All emergency persistence attempts failed for {request.user_id}")
+
+            except Exception as e:
+                logger.error(f"❌ Critical immediate persistence failure for {request.user_id}: {e}")
+
+        elif conversation_persistence:
+            # Fallback to regular persistence if immediate is disabled
+            try:
+                logger.info(f"💾 Using regular persistence for {request.user_id}")
+                result = await conversation_persistence.persist_conversation_exchange(conversation_exchange)
+                if result["success"]:
+                    persistence_success = True
+                    logger.info(f"✅ Chat history saved with regular persistence for {request.user_id}")
+                else:
+                    logger.warning(f"⚠️ Regular persistence failed for {request.user_id}: {result['errors']}")
+            except Exception as e:
+                logger.error(f"❌ Regular persistence exception for {request.user_id}: {e}")
+
+        # Enhanced background persistence as backup (but primary is immediate)
+        async def backup_persistence_monitor():
+            """Background monitor to ensure persistence completed successfully"""
+            if not persistence_success and conversation_persistence:
+                logger.warning(f"🔄 Running backup persistence for {request.user_id}")
+                try:
+                    await asyncio.sleep(1.0)  # Brief delay
+                    backup_result = await conversation_persistence.persist_conversation_exchange(conversation_exchange)
+                    if backup_result["success"]:
+                        logger.info(f"✅ Backup persistence succeeded for {request.user_id}")
+                    else:
+                        logger.error(f"❌ Backup persistence failed for {request.user_id}: {backup_result['errors']}")
+                except Exception as e:
+                    logger.error(f"💥 Backup persistence exception for {request.user_id}: {e}")
+
+        # Only run background backup if immediate persistence failed
+        if not persistence_success:
+            background_tasks.add_task(backup_persistence_monitor)
 
         # Format response
         response = ConversationResponse(
@@ -1117,13 +1204,16 @@ async def _process_conversation_with_retry(
                     # Prepare function result for the model
                     result_data = execution_result.result if execution_result.success else {"error": execution_result.error}
 
+                    # Clean result data to ensure JSON serializability (fixes int64 errors)
+                    cleaned_result_data = ensure_json_serializable(result_data)
+
                     try:
                         # Send function result back to model
                         follow_up = chat.send_message([
                             types.Part(
                                 function_response=types.FunctionResponse(
                                     name=part.function_call.name,
-                                    response={"result": result_data}
+                                    response={"result": cleaned_result_data}
                                 )
                             )
                         ])
@@ -1524,6 +1614,94 @@ async def get_persistence_health():
         return {
             "status": "error",
             "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.post("/test/persistence")
+async def test_persistence_reliability():
+    """Test endpoint to validate chat persistence reliability"""
+    try:
+        if not conversation_persistence:
+            return {
+                "status": "error",
+                "message": "Conversation persistence service not initialized"
+            }
+
+        # Create a test conversation exchange
+        from main import ConversationMemory, ConversationExchange
+
+        test_user_id = f"test_user_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        test_session_id = str(uuid.uuid4())
+
+        user_memory = ConversationMemory(
+            user_id=test_user_id,
+            message="This is a test message to validate persistence reliability",
+            sender="user",
+            session_id=test_session_id
+        )
+
+        aura_memory = ConversationMemory(
+            user_id=test_user_id,
+            message="This is a test response to validate that chat history saves correctly",
+            sender="aura",
+            session_id=test_session_id
+        )
+
+        test_exchange = ConversationExchange(
+            user_memory=user_memory,
+            ai_memory=aura_memory,
+            session_id=test_session_id
+        )
+
+        # Test immediate persistence
+        immediate_result = await conversation_persistence.persist_conversation_exchange_immediate(
+            test_exchange,
+            update_profile=False,
+            timeout=3.0
+        )
+
+        # Verify the conversation was stored by searching for it
+        search_result = await conversation_persistence.safe_search_conversations(
+            query="test message to validate persistence",
+            user_id=test_user_id,
+            n_results=2
+        )
+
+        # Check chat history retrieval
+        history_result = await conversation_persistence.safe_get_chat_history(test_user_id, 10)
+
+        return {
+            "status": "success",
+            "test_results": {
+                "immediate_persistence": {
+                    "success": immediate_result["success"],
+                    "duration_ms": immediate_result["duration_ms"],
+                    "stored_components": immediate_result["stored_components"],
+                    "method": immediate_result.get("method", "unknown")
+                },
+                "search_verification": {
+                    "found_messages": len(search_result),
+                    "search_successful": len(search_result) >= 2
+                },
+                "history_retrieval": {
+                    "sessions_found": len(history_result.get("sessions", [])),
+                    "retrieval_successful": len(history_result.get("sessions", [])) > 0
+                }
+            },
+            "test_user_id": test_user_id,
+            "persistence_validated": (
+                immediate_result["success"] and
+                len(search_result) >= 2 and
+                len(history_result.get("sessions", [])) > 0
+            ),
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Persistence test failed: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
             "timestamp": datetime.now().isoformat()
         }
 
