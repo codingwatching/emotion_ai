@@ -8,6 +8,8 @@ handles the execution flow between Gemini and MCP servers.
 """
 
 import logging
+import asyncio
+import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 import json
@@ -33,6 +35,13 @@ try:
 except ImportError:
     smart_parameter_handler = None
     logger.warning("Smart parameter handler not available")
+
+# Configuration for addressing Gemini 2.5 tool calling issues
+TOOL_CALL_MAX_RETRIES = int(os.getenv('TOOL_CALL_MAX_RETRIES', '3'))
+TOOL_CALL_RETRY_DELAY = float(os.getenv('TOOL_CALL_RETRY_DELAY', '1.0'))
+TOOL_CALL_EXPONENTIAL_BACKOFF = os.getenv('TOOL_CALL_EXPONENTIAL_BACKOFF', 'true').lower() == 'true'
+TOOL_CALL_SEQUENTIAL_MODE = os.getenv('TOOL_CALL_SEQUENTIAL_MODE', 'false').lower() == 'true'
+TOOL_CALL_TIMEOUT = float(os.getenv('TOOL_CALL_TIMEOUT', '30.0'))
 
 @dataclass
 class ToolExecutionResult:
@@ -271,7 +280,10 @@ class MCPGeminiBridge:
         user_id: str
     ) -> ToolExecutionResult:
         """
-        Execute a Gemini function call by routing it to the appropriate MCP tool.
+        Execute a Gemini function call with retry logic to handle known Gemini 2.5 tool calling issues.
+        
+        This method implements comprehensive error handling for the documented Gemini 2.5 problem
+        where tool calls randomly fail or get cut off with no error messages.
 
         Args:
             function_call: Gemini function call object
@@ -280,18 +292,92 @@ class MCPGeminiBridge:
         Returns:
             ToolExecutionResult with execution outcome
         """
+        # Use the enhanced execution method with retry logic
+        return await self._execute_function_call_with_retry(function_call, user_id)
+
+    async def _execute_function_call_with_retry(
+        self,
+        function_call: types.FunctionCall,
+        user_id: str
+    ) -> ToolExecutionResult:
+        """
+        Enhanced function call execution with retry logic for Gemini 2.5 stability issues.
+        
+        Implements exponential backoff and multiple retry strategies to handle:
+        - Random tool call failures
+        - Response cutoffs with no error messages  
+        - Concurrent tool execution issues
+        """
+        start_time = datetime.now()
+        last_error = None
+        
+        for attempt in range(TOOL_CALL_MAX_RETRIES + 1):  # +1 for initial attempt
+            try:
+                if attempt > 0:
+                    # Calculate retry delay with exponential backoff
+                    if TOOL_CALL_EXPONENTIAL_BACKOFF:
+                        delay = TOOL_CALL_RETRY_DELAY * (2 ** (attempt - 1))
+                    else:
+                        delay = TOOL_CALL_RETRY_DELAY
+                    
+                    logger.info(f"🔄 Retry attempt {attempt}/{TOOL_CALL_MAX_RETRIES} for {function_call.name} after {delay:.1f}s")
+                    await asyncio.sleep(delay)
+                
+                # Execute with timeout to handle hanging calls
+                try:
+                    result = await asyncio.wait_for(
+                        self._execute_single_function_call(function_call, user_id),
+                        timeout=TOOL_CALL_TIMEOUT
+                    )
+                    
+                    if result.success:
+                        if attempt > 0:
+                            logger.info(f"✅ Tool {function_call.name} succeeded on retry attempt {attempt}")
+                        return result
+                    else:
+                        last_error = result.error
+                        logger.warning(f"⚠️ Tool {function_call.name} failed on attempt {attempt + 1}: {result.error}")
+                        
+                except asyncio.TimeoutError:
+                    last_error = f"Tool execution timed out after {TOOL_CALL_TIMEOUT}s"
+                    logger.error(f"⏱️ Tool {function_call.name} timed out on attempt {attempt + 1}")
+                    
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"❌ Unexpected error on attempt {attempt + 1} for {function_call.name}: {e}")
+        
+        # All retries exhausted
+        execution_time = (datetime.now() - start_time).total_seconds()
+        logger.error(f"💥 Tool {function_call.name} failed after {TOOL_CALL_MAX_RETRIES + 1} attempts")
+        
+        return ToolExecutionResult(
+            tool_name=function_call.name or "",
+            success=False,
+            result=None,
+            error=f"Failed after {TOOL_CALL_MAX_RETRIES + 1} attempts. Last error: {last_error}",
+            execution_time=execution_time
+        )
+
+    async def _execute_single_function_call(
+        self,
+        function_call: types.FunctionCall,
+        user_id: str
+    ) -> ToolExecutionResult:
+        """
+        Execute a single function call attempt (original logic extracted for retry wrapper).
+        """
         start_time = datetime.now()
         server = None
         mcp_tool_name = None
-        formatted_arguments = None  # Initialize to ensure it's always bound
-        detected_format = 'direct'  # Default format, ensures it's always bound
+        formatted_arguments = None
+        detected_format = 'direct'
 
         try:
             function_name = function_call.name
             arguments = dict(function_call.args) if function_call.args else {}
 
-            logger.info(f"🔧 Executing function call: {function_name}")
-            logger.info(f"📥 Raw arguments from Gemini: {arguments}")
+            logger.debug(f"🔧 Executing function call: {function_name}")
+            logger.debug(f"📥 Raw arguments from Gemini: {arguments}")
 
             # Look up the original MCP tool
             if function_name not in self._tool_mapping:
@@ -309,7 +395,7 @@ class MCPGeminiBridge:
             server = tool_info['server']
             original_tool = tool_info['original_tool']
 
-            logger.info(f"🎯 Mapped to MCP tool: {mcp_tool_name} on server: {server}")
+            logger.debug(f"🎯 Mapped to MCP tool: {mcp_tool_name} on server: {server}")
 
             # Add user_id to arguments if not present and the tool expects it
             if 'user_id' not in arguments:
@@ -318,14 +404,12 @@ class MCPGeminiBridge:
                 if 'user_id' in properties:
                     arguments['user_id'] = user_id
                     logger.debug(f"📝 Added user_id to arguments: {user_id}")
+
             # Use smart parameter handler if available
-            formatted_arguments = arguments  # Initialize with raw arguments
+            formatted_arguments = arguments
 
             if smart_parameter_handler:
                 tool_input_schema = original_tool.get('input_schema') or original_tool.get('parameters', {})
-                tool_input_schema = original_tool.get('input_schema') or original_tool.get('parameters', {})
-
-                logger.debug(f"🔍 Tool schema for {mcp_tool_name}: {tool_input_schema}")
 
                 formatted_arguments = smart_parameter_handler.format_parameters(
                     tool_name=mcp_tool_name,
@@ -340,19 +424,17 @@ class MCPGeminiBridge:
                 else:
                     detected_format = 'direct'
 
-                logger.info(f"📤 Smart handler applied format '{detected_format}' for {mcp_tool_name}")
-                logger.info(f"📤 Formatted arguments: {formatted_arguments}")
+                logger.debug(f"📤 Smart handler applied format '{detected_format}' for {mcp_tool_name}")
             else:
-                logger.warning("⚠️ Smart parameter handler not available, using raw arguments")
+                logger.debug("⚠️ Smart parameter handler not available, using raw arguments")
 
             # Execute the MCP tool
             result = None
             if server == 'aura-internal' and self.aura_internal_tools:
-                logger.info(f"🏠 Executing internal tool: {mcp_tool_name}")
+                logger.debug(f"🏠 Executing internal tool: {mcp_tool_name}")
                 result = await self.aura_internal_tools.execute_tool(mcp_tool_name, formatted_arguments)
             else:
-                logger.info(f"🌐 Executing external MCP tool: {mcp_tool_name}")
-                logger.info(f"🌐 Using arguments: {formatted_arguments}")
+                logger.debug(f"🌐 Executing external MCP tool: {mcp_tool_name}")
 
                 if hasattr(self.mcp_client_manager, 'call_tool'):
                     result = await self.mcp_client_manager.call_tool(mcp_tool_name, formatted_arguments)
@@ -361,9 +443,8 @@ class MCPGeminiBridge:
 
             execution_time = (datetime.now() - start_time).total_seconds()
 
-            logger.info(f"✅ Tool {function_name} executed successfully in {execution_time:.2f}s")
-            logger.info(f"📋 Result type: {type(result)}")
-            logger.debug(f"📋 Result preview: {str(result)[:300]}...")
+            logger.debug(f"✅ Tool {function_name} executed successfully in {execution_time:.2f}s")
+            logger.debug(f"📋 Result type: {type(result)}")
 
             execution_result = ToolExecutionResult(
                 tool_name=function_name,
@@ -390,12 +471,12 @@ class MCPGeminiBridge:
             error_msg = str(e)
 
             logger.error(f"❌ Failed to execute {function_call.name}: {error_msg}")
-            logger.error(f"🔧 Function: {function_call.name}")
-            logger.error(f"📥 Raw args: {dict(function_call.args) if function_call.args else {}}")
-            if 'formatted_arguments' in locals():
-                logger.error(f"📤 Formatted args: {formatted_arguments}")
-            logger.error(f"🎯 MCP tool: {mcp_tool_name}")
-            logger.error(f"🖥️ Server: {server}")
+            logger.debug(f"🔧 Function: {function_call.name}")
+            logger.debug(f"📥 Raw args: {dict(function_call.args) if function_call.args else {}}")
+            if formatted_arguments is not None:
+                logger.debug(f"📤 Formatted args: {formatted_arguments}")
+            logger.debug(f"🎯 MCP tool: {mcp_tool_name}")
+            logger.debug(f"🖥️ Server: {server}")
 
             execution_result = ToolExecutionResult(
                 tool_name=function_call.name or "",

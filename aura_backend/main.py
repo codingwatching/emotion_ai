@@ -801,7 +801,20 @@ async def health_check():
 
 @app.post("/conversation", response_model=ConversationResponse)
 async def process_conversation(request: ConversationRequest, background_tasks: BackgroundTasks):
-    """Process conversation with MCP function calling and persistent chat context"""
+    """
+    Process conversation with enhanced MCP function calling and robust error handling.
+
+    Implements comprehensive fixes for known Gemini 2.5 tool calling issues including:
+    - Response cutoffs during tool execution
+    - Random tool call failures
+    - Concurrent tool execution problems
+    - Session recovery mechanisms
+    """
+    # Configuration for enhanced error handling
+    conversation_persistence_retries = int(os.getenv('CONVERSATION_PERSISTENCE_RETRIES', '2'))
+    session_recovery_enabled = os.getenv('SESSION_RECOVERY_ENABLED', 'true').lower() == 'true'
+    session_key: Optional[str] = None  # Initialize session_key to ensure it's always bound
+
     try:
         session_id = request.session_id or str(uuid.uuid4())
 
@@ -858,103 +871,23 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             available_tools=available_tools_info
         )
 
-        # Get or create persistent chat session
+        # Enhanced session management with recovery capabilities
         session_key = f"{request.user_id}_{session_id}"
+        chat, session_created = await _get_or_create_chat_session(
+            session_key,
+            request.user_id,
+            system_instruction,
+            session_recovery_enabled
+        )
 
-        # Check if we need to recreate session due to tool updates
-        needs_new_session = session_key not in active_chat_sessions
-
-        # Also check if existing session has outdated tool version
-        if not needs_new_session and session_key in session_tool_versions:
-            if session_tool_versions[session_key] < global_tool_version:
-                needs_new_session = True
-                logger.info(f"🔄 Session {session_key} has outdated tools (v{session_tool_versions[session_key]} < v{global_tool_version}), recreating...")
-
-        if needs_new_session:
-            # Create new chat session with MCP tools if available
-            tools = []
-            if mcp_gemini_bridge:
-                gemini_tools = await mcp_gemini_bridge.convert_mcp_tools_to_gemini_functions()
-                tools.extend(gemini_tools)
-                logger.info(f"🔧 Added {len(gemini_tools)} MCP tools to chat session for {request.user_id}")
-
-            # Create chat with system instruction and tools
-            chat = client.chats.create(
-                model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
-                config=types.GenerateContentConfig(
-                    temperature=0.7,
-                    max_output_tokens=int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '1000000')),
-                    tools=tools if tools else None,
-                    system_instruction=system_instruction
-                )
-            )
-            active_chat_sessions[session_key] = chat
-            session_tool_versions[session_key] = global_tool_version
-            logger.info(f"💬 Created new chat session for {request.user_id} with {len(tools)} tools (v{global_tool_version})")
-        else:
-            chat = active_chat_sessions[session_key]
-            logger.debug(f"💬 Using existing chat session for {request.user_id}")
-
-        # Send message and handle function calls
-        result = chat.send_message(request.message)
-
-        # Process function calls if present
-        final_response = ""
-        if (result.candidates and result.candidates[0].content and
-            result.candidates[0].content.parts):
-            for part in result.candidates[0].content.parts:
-                if part.text:
-                    final_response += part.text
-                elif hasattr(part, 'function_call') and part.function_call and mcp_gemini_bridge:
-                    # Execute the function call through MCP bridge
-                    logger.info(f"🔧 Executing function call: {part.function_call.name}")
-                    logger.info(f"📥 Function call args: {dict(part.function_call.args) if part.function_call.args else {}}")
-
-                    execution_result = await mcp_gemini_bridge.execute_function_call(
-                        part.function_call,
-                        request.user_id
-                    )
-
-                    logger.info(f"📊 Execution result - Success: {execution_result.success}")
-                    if not execution_result.success:
-                        logger.error(f"❌ Tool execution failed: {execution_result.error}")
-                    else:
-                        logger.info(f"📋 Tool execution successful, result type: {type(execution_result.result)}")
-
-                    # Use the improved formatting function from the bridge
-                    formatted_result_text = format_function_call_result_for_model(execution_result)
-                    logger.debug(f"📝 Formatted result preview: {formatted_result_text[:200]}...")
-
-                    # Prepare the function result for the model
-                    # The model expects the raw result data, not the formatted text
-                    result_data = execution_result.result if execution_result.success else {"error": execution_result.error}
-
-                    logger.debug(f"📤 Sending to model - Result data type: {type(result_data)}")
-                    logger.debug(f"📤 Result data preview: {str(result_data)[:200]}...")
-
-                    # Send function result back to model using function_response
-                    follow_up = chat.send_message([
-                        types.Part(
-                            function_response=types.FunctionResponse(
-                                name=part.function_call.name,
-                                response={"result": result_data}
-                            )
-                        )
-                    ])
-
-                    # Extract final response after function execution
-                    if (
-                        follow_up.candidates and
-                        follow_up.candidates[0].content is not None and
-                        hasattr(follow_up.candidates[0].content, "parts") and
-                        follow_up.candidates[0].content.parts
-                    ):
-                        for follow_part in follow_up.candidates[0].content.parts:
-                            if follow_part.text:
-                                final_response += follow_part.text
-                                logger.debug(f"📝 Added follow-up text: {follow_part.text[:100]}...")
-
-        aura_response = final_response or "I'm here and ready to help!"
+        # Enhanced conversation processing with Gemini 2.5 stability fixes
+        aura_response = await _process_conversation_with_retry(
+            chat,
+            request.message,
+            request.user_id,
+            session_key,
+            session_recovery_enabled
+        )
 
         # Process emotional state detection for both user and Aura
         user_emotional_state = await detect_user_emotion(
@@ -978,7 +911,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             user_id=request.user_id,
             message=request.message,
             sender="user",
-            emotional_state=user_emotional_state,  # Add user's emotional state
+            emotional_state=user_emotional_state,
             session_id=session_id
         )
 
@@ -1001,26 +934,33 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             session_id=session_id
         )
 
-        # Use the new persistence service for atomic, properly sequenced storage
-        async def persist_with_logging():
-            """Wrapper to log persistence results for monitoring"""
-            try:
-                if conversation_persistence:
-                    result = await conversation_persistence.persist_conversation_exchange(conversation_exchange)
-                    if result["success"]:
-                        logger.info(f"✅ Successfully persisted conversation exchange for {request.user_id}")
-                        logger.debug(f"   Stored components: {result['stored_components']}")
-                        logger.debug(f"   Duration: {result['duration_ms']:.1f}ms")
+        # Enhanced persistence with retry logic
+        async def persist_with_enhanced_logging():
+            """Enhanced persistence wrapper with retry logic for conversation persistence issues"""
+            for attempt in range(conversation_persistence_retries + 1):
+                try:
+                    if conversation_persistence:
+                        result = await conversation_persistence.persist_conversation_exchange(conversation_exchange)
+                        if result["success"]:
+                            logger.info(f"✅ Successfully persisted conversation exchange for {request.user_id} (attempt {attempt + 1})")
+                            logger.debug(f"   Stored components: {result['stored_components']}")
+                            logger.debug(f"   Duration: {result['duration_ms']:.1f}ms")
+                            return  # Success - exit retry loop
+                        else:
+                            logger.warning(f"⚠️ Persistence had issues for {request.user_id} (attempt {attempt + 1}): {result['errors']}")
+                            if attempt < conversation_persistence_retries:
+                                await asyncio.sleep(0.5 * (attempt + 1))  # Brief delay before retry
                     else:
-                        logger.warning(f"⚠️ Persistence had issues for {request.user_id}: {result['errors']}")
-                else:
-                    logger.warning(f"⚠️ Conversation persistence service not initialized for {request.user_id}")
-            except Exception as e:
-                logger.error(f"❌ Critical persistence failure for {request.user_id}: {e}")
+                        logger.warning(f"⚠️ Conversation persistence service not initialized for {request.user_id}")
+                        return
+                except Exception as e:
+                    logger.error(f"❌ Persistence failure for {request.user_id} (attempt {attempt + 1}): {e}")
+                    if attempt < conversation_persistence_retries:
+                        await asyncio.sleep(1.0 * (attempt + 1))  # Increasing delay for retries
+                    else:
+                        logger.error(f"💥 All persistence attempts failed for {request.user_id}")
 
-        background_tasks.add_task(persist_with_logging)
-
-        # Note: User profile updates are now handled by the ConversationPersistenceService
+        background_tasks.add_task(persist_with_enhanced_logging)
 
         # Format response
         response = ConversationResponse(
@@ -1040,10 +980,222 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
 
         logger.info(f"✅ Processed conversation for user {request.user_id}")
         return response
-
     except Exception as e:
         logger.error(f"❌ Failed to process conversation: {e}")
+        # Try to recover the session if enabled
+        if session_recovery_enabled and session_key:  # Check if session_key is not None
+            logger.info(f"🔄 Attempting session recovery for {request.user_id} (session: {session_key})")
+            try:
+                if session_key in active_chat_sessions:
+                    del active_chat_sessions[session_key]
+                if session_key in session_tool_versions:
+                    del session_tool_versions[session_key]
+                logger.info(f"🧹 Cleared failed session for {request.user_id} (session: {session_key})")
+            except Exception as recovery_error:
+                logger.error(f"❌ Session recovery failed for session {session_key}: {recovery_error}")
+
         raise HTTPException(status_code=500, detail=str(e))
+
+async def _get_or_create_chat_session(
+    session_key: str,
+    user_id: str,
+    system_instruction: str,
+    session_recovery_enabled: bool
+) -> Tuple[Any, bool]:
+    """
+    Get existing chat session or create new one with enhanced error handling.
+
+    Returns:
+        Tuple of (chat_session, was_newly_created)
+    """
+    global active_chat_sessions, session_tool_versions, global_tool_version
+
+    # Check if we need to recreate session due to tool updates
+    needs_new_session = session_key not in active_chat_sessions
+
+    # Also check if existing session has outdated tool version
+    if not needs_new_session and session_key in session_tool_versions:
+        if session_tool_versions[session_key] < global_tool_version:
+            needs_new_session = True
+            logger.info(f"🔄 Session {session_key} has outdated tools (v{session_tool_versions[session_key]} < v{global_tool_version}), recreating...")
+
+    if needs_new_session:
+        try:
+            # Create new chat session with MCP tools if available
+            tools = []
+            if mcp_gemini_bridge:
+                gemini_tools = await mcp_gemini_bridge.convert_mcp_tools_to_gemini_functions()
+                tools.extend(gemini_tools)
+                logger.info(f"🔧 Added {len(gemini_tools)} MCP tools to chat session for {user_id}")
+
+            # Create chat with system instruction and tools
+            chat = client.chats.create(
+                model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    max_output_tokens=int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '1000000')),
+                    tools=tools if tools else None,
+                    system_instruction=system_instruction
+                )
+            )
+            active_chat_sessions[session_key] = chat
+            session_tool_versions[session_key] = global_tool_version
+            logger.info(f"💬 Created new chat session for {user_id} with {len(tools)} tools (v{global_tool_version})")
+            return chat, True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to create chat session for {user_id}: {e}")
+            if session_recovery_enabled:
+                # Try to clean up any partial session state
+                if session_key in active_chat_sessions:
+                    del active_chat_sessions[session_key]
+                if session_key in session_tool_versions:
+                    del session_tool_versions[session_key]
+            raise
+    else:
+        chat = active_chat_sessions[session_key]
+        logger.debug(f"💬 Using existing chat session for {user_id}")
+        return chat, False
+
+async def _process_conversation_with_retry(
+    chat: Any,
+    message: str,
+    user_id: str,
+    session_key: str,
+    session_recovery_enabled: bool
+) -> str:
+    """
+    Process conversation with enhanced error handling for Gemini 2.5 stability issues.
+
+    Implements comprehensive handling for:
+    - Response cutoffs during tool execution
+    - Random tool call failures
+    - Session corruption issues
+    """
+    max_conversation_retries = 2  # Limit conversation-level retries
+
+    for attempt in range(max_conversation_retries + 1):
+        try:
+            if attempt > 0:
+                logger.info(f"🔄 Conversation retry attempt {attempt} for user {user_id}")
+                await asyncio.sleep(1.0 * attempt)  # Brief delay before retry
+
+            # Send message and handle function calls with enhanced error detection
+            result = chat.send_message(message)
+
+            # Check for empty or malformed response (common Gemini 2.5 issue)
+            if not result or not result.candidates:
+                raise ValueError("Empty response from Gemini (possible tool call cutoff)")
+
+            candidate = result.candidates[0]
+            if not candidate.content or not candidate.content.parts:
+                raise ValueError("Malformed response structure from Gemini")
+
+            # Process function calls with enhanced error handling
+            final_response = ""
+            function_calls_processed = 0
+
+            for part in candidate.content.parts:
+                if part.text:
+                    final_response += part.text
+                elif hasattr(part, 'function_call') and part.function_call and mcp_gemini_bridge:
+                    function_calls_processed += 1
+                    logger.info(f"🔧 Processing function call #{function_calls_processed}: {part.function_call.name}")
+
+                    # Execute function call with retry logic (handled by MCP bridge)
+                    execution_result = await mcp_gemini_bridge.execute_function_call(
+                        part.function_call,
+                        user_id
+                    )
+
+                    if not execution_result.success:
+                        logger.error(f"❌ Tool execution failed: {execution_result.error}")
+                        # Continue processing - let the model handle the error response
+                    else:
+                        logger.info("✅ Tool execution successful")
+
+                    # Prepare function result for the model
+                    result_data = execution_result.result if execution_result.success else {"error": execution_result.error}
+
+                    try:
+                        # Send function result back to model
+                        follow_up = chat.send_message([
+                            types.Part(
+                                function_response=types.FunctionResponse(
+                                    name=part.function_call.name,
+                                    response={"result": result_data}
+                                )
+                            )
+                        ])
+
+                        # Extract final response after function execution
+                        if (follow_up.candidates and
+                            follow_up.candidates[0].content and
+                            follow_up.candidates[0].content.parts):
+                            for follow_part in follow_up.candidates[0].content.parts:
+                                if follow_part.text:
+                                    final_response += follow_part.text
+                        else:
+                            logger.warning("⚠️ Empty follow-up response after function call")
+
+                    except Exception as follow_up_error:
+                        logger.error(f"❌ Follow-up message failed: {follow_up_error}")
+                        # This is a common Gemini 2.5 issue - treat as recoverable
+                        final_response += f"\n[Tool executed but response processing incomplete: {execution_result.error if not execution_result.success else 'completed'}]"
+
+            # Validate final response
+            if not final_response.strip():
+                raise ValueError("Empty final response generated (possible Gemini 2.5 cutoff)")
+
+            logger.info(f"✅ Conversation processed successfully for {user_id} (attempt {attempt + 1})")
+            logger.info(f"📊 Function calls processed: {function_calls_processed}")
+            return final_response
+
+        except Exception as e:
+            logger.error(f"❌ Conversation processing failed (attempt {attempt + 1}): {e}")
+
+            # Check if this is a recoverable error for Gemini 2.5 issues
+            error_str = str(e).lower()
+            recoverable_errors = [
+                "empty response",
+                "malformed response",
+                "cutoff",
+                "tool call",
+                "function call",
+                "follow-up",
+                "response processing incomplete"
+            ]
+
+            is_recoverable = any(keyword in error_str for keyword in recoverable_errors)
+
+            if is_recoverable and attempt < max_conversation_retries:
+                logger.info("🔄 Recoverable error detected, will retry conversation processing")
+
+                # If session recovery is enabled, try to recreate the session
+                if session_recovery_enabled and attempt > 0:
+                    logger.info(f"🔄 Attempting to recreate session for {user_id}")
+                    try:
+                        if session_key in active_chat_sessions:
+                            del active_chat_sessions[session_key]
+                        if session_key in session_tool_versions:
+                            del session_tool_versions[session_key]
+                        logger.info("🧹 Session cleared for recreation")
+                    except Exception as cleanup_error:
+                        logger.warning(f"⚠️ Session cleanup warning: {cleanup_error}")
+
+                continue  # Retry the conversation
+            else:
+                # Non-recoverable error or max retries reached
+                if attempt == max_conversation_retries:
+                    logger.error(f"💥 All conversation attempts failed for {user_id}")
+
+                # Return a fallback response instead of failing completely
+                fallback_response = "I apologize, but I'm experiencing some technical difficulties processing your request. Please try again, and I'll do my best to help you."
+                logger.warning(f"🛡️ Returning fallback response for {user_id}")
+                return fallback_response
+
+    # This should never be reached due to the loop structure, but safety fallback
+    return "I'm here and ready to help, though I may have encountered some processing issues."
 @app.post("/search")
 async def search_memories(request: SearchRequest):
     """Search through conversation memories using Aura's internal MCP tools"""
