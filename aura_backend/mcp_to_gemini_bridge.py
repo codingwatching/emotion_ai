@@ -283,12 +283,15 @@ class MCPGeminiBridge:
         start_time = datetime.now()
         server = None
         mcp_tool_name = None
+        formatted_arguments = None  # Initialize to ensure it's always bound
+        detected_format = 'direct'  # Default format, ensures it's always bound
 
         try:
             function_name = function_call.name
             arguments = dict(function_call.args) if function_call.args else {}
 
-            logger.info(f"🔧 Executing function call: {function_name} with args: {arguments}")
+            logger.info(f"🔧 Executing function call: {function_name}")
+            logger.info(f"📥 Raw arguments from Gemini: {arguments}")
 
             # Look up the original MCP tool
             if function_name not in self._tool_mapping:
@@ -306,18 +309,23 @@ class MCPGeminiBridge:
             server = tool_info['server']
             original_tool = tool_info['original_tool']
 
-            # Add user_id to arguments if not present and needed
+            logger.info(f"🎯 Mapped to MCP tool: {mcp_tool_name} on server: {server}")
+
+            # Add user_id to arguments if not present and the tool expects it
             if 'user_id' not in arguments:
-                # Check if the tool requires user_id
                 parameters = original_tool.get('parameters', {})
                 properties = parameters.get('properties', {})
                 if 'user_id' in properties:
                     arguments['user_id'] = user_id
+                    logger.debug(f"📝 Added user_id to arguments: {user_id}")
+            # Use smart parameter handler if available
+            formatted_arguments = arguments  # Initialize with raw arguments
 
-            # Use the smart parameter handler to format parameters correctly
             if smart_parameter_handler:
-                # Get the tool's input schema for smart detection
                 tool_input_schema = original_tool.get('input_schema') or original_tool.get('parameters', {})
+                tool_input_schema = original_tool.get('input_schema') or original_tool.get('parameters', {})
+
+                logger.debug(f"🔍 Tool schema for {mcp_tool_name}: {tool_input_schema}")
 
                 formatted_arguments = smart_parameter_handler.format_parameters(
                     tool_name=mcp_tool_name,
@@ -325,24 +333,37 @@ class MCPGeminiBridge:
                     arguments=arguments,
                     tool_schema=tool_input_schema
                 )
-                logger.info(f"📤 Smart formatted arguments for {mcp_tool_name} on {server}: {formatted_arguments}")
+
+                # Determine what format was applied
+                if 'params' in formatted_arguments and len(formatted_arguments) == 1:
+                    detected_format = 'wrapped_or_fastmcp'
+                else:
+                    detected_format = 'direct'
+
+                logger.info(f"📤 Smart handler applied format '{detected_format}' for {mcp_tool_name}")
+                logger.info(f"📤 Formatted arguments: {formatted_arguments}")
             else:
-                # Fallback to simple logic if handler not available
-                formatted_arguments = arguments
                 logger.warning("⚠️ Smart parameter handler not available, using raw arguments")
 
-            # Execute the MCP tool with properly formatted parameters
+            # Execute the MCP tool
+            result = None
             if server == 'aura-internal' and self.aura_internal_tools:
-                # Internal tools use the formatted arguments
+                logger.info(f"🏠 Executing internal tool: {mcp_tool_name}")
                 result = await self.aura_internal_tools.execute_tool(mcp_tool_name, formatted_arguments)
             else:
-                # External MCP tools use the formatted arguments
+                logger.info(f"🌐 Executing external MCP tool: {mcp_tool_name}")
+                logger.info(f"🌐 Using arguments: {formatted_arguments}")
+
                 if hasattr(self.mcp_client_manager, 'call_tool'):
                     result = await self.mcp_client_manager.call_tool(mcp_tool_name, formatted_arguments)
                 else:
                     raise ValueError(f"Cannot execute external tool {mcp_tool_name}: MCP client not properly configured")
 
             execution_time = (datetime.now() - start_time).total_seconds()
+
+            logger.info(f"✅ Tool {function_name} executed successfully in {execution_time:.2f}s")
+            logger.info(f"📋 Result type: {type(result)}")
+            logger.debug(f"📋 Result preview: {str(result)[:300]}...")
 
             execution_result = ToolExecutionResult(
                 tool_name=function_name,
@@ -352,16 +373,13 @@ class MCPGeminiBridge:
             )
 
             self._execution_history.append(execution_result)
-            logger.info(f"✅ Successfully executed {function_name} in {execution_time:.2f}s")
 
             # Record success for format learning
-            if smart_parameter_handler and 'format_type' in locals():
-                # Get the format type that was used
-                format_type = getattr(formatted_arguments, '_format_type', 'unknown')
+            if smart_parameter_handler:
                 smart_parameter_handler.record_success(
                     server_name=server,
                     tool_name=mcp_tool_name,
-                    format_type=format_type,
+                    format_type=detected_format,
                     success=True
                 )
 
@@ -370,6 +388,14 @@ class MCPGeminiBridge:
         except Exception as e:
             execution_time = (datetime.now() - start_time).total_seconds()
             error_msg = str(e)
+
+            logger.error(f"❌ Failed to execute {function_call.name}: {error_msg}")
+            logger.error(f"🔧 Function: {function_call.name}")
+            logger.error(f"📥 Raw args: {dict(function_call.args) if function_call.args else {}}")
+            if 'formatted_arguments' in locals():
+                logger.error(f"📤 Formatted args: {formatted_arguments}")
+            logger.error(f"🎯 MCP tool: {mcp_tool_name}")
+            logger.error(f"🖥️ Server: {server}")
 
             execution_result = ToolExecutionResult(
                 tool_name=function_call.name or "",
@@ -380,23 +406,13 @@ class MCPGeminiBridge:
             )
 
             self._execution_history.append(execution_result)
-            logger.error(f"❌ Failed to execute {function_call.name}: {error_msg}")
 
             # Record failure for format learning
             if smart_parameter_handler and server and mcp_tool_name:
-                # Try to detect which format was attempted
-                format_type = 'unknown'
-                if 'formatted_arguments' in locals():
-                    formatted_arguments = locals()['formatted_arguments']
-                    if 'params' in formatted_arguments and len(formatted_arguments) == 1:
-                        format_type = 'wrapped' if isinstance(formatted_arguments['params'], dict) else 'fastmcp'
-                    else:
-                        format_type = 'direct'
-
                 smart_parameter_handler.record_success(
                     server_name=server,
                     tool_name=mcp_tool_name,
-                    format_type=format_type,
+                    format_type=detected_format,
                     success=False
                 )
 
@@ -496,6 +512,17 @@ def format_function_call_result_for_model(result: ToolExecutionResult) -> str:
     if result.success:
         # Handle different result types
         if isinstance(result.result, dict):
+            # Handle MCP result wrapper format
+            if 'content' in result.result and len(result.result) == 1:
+                # MCP tools often wrap results in {'content': [{'type': 'text', 'text': '...'}]}
+                content = result.result['content']
+                if isinstance(content, list) and len(content) > 0:
+                    first_content = content[0]
+                    if isinstance(first_content, dict) and 'text' in first_content:
+                        actual_result = first_content['text']
+                        logger.debug(f"📝 Extracted text from MCP content wrapper: {actual_result[:100]}...")
+                        return f"Tool {result.tool_name} executed successfully:\n{actual_result}"
+
             # Special handling for brave_search results
             if result.tool_name and 'brave' in result.tool_name.lower():
                 return _format_brave_search_result(result.tool_name, result.result)

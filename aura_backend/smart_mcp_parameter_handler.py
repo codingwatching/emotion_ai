@@ -28,16 +28,16 @@ class SmartMCPParameterHandler:
     Intelligently handles parameter formatting for MCP tools by analyzing
     their schemas and learning from successful calls.
     """
-    
+
     def __init__(self):
         # Cache for learned parameter formats
         # Key: (server_name, tool_name) -> ParameterFormat
         self._format_cache: Dict[Tuple[str, str], ParameterFormat] = {}
-        
+
         # Success tracking for format validation
         # Key: (server_name, tool_name, format_type) -> (success_count, failure_count)
         self._format_success_tracking: Dict[Tuple[str, str, str], Tuple[int, int]] = {}
-    
+
     def format_parameters(
         self,
         tool_name: str,
@@ -47,13 +47,13 @@ class SmartMCPParameterHandler:
     ) -> Dict[str, Any]:
         """
         Format parameters according to the tool's expected format by analyzing its schema.
-        
+
         Args:
             tool_name: Name of the MCP tool
             server_name: Name of the MCP server
             arguments: Raw arguments from Gemini
             tool_schema: Tool schema containing parameter definitions
-            
+
         Returns:
             Properly formatted parameters for the tool
         """
@@ -64,22 +64,22 @@ class SmartMCPParameterHandler:
                 cached_format = self._format_cache[cache_key]
                 logger.debug(f"📋 Using cached format '{cached_format.format_type}' for {tool_name}")
                 return self._apply_format(arguments, cached_format.format_type)
-            
+
             # Determine format type - try both schema and heuristics
             schema_format = None
             heuristic_format = None
-            
+
             # Try schema detection first
             if tool_schema:
                 schema_format = self._detect_format_from_schema(tool_schema, tool_name)
                 logger.debug(f"🔍 Schema detected format '{schema_format}' for {tool_name}")
-            
+
             # Always try heuristics as well
             heuristic_format = self._detect_format_from_heuristics(
                 tool_name, server_name, arguments
             )
             logger.debug(f"🎯 Heuristics detected format '{heuristic_format}' for {tool_name}")
-            
+
             # Choose the best format detection
             if schema_format == 'fastmcp' or heuristic_format == 'fastmcp':
                 # If either detection method says FastMCP, use FastMCP
@@ -97,18 +97,18 @@ class SmartMCPParameterHandler:
                 # Default fallback
                 format_type = 'direct'
                 logger.debug(f"🔧 Using default format '{format_type}' for {tool_name}")
-            
+
             # Cache the detection
             if tool_schema:
                 self._cache_format(server_name, tool_name, format_type, tool_schema)
-            
+
             return self._apply_format(arguments, format_type)
-                
+
         except Exception as e:
             logger.error(f"❌ Error formatting parameters for {tool_name}: {e}")
             # Return original arguments as fallback
             return arguments
-    
+
     def _detect_format_from_schema(
         self,
         tool_schema: Dict[str, Any],
@@ -116,73 +116,52 @@ class SmartMCPParameterHandler:
     ) -> str:
         """
         Detect parameter format from tool schema.
-        
+
         Returns: 'direct', 'wrapped', or 'fastmcp'
         """
         # Get the input schema or parameters section
         input_schema = tool_schema.get('inputSchema') or tool_schema.get('parameters', {})
         properties = input_schema.get('properties', {})
-        
+
         # Check if the tool expects no parameters
         if not properties:
             logger.debug(f"Tool {tool_name} expects no parameters")
             return 'direct'
-        
+
+        # For Brave search and similar tools, check for direct parameter structure
+        if any(param in properties for param in ['query', 'q', 'search_query']):
+            logger.debug(f"Tool {tool_name} has direct query parameters - using direct format")
+            return 'direct'
+
         # Check for $defs pattern (common in FastMCP tools with Pydantic models)
         if '$defs' in input_schema or '$ref' in str(input_schema):
             logger.debug(f"Tool {tool_name} uses $defs/$ref pattern - likely FastMCP")
             return 'fastmcp'
-        
-        # Special case: if the tool has required params and the top-level schema 
-        # has required params, it's likely FastMCP format
-        required = input_schema.get('required', [])
-        if required and 'params' in required and len(required) == 1:
-            logger.debug(f"Tool {tool_name} has only 'params' as required - likely FastMCP")
-            return 'fastmcp'
-        
-        # Check if there's a single 'params' property that contains all parameters
+
+        # Check if there's a single 'params' property that wraps everything
         if len(properties) == 1 and 'params' in properties:
             params_prop = properties['params']
-            
+
             # Check if params has a $ref (Pydantic model reference)
             if '$ref' in params_prop:
                 logger.debug(f"Tool {tool_name} uses $ref in params - FastMCP with Pydantic")
                 return 'fastmcp'
-            
+
             # Check if params is an object with its own properties
             if params_prop.get('type') == 'object' and 'properties' in params_prop:
                 logger.debug(f"Tool {tool_name} expects FastMCP-style wrapped params")
                 return 'fastmcp'
-            
-            # Check if params is a simple wrapper
-            if params_prop.get('type') in ['object', 'string']:
-                logger.debug(f"Tool {tool_name} expects wrapped params")
-                return 'wrapped'
-        
-        # Check for Aura tools specifically (they use FastMCP with Pydantic models)
+
+        # Check for Aura tools specifically
         tool_lower = tool_name.lower()
         if any(pattern in tool_lower for pattern in ['aura_', 'search_aura', 'store_aura', 'analyze_aura']):
             logger.debug(f"Tool {tool_name} is an Aura tool - using FastMCP format")
             return 'fastmcp'
-        
-        # Check if properties have anyOf patterns (common in Pydantic schemas)
-        if any('anyOf' in str(prop) for prop in properties.values()):
-            logger.debug(f"Tool {tool_name} uses anyOf patterns - likely FastMCP with Pydantic")
-            return 'fastmcp'
-        
-        # Check if all properties are direct parameters
-        # This is the most common case for simple tools
-        if all(
-            isinstance(prop, dict) and 'type' in prop
-            for prop in properties.values()
-        ):
-            logger.debug(f"Tool {tool_name} expects direct parameters")
-            return 'direct'
-        
-        # Default to direct if unsure
-        logger.debug(f"Tool {tool_name} format unclear, defaulting to direct")
+
+        # Default to direct for most tools (especially web search tools)
+        logger.debug(f"Tool {tool_name} using direct parameter format")
         return 'direct'
-    
+
     def _detect_format_from_heuristics(
         self,
         tool_name: str,
@@ -195,34 +174,38 @@ class SmartMCPParameterHandler:
         # Check if tool name suggests a certain pattern
         tool_lower = tool_name.lower()
         server_lower = server_name.lower()
-        
-        # Aura companion tools always use FastMCP format
+
+        # Brave search tools should use direct parameters (they expect {query: "..."})
+        if 'brave' in tool_lower or 'brave' in server_lower:
+            return 'direct'
+
+        # Web search tools generally use direct parameters
+        if any(pattern in tool_lower for pattern in ['search', 'web_search', 'google', 'bing']):
+            return 'direct'
+
+        # Aura companion tools use FastMCP format
         if 'aura' in server_lower and 'companion' in server_lower:
             return 'fastmcp'
-        
-        # Other known FastMCP tool patterns
-        if any(pattern in tool_lower for pattern in ['brave_', 'web_', 'search']):
-            return 'fastmcp'
-        
-        # Aura-specific tools
+
+        # Aura-specific internal tools
         if any(pattern in tool_lower for pattern in ['aura_', 'search_aura', 'store_aura', 'analyze_aura']):
             return 'fastmcp'
-        
-        # Common direct parameter tools
-        if any(pattern in tool_lower for pattern in ['read_', 'write_', 'execute_', 'list_']):
+
+        # Common direct parameter tools (filesystem, etc.)
+        if any(pattern in tool_lower for pattern in ['read_', 'write_', 'execute_', 'list_', 'get_', 'create_']):
             return 'direct'
-        
+
         # Check server implementation hints
-        if 'mcp-server' in server_lower or 'fastmcp' in server_lower:
+        if 'fastmcp' in server_lower:
             return 'fastmcp'
-        
+
         # JavaScript/TypeScript servers often use wrapped params
         if any(hint in server_lower for hint in ['npx', 'node', 'js', 'ts']):
             return 'wrapped'
-        
-        # Default to direct for Python servers
+
+        # Default to direct for most external tools
         return 'direct'
-    
+
     def _apply_format(self, arguments: Dict[str, Any], format_type: str) -> Dict[str, Any]:
         """
         Apply the detected format to the arguments.
@@ -230,42 +213,17 @@ class SmartMCPParameterHandler:
         # Handle empty arguments
         if not arguments:
             return {}
-        
-        # Check if arguments are already in the expected format
-        if format_type in ['wrapped', 'fastmcp'] and 'params' in arguments and len(arguments) == 1:
-            # Already wrapped correctly - but make sure params is the right type
-            params_value = arguments['params']
-            if isinstance(params_value, str):
-                try:
-                    # Try to parse JSON string to object
-                    parsed_params = json.loads(params_value)
-                    return {'params': parsed_params}
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse params JSON string: {params_value}")
-                    return arguments
-            return arguments
-        
-        # Apply formatting based on type
+
+        # For direct format, just return arguments as-is (most common case)
         if format_type == 'direct':
-            # Unwrap if necessary
-            if 'params' in arguments and len(arguments) == 1:
-                params_value = arguments['params']
-                if isinstance(params_value, dict):
-                    return params_value
-                elif isinstance(params_value, str):
-                    try:
-                        return json.loads(params_value)
-                    except json.JSONDecodeError:
-                        logger.warning(f"Failed to parse direct params JSON: {params_value}")
-                        pass
             return arguments
-            
+
         elif format_type == 'fastmcp':
-            # Wrap in params for FastMCP - ensure the params is a dict, not a string
+            # Wrap in params for FastMCP - but only if not already wrapped
             if 'params' not in arguments:
                 return {'params': arguments}
             else:
-                # Params already exists, but might be a string
+                # Already wrapped, ensure params is a dict not string
                 params_value = arguments['params']
                 if isinstance(params_value, str):
                     try:
@@ -274,27 +232,18 @@ class SmartMCPParameterHandler:
                     except json.JSONDecodeError:
                         logger.warning(f"Failed to parse FastMCP params JSON: {params_value}")
                         return arguments
-                else:
-                    return arguments
-            
+                return arguments
+
         elif format_type == 'wrapped':
-            # Simple wrapper
+            # Simple wrapper - similar to fastmcp but simpler
             if 'params' not in arguments:
                 return {'params': arguments}
             else:
-                # Params already exists, handle string case
-                params_value = arguments['params']
-                if isinstance(params_value, str):
-                    try:
-                        parsed_params = json.loads(params_value)
-                        return {'params': parsed_params}
-                    except json.JSONDecodeError:
-                        logger.warning(f"Failed to parse wrapped params JSON: {params_value}")
                 return arguments
-        
+
         # Default to returning as-is
         return arguments
-    
+
     def _cache_format(
         self,
         server_name: str,
@@ -304,18 +253,18 @@ class SmartMCPParameterHandler:
     ):
         """Cache the detected format for future use."""
         cache_key = (server_name, tool_name)
-        
+
         # Create a simple hash of the schema for validation
         schema_str = json.dumps(tool_schema, sort_keys=True)
         schema_hash = str(hash(schema_str))
-        
+
         self._format_cache[cache_key] = ParameterFormat(
             format_type=format_type,
             detected_at=datetime.now(),
             schema_hash=schema_hash,
             confidence=1.0  # High confidence from schema analysis
         )
-    
+
     def record_success(
         self,
         server_name: str,
@@ -328,26 +277,26 @@ class SmartMCPParameterHandler:
         This helps improve format detection over time.
         """
         tracking_key = (server_name, tool_name, format_type)
-        
+
         if tracking_key not in self._format_success_tracking:
             self._format_success_tracking[tracking_key] = (0, 0)
-        
+
         success_count, failure_count = self._format_success_tracking[tracking_key]
-        
+
         if success:
             self._format_success_tracking[tracking_key] = (success_count + 1, failure_count)
             logger.debug(f"✅ Format '{format_type}' succeeded for {tool_name}")
         else:
             self._format_success_tracking[tracking_key] = (success_count, failure_count + 1)
             logger.debug(f"❌ Format '{format_type}' failed for {tool_name}")
-            
+
             # If this format consistently fails, remove it from cache
             if failure_count >= 2 and success_count == 0:
                 cache_key = (server_name, tool_name)
                 if cache_key in self._format_cache:
                     del self._format_cache[cache_key]
                     logger.warning(f"🔄 Removed cached format for {tool_name} due to failures")
-    
+
     def get_format_stats(self) -> Dict[str, Any]:
         """Get statistics about format detection and success rates."""
         stats = {
@@ -355,13 +304,13 @@ class SmartMCPParameterHandler:
             'format_distribution': {},
             'success_rates': {}
         }
-        
+
         # Count format types
         for format_info in self._format_cache.values():
             format_type = format_info.format_type
             stats['format_distribution'][format_type] = \
                 stats['format_distribution'].get(format_type, 0) + 1
-        
+
         # Calculate success rates
         for (server, tool, fmt), (success, failure) in self._format_success_tracking.items():
             key = f"{server}.{tool}.{fmt}"
@@ -372,7 +321,7 @@ class SmartMCPParameterHandler:
                     'failure': failure,
                     'rate': success / total
                 }
-        
+
         return stats
 
 # Global instance for reuse
@@ -390,7 +339,7 @@ def get_smart_parameter_handler() -> SmartMCPParameterHandler:
 if __name__ == "__main__":
     # Test the smart parameter handler
     handler = SmartMCPParameterHandler()
-    
+
     # Test schemas that would indicate different formats
     test_schemas = [
         # Direct parameters schema
@@ -441,18 +390,18 @@ if __name__ == "__main__":
             "expected": "direct"
         }
     ]
-    
+
     print("🧪 Testing Smart Parameter Handler\n")
     print("=" * 60)
-    
+
     for test in test_schemas:
         detected = handler._detect_format_from_schema(
             test["schema"]["inputSchema"],
             test["name"]
         )
-        
+
         status = "✅" if detected == test["expected"] else "❌"
         print(f"{status} {test['name']}: detected '{detected}', expected '{test['expected']}'")
-    
+
     print("\n" + "=" * 60)
     print("✅ Smart parameter detection ready!")

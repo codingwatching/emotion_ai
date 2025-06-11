@@ -207,10 +207,12 @@ class ConversationPersistenceService:
             logger.critical("⚠️ This will reset the entire ChromaDB and may cause data loss!")
 
             # Import here to avoid circular dependencies
-            from emergency_db_recovery import EmergencyDBRecovery
+            from recover_chromadb import ChromaDBRecovery
 
-            recovery = EmergencyDBRecovery()
-            result = await recovery.emergency_recovery()
+            recovery = ChromaDBRecovery()
+            backup_path = self.file_system.base_path / "emergency_recovery_backup"
+            extracted_data = {}  # Initialize empty dict for extracted data
+            result = recovery.create_recovery_report(backup_path, extracted_data)
 
             if result["success"]:
                 logger.critical("✅ Emergency recovery completed successfully")

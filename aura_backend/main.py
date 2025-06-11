@@ -908,19 +908,29 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 elif hasattr(part, 'function_call') and part.function_call and mcp_gemini_bridge:
                     # Execute the function call through MCP bridge
                     logger.info(f"🔧 Executing function call: {part.function_call.name}")
+                    logger.info(f"📥 Function call args: {dict(part.function_call.args) if part.function_call.args else {}}")
 
                     execution_result = await mcp_gemini_bridge.execute_function_call(
                         part.function_call,
                         request.user_id
                     )
 
+                    logger.info(f"📊 Execution result - Success: {execution_result.success}")
+                    if not execution_result.success:
+                        logger.error(f"❌ Tool execution failed: {execution_result.error}")
+                    else:
+                        logger.info(f"📋 Tool execution successful, result type: {type(execution_result.result)}")
+
                     # Use the improved formatting function from the bridge
                     formatted_result_text = format_function_call_result_for_model(execution_result)
-                    logger.info(f"📝 Formatted result: {formatted_result_text[:200]}...")  # Log first 200 chars
+                    logger.debug(f"📝 Formatted result preview: {formatted_result_text[:200]}...")
 
                     # Prepare the function result for the model
                     # The model expects the raw result data, not the formatted text
                     result_data = execution_result.result if execution_result.success else {"error": execution_result.error}
+
+                    logger.debug(f"📤 Sending to model - Result data type: {type(result_data)}")
+                    logger.debug(f"📤 Result data preview: {str(result_data)[:200]}...")
 
                     # Send function result back to model using function_response
                     follow_up = chat.send_message([
@@ -942,6 +952,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                         for follow_part in follow_up.candidates[0].content.parts:
                             if follow_part.text:
                                 final_response += follow_part.text
+                                logger.debug(f"📝 Added follow-up text: {follow_part.text[:100]}...")
 
         aura_response = final_response or "I'm here and ready to help!"
 
