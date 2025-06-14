@@ -72,7 +72,7 @@ class ConversationPersistenceService:
         self,
         vector_db: Any,      # Will be AuraVectorDB when imported
         file_system: Any,    # Will be AuraFileSystem when imported
-        compaction_delay: float = 0.2,  # Increased default delay
+        compaction_delay: float = 0.5,  # Increased default delay
         max_retries: int = 3,
         backup_enabled: bool = True,
         chromadb_recovery_enabled: bool = True,
@@ -344,11 +344,11 @@ class ConversationPersistenceService:
         self,
         exchange: ConversationExchange,
         update_profile: bool = True,
-        timeout: float = 5.0
+        timeout: float = 30.0
     ) -> Dict[str, Any]:
         """
         Immediate persistence with timeout for critical chat history saving.
-        
+
         This method prioritizes speed and reliability for real-time chat history storage.
         It uses optimized settings and aggressive error recovery to ensure conversations
         are saved consistently like the first conversation.
@@ -362,25 +362,25 @@ class ConversationPersistenceService:
             Dictionary containing storage results and any errors
         """
         start_time = datetime.now()
-        
+
         try:
             # Use timeout wrapper for critical persistence
             result = await asyncio.wait_for(
                 self._persist_conversation_exchange_optimized(exchange, update_profile),
                 timeout=timeout
             )
-            
+
             # Add timing information
             duration = (datetime.now() - start_time).total_seconds() * 1000
             result["duration_ms"] = duration
             result["method"] = "immediate_optimized"
-            
+
             return result
-            
+
         except asyncio.TimeoutError:
             duration = (datetime.now() - start_time).total_seconds() * 1000
             logger.error(f"⏱️ Immediate persistence timeout after {timeout}s for {exchange.user_memory.user_id}")
-            
+
             return {
                 "success": False,
                 "stored_components": [],
@@ -389,11 +389,11 @@ class ConversationPersistenceService:
                 "retry_count": 0,
                 "method": "immediate_timeout"
             }
-            
+
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds() * 1000
             logger.error(f"❌ Immediate persistence failed for {exchange.user_memory.user_id}: {e}")
-            
+
             return {
                 "success": False,
                 "stored_components": [],
@@ -410,7 +410,7 @@ class ConversationPersistenceService:
     ) -> Dict[str, Any]:
         """
         Optimized persistence method for immediate execution.
-        
+
         Uses reduced delays and streamlined error handling for speed.
         """
         async with self._write_semaphore:
@@ -423,7 +423,7 @@ class ConversationPersistenceService:
 
             # Reduced retry count for immediate persistence (prioritize speed)
             max_immediate_retries = 2
-            
+
             for attempt in range(max_immediate_retries):
                 try:
                     results["retry_count"] = attempt
@@ -436,7 +436,7 @@ class ConversationPersistenceService:
 
                     # Optimized storage sequence
                     await self._store_conversation_pair_optimized(exchange, results)
-                    
+
                     # Store emotional patterns (non-blocking for immediate mode)
                     try:
                         await self._store_emotional_patterns(exchange, results)
@@ -477,7 +477,7 @@ class ConversationPersistenceService:
     ) -> None:
         """
         Optimized conversation pair storage for immediate persistence.
-        
+
         Uses minimal delays while maintaining data integrity.
         """
         try:
