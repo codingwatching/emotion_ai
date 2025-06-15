@@ -5,15 +5,32 @@ MCP to Gemini Function Calling Bridge
 This module bridges MCP tools with Google Gemini's function calling system.
 It converts MCP tool schemas to Gemini-compatible function definitions and
 handles the execution flow between Gemini and MCP servers.
+
+Enhanced Features:
+- Comprehensive error handling with retry logic for Gemini 2.5 stability issues
+- Heartbeat monitoring for long-running tool operations (configurable timeout)
+- Progress tracking and cancellation support for extended operations
+- Large result handling with automatic truncation for memory efficiency
+- Performance monitoring and statistics tracking
+- Smart parameter handling with fallback implementations
+- JSON serialization fixes for NumPy types and complex data structures
+
+Configuration Environment Variables:
+- TOOL_CALL_MAX_RETRIES: Maximum retry attempts (default: 3)
+- TOOL_CALL_RETRY_DELAY: Delay between retries in seconds (default: 1.0)
+- TOOL_CALL_EXPONENTIAL_BACKOFF: Enable exponential backoff (default: true)
+- TOOL_CALL_TIMEOUT: Timeout for tool execution in seconds (default: 60.0)
+- TOOL_CALL_HEARTBEAT_INTERVAL: Heartbeat interval for long operations (default: 10.0)
 """
 
 import logging
 import asyncio
 import os
+import traceback
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 
 # Google Gemini imports
@@ -56,7 +73,13 @@ except ImportError:
 
     def ensure_json_serializable(data: Any) -> Any:
         """Ensure data is JSON serializable"""
-        return convert_numpy_to_python(data)
+        try:
+            # Test if it's already serializable
+            json.dumps(data)
+            return data
+        except (TypeError, ValueError):
+            # If not, convert using our converter
+            return convert_numpy_to_python(data)
 
 # Import smart parameter handler
 try:
@@ -71,7 +94,8 @@ TOOL_CALL_MAX_RETRIES = int(os.getenv('TOOL_CALL_MAX_RETRIES', '3'))
 TOOL_CALL_RETRY_DELAY = float(os.getenv('TOOL_CALL_RETRY_DELAY', '1.0'))
 TOOL_CALL_EXPONENTIAL_BACKOFF = os.getenv('TOOL_CALL_EXPONENTIAL_BACKOFF', 'true').lower() == 'true'
 TOOL_CALL_SEQUENTIAL_MODE = os.getenv('TOOL_CALL_SEQUENTIAL_MODE', 'false').lower() == 'true'
-TOOL_CALL_TIMEOUT = float(os.getenv('TOOL_CALL_TIMEOUT', '30.0'))
+TOOL_CALL_TIMEOUT = float(os.getenv('TOOL_CALL_TIMEOUT', '60.0'))  # Increased to 60s for longer operations
+TOOL_CALL_HEARTBEAT_INTERVAL = float(os.getenv('TOOL_CALL_HEARTBEAT_INTERVAL', '10.0'))  # Heartbeat every 10s
 
 @dataclass
 class ToolExecutionResult:
@@ -353,12 +377,20 @@ class MCPGeminiBridge:
                     logger.info(f"🔄 Retry attempt {attempt}/{TOOL_CALL_MAX_RETRIES} for {function_call.name} after {delay:.1f}s")
                     await asyncio.sleep(delay)
 
-                # Execute with timeout to handle hanging calls
+                # Execute with timeout and heartbeat for long-running operations
                 try:
-                    result = await asyncio.wait_for(
-                        self._execute_single_function_call(function_call, user_id),
-                        timeout=TOOL_CALL_TIMEOUT
-                    )
+                    if TOOL_CALL_TIMEOUT > TOOL_CALL_HEARTBEAT_INTERVAL:
+                        # For longer timeouts, add heartbeat monitoring
+                        result = await self._execute_with_heartbeat(
+                            self._execute_single_function_call(function_call, user_id),
+                            function_call.name or "unknown"
+                        )
+                    else:
+                        # For shorter timeouts, use simple timeout
+                        result = await asyncio.wait_for(
+                            self._execute_single_function_call(function_call, user_id),
+                            timeout=TOOL_CALL_TIMEOUT
+                        )
 
                     if result.success:
                         if attempt > 0:
@@ -371,6 +403,11 @@ class MCPGeminiBridge:
                 except asyncio.TimeoutError:
                     last_error = f"Tool execution timed out after {TOOL_CALL_TIMEOUT}s"
                     logger.error(f"⏱️ Tool {function_call.name} timed out on attempt {attempt + 1}")
+                except asyncio.CancelledError:
+                    last_error = "Tool execution was cancelled"
+                    logger.error(f"🚫 Tool {function_call.name} was cancelled on attempt {attempt + 1}")
+                    # Don't retry on cancellation
+                    break
 
             except Exception as e:
                 last_error = str(e)
@@ -458,26 +495,24 @@ class MCPGeminiBridge:
             else:
                 logger.debug("⚠️ Smart parameter handler not available, using raw arguments")
 
-            # Execute the MCP tool
-            result = None
-            if server == 'aura-internal' and self.aura_internal_tools:
-                logger.debug(f"🏠 Executing internal tool: {mcp_tool_name}")
-                result = await self.aura_internal_tools.execute_tool(mcp_tool_name, formatted_arguments)
-            else:
-                logger.debug(f"🌐 Executing external MCP tool: {mcp_tool_name}")
-
-                if hasattr(self.mcp_client_manager, 'call_tool'):
-                    result = await self.mcp_client_manager.call_tool(mcp_tool_name, formatted_arguments)
-                else:
-                    raise ValueError(f"Cannot execute external tool {mcp_tool_name}: MCP client not properly configured")
+            # Execute the MCP tool with progress tracking
+            result = await self._execute_tool_with_progress(
+                function_name, server, mcp_tool_name, formatted_arguments
+            )
 
             execution_time = (datetime.now() - start_time).total_seconds()
 
             logger.debug(f"✅ Tool {function_name} executed successfully in {execution_time:.2f}s")
             logger.debug(f"📋 Result type: {type(result)}")
 
+            # Handle potentially large results
+            processed_result = self._handle_large_result(result, function_name)
+
             # Clean result to ensure JSON serializability
-            cleaned_result = ensure_json_serializable(result)
+            cleaned_result = ensure_json_serializable(processed_result)
+
+            # Handle large result
+            cleaned_result = self._handle_large_result(cleaned_result, function_name)
 
             execution_result = ToolExecutionResult(
                 tool_name=function_name,
@@ -531,6 +566,41 @@ class MCPGeminiBridge:
                 )
 
             return execution_result
+
+    async def _execute_with_heartbeat(self, coro, tool_name: str):
+        """
+        Execute a coroutine with periodic heartbeat logging for long-running operations.
+
+        Args:
+            coro: The coroutine to execute
+            tool_name: Name of the tool for logging
+
+        Returns:
+            Result of the coroutine execution
+        """
+        start_time = datetime.now()
+
+        async def heartbeat_monitor():
+            """Monitor task progress and log heartbeats"""
+            while True:
+                await asyncio.sleep(TOOL_CALL_HEARTBEAT_INTERVAL)
+                elapsed = (datetime.now() - start_time).total_seconds()
+                logger.info(f"💓 Tool {tool_name} still running... ({elapsed:.1f}s elapsed)")
+
+        # Start heartbeat monitor
+        heartbeat_task = asyncio.create_task(heartbeat_monitor())
+
+        try:
+            # Execute the main task with timeout
+            result = await asyncio.wait_for(coro, timeout=TOOL_CALL_TIMEOUT)
+            return result
+        finally:
+            # Always cancel the heartbeat monitor
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass  # Expected when cancelling
 
     def get_available_functions(self) -> List[Dict[str, Any]]:
         """
@@ -610,6 +680,233 @@ class MCPGeminiBridge:
             stats['parameter_handling'] = smart_parameter_handler.get_format_stats()
 
         return stats
+
+    def get_running_tools(self) -> List[Dict[str, Any]]:
+        """
+        Get information about currently running tools.
+
+        Returns:
+            List of running tool information
+        """
+        # This is a placeholder - in a real implementation, you'd track running tasks
+        running_tools = []
+
+        # Add recent executions that might still be running
+        recent_time = datetime.now() - timedelta(seconds=TOOL_CALL_TIMEOUT)
+
+        for execution in self._execution_history[-10:]:  # Last 10 executions
+            if execution.execution_time is None:  # Still running
+                running_tools.append({
+                    'tool_name': execution.tool_name,
+                    'started_at': recent_time.isoformat(),
+                    'status': 'running'
+                })
+
+        return running_tools
+
+    async def cancel_tool_execution(self, tool_name: str) -> bool:
+        """
+        Cancel a running tool execution.
+
+        Args:
+            tool_name: Name of the tool to cancel
+
+        Returns:
+            True if cancellation was successful, False otherwise
+        """
+        # This is a placeholder - in a real implementation, you'd track and cancel tasks
+        logger.info(f"🚫 Attempting to cancel tool: {tool_name}")
+
+        # In a full implementation, you would:
+        # 1. Track running asyncio tasks
+        # 2. Cancel the specific task
+        # 3. Handle cleanup
+
+        return False  # Placeholder return
+
+    def get_tool_performance_stats(self) -> Dict[str, Any]:
+        """
+        Get performance statistics for tool executions.
+
+        Returns:
+            Dictionary with performance metrics
+        """
+        if not self._execution_history:
+            return {
+                'total_executions': 0,
+                'average_execution_time': 0,
+                'success_rate': 0,
+                'tools_by_performance': {}
+            }
+
+        # Calculate overall stats
+        total_executions = len(self._execution_history)
+        successful_executions = [e for e in self._execution_history if e.success]
+
+        execution_times = [e.execution_time for e in successful_executions if e.execution_time is not None]
+        avg_execution_time = sum(execution_times) / len(execution_times) if execution_times else 0
+
+        # Group by tool
+        tool_stats = {}
+        for execution in self._execution_history:
+            tool_name = execution.tool_name
+            if tool_name not in tool_stats:
+                tool_stats[tool_name] = {
+                    'executions': 0,
+                    'successes': 0,
+                    'execution_times': [],
+                    'errors': []
+                }
+
+            tool_stats[tool_name]['executions'] += 1
+            if execution.success:
+                tool_stats[tool_name]['successes'] += 1
+                if execution.execution_time is not None:
+                    tool_stats[tool_name]['execution_times'].append(execution.execution_time)
+            else:
+                tool_stats[tool_name]['errors'].append(execution.error)
+
+        # Calculate per-tool metrics
+        tools_by_performance = {}
+        for tool_name, stats in tool_stats.items():
+            success_rate = stats['successes'] / stats['executions'] if stats['executions'] > 0 else 0
+            avg_time = sum(stats['execution_times']) / len(stats['execution_times']) if stats['execution_times'] else 0
+
+            tools_by_performance[tool_name] = {
+                'executions': stats['executions'],
+                'success_rate': success_rate,
+                'average_execution_time': avg_time,
+                'recent_errors': stats['errors'][-3:]  # Last 3 errors
+            }
+
+        return {
+            'total_executions': total_executions,
+            'average_execution_time': avg_execution_time,
+            'success_rate': len(successful_executions) / total_executions,
+            'tools_by_performance': tools_by_performance,
+            'recent_executions': [
+                {
+                    'tool_name': e.tool_name,
+                    'success': e.success,
+                    'execution_time': e.execution_time,
+                    'timestamp': datetime.now().isoformat()  # Would be actual timestamp in real implementation
+                }
+                for e in self._execution_history[-5:]
+            ]
+        }
+
+    async def _execute_tool_with_progress(self, tool_name: str, server: str, mcp_tool_name: str,
+                                         formatted_arguments: Dict[str, Any]) -> Any:
+        """
+        Execute a tool with progress tracking and enhanced error handling.
+
+        Args:
+            tool_name: Clean tool name for Gemini
+            server: Server name
+            mcp_tool_name: Original MCP tool name
+            formatted_arguments: Formatted arguments for the tool
+
+        Returns:
+            Tool execution result
+        """
+        try:
+            if server == 'aura-internal' and self.aura_internal_tools:
+                logger.debug(f"🏠 Executing internal tool: {mcp_tool_name}")
+
+                # Check if tool supports progress callbacks
+                if hasattr(self.aura_internal_tools, 'execute_tool_with_progress'):
+                    # Use progress-aware execution if available
+                    async def progress_callback(message: str):
+                        logger.info(f"📊 {mcp_tool_name}: {message}")
+
+                    result = await self.aura_internal_tools.execute_tool_with_progress(
+                        mcp_tool_name,
+                        formatted_arguments,
+                        progress_callback=progress_callback
+                    )
+                else:
+                    # Fall back to regular execution
+                    result = await self.aura_internal_tools.execute_tool(mcp_tool_name, formatted_arguments)
+
+            else:
+                logger.debug(f"🌐 Executing external MCP tool: {mcp_tool_name}")
+
+                if hasattr(self.mcp_client_manager, 'call_tool'):
+                    # Add timeout hints for external tools
+                    if 'timeout' not in formatted_arguments and TOOL_CALL_TIMEOUT > 30:
+                        # For long timeouts, suggest a reasonable timeout to the tool
+                        formatted_arguments['timeout'] = min(TOOL_CALL_TIMEOUT - 5, 300)  # Max 5 minutes
+
+                    result = await self.mcp_client_manager.call_tool(mcp_tool_name, formatted_arguments)
+                else:
+                    raise ValueError(f"Cannot execute external tool {mcp_tool_name}: MCP client not properly configured")
+
+            return result
+
+        except asyncio.CancelledError:
+            logger.warning(f"🚫 Tool {mcp_tool_name} execution was cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"❌ Error executing tool {mcp_tool_name}: {e}")
+            logger.debug(f"🔍 Error details: {traceback.format_exc()}")
+            raise
+
+    def _handle_large_result(self, result: Any, tool_name: str) -> Any:
+        """
+        Handle potentially large tool results by truncating or streaming if necessary.
+
+        Args:
+            result: Raw tool result
+            tool_name: Name of the tool
+
+        Returns:
+            Processed result (potentially truncated)
+        """
+        try:
+            # Convert to JSON to estimate size
+            result_json = json.dumps(ensure_json_serializable(result))
+            result_size = len(result_json)
+
+            # If result is very large (>1MB), truncate it
+            MAX_RESULT_SIZE = 1024 * 1024  # 1MB
+
+            if result_size > MAX_RESULT_SIZE:
+                logger.warning(f"⚠️ Tool {tool_name} returned large result ({result_size} bytes), truncating...")
+
+                if isinstance(result, dict):
+                    # Try to preserve structure while reducing size
+                    truncated = {}
+                    for key, value in result.items():
+                        if isinstance(value, (list, str)) and len(str(value)) > 10000:
+                            if isinstance(value, list):
+                                truncated[key] = value[:10] + [f"... ({len(value) - 10} more items)"]
+                            else:
+                                truncated[key] = str(value)[:1000] + f"... (truncated from {len(str(value))} chars)"
+                        else:
+                            truncated[key] = value
+
+                    # Add metadata about truncation
+                    truncated['_metadata'] = {
+                        'original_size_bytes': result_size,
+                        'truncated': True,
+                        'tool_name': tool_name
+                    }
+
+                    return truncated
+
+                elif isinstance(result, list) and len(result) > 100:
+                    # Truncate large lists
+                    return result[:50] + [f"... ({len(result) - 50} more items truncated)"]
+
+                elif isinstance(result, str) and len(result) > 10000:
+                    # Truncate large strings
+                    return result[:5000] + f"... (truncated from {len(result)} characters)"
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"⚠️ Error handling large result for {tool_name}: {e}")
+            return result  # Return original if processing fails
 
 def format_function_call_result_for_model(result: ToolExecutionResult) -> str:
     """

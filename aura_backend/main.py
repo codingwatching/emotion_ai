@@ -84,6 +84,16 @@ from mcp_integration import (
 )
 from aura_internal_tools import AuraInternalTools
 
+# Import Autonomic Nervous System
+from aura_autonomic_system import (
+    initialize_autonomic_system,
+    shutdown_autonomic_system,
+    get_autonomic_system,
+    AutonomicNervousSystem,
+    TaskType,
+    TaskPriority
+)
+
 # Import the new persistence services
 from conversation_persistence_service import ConversationPersistenceService, ConversationExchange
 from memvid_archival_service import MemvidArchivalService
@@ -376,6 +386,7 @@ aura_internal_tools: Optional[AuraInternalTools] = None
 conversation_persistence: Optional[ConversationPersistenceService] = None
 memvid_archival: Optional[MemvidArchivalService] = None
 mcp_gemini_bridge: Optional[MCPGeminiBridge] = None
+autonomic_system: Optional[AutonomicNervousSystem] = None
 
 # Session management for persistent chat contexts
 active_chat_sessions: Dict[str, Any] = {}
@@ -718,7 +729,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize global components (prevents duplicate initialization)
     global vector_db, aura_file_system, state_manager, aura_internal_tools
-    global conversation_persistence, memvid_archival, mcp_gemini_bridge, global_tool_version
+    global conversation_persistence, memvid_archival, mcp_gemini_bridge, global_tool_version, autonomic_system
 
     # Initialize with robust vector database with SQLite-level concurrency control
     vector_db = AuraVectorDB()
@@ -758,10 +769,41 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ MCP system initialization failed: {mcp_status.get('error', 'Unknown error')}")
         logger.warning("⚠️ Continuing with limited functionality (internal tools only)")
 
+    # Initialize Autonomic Nervous System
+    autonomic_enabled = os.getenv('AUTONOMIC_ENABLED', 'true').lower() == 'true'
+    
+    if autonomic_enabled:
+        logger.info("🧠 Initializing Autonomic Nervous System...")
+        try:
+            autonomic_system = await initialize_autonomic_system(
+                mcp_bridge=mcp_gemini_bridge,
+                internal_tools=aura_internal_tools
+            )
+            logger.info("✅ Autonomic Nervous System initialized successfully")
+            
+            # Get system status for logging
+            autonomic_status = autonomic_system.get_system_status()
+            logger.info(f"🤖 Autonomic Model: {autonomic_status['autonomic_model']}")
+            logger.info(f"🔧 Max Concurrent Tasks: {autonomic_status['max_concurrent_tasks']}")
+            logger.info(f"📊 Task Threshold: {autonomic_status['task_threshold']}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Autonomic Nervous System: {e}")
+            logger.warning("⚠️ Continuing without autonomic processing")
+            autonomic_system = None
+    else:
+        logger.info("⚠️ Autonomic Nervous System disabled in configuration")
+        autonomic_system = None
+
     yield
 
     # Shutdown
     logger.info("🛑 Shutting down Aura Backend...")
+    
+    # Shutdown autonomic system first
+    await shutdown_autonomic_system()
+    
+    # Shutdown MCP system
     await shutdown_mcp_system()
 
     # Gracefully close the enhanced vector database
@@ -909,7 +951,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             session_recovery_enabled
         )
 
-        # Enhanced conversation processing with Gemini 2.5 stability fixes
+        # Enhanced conversation processing with Gemini 2.5 stability fixes and autonomic integration
         aura_response = await _process_conversation_with_retry(
             chat,
             request.message,
@@ -917,6 +959,28 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             session_key,
             session_recovery_enabled
         )
+        
+        # Autonomic task analysis and potential offloading
+        if autonomic_system and autonomic_system._running:
+            # Analyze conversation for potential autonomic tasks
+            autonomic_tasks = await _analyze_conversation_for_autonomic_tasks(
+                user_message=request.message,
+                aura_response=aura_response,
+                user_id=request.user_id,
+                session_id=session_id
+            )
+            
+            # Submit tasks to autonomic system for background processing
+            for task_description, task_payload in autonomic_tasks:
+                was_offloaded, task_id = await autonomic_system.submit_task(
+                    description=task_description,
+                    payload=task_payload,
+                    user_id=request.user_id,
+                    session_id=session_id
+                )
+                
+                if was_offloaded:
+                    logger.info(f"🤖 Offloaded autonomic task: {task_id} - {task_description[:50]}...")
 
         # Process emotional state detection for both user and Aura
         user_emotional_state = await detect_user_emotion(
@@ -1286,6 +1350,99 @@ async def _process_conversation_with_retry(
 
     # This should never be reached due to the loop structure, but safety fallback
     return "I'm here and ready to help, though I may have encountered some processing issues."
+
+async def _analyze_conversation_for_autonomic_tasks(
+    user_message: str,
+    aura_response: str,
+    user_id: str,
+    session_id: str
+) -> List[Tuple[str, Dict[str, Any]]]:
+    """
+    Analyze conversation for potential autonomic tasks that could enhance future interactions
+    
+    Returns:
+        List of (task_description, task_payload) tuples for autonomic processing
+    """
+    potential_tasks = []
+    
+    # Analyze for memory consolidation opportunities
+    if len(user_message.split()) > 10 or len(aura_response.split()) > 20:
+        potential_tasks.append((
+            f"Analyze and consolidate conversation memory patterns for user {user_id}",
+            {
+                "task_type": "memory_consolidation",
+                "user_message": user_message,
+                "aura_response": aura_response,
+                "user_id": user_id,
+                "session_id": session_id,
+                "conversation_length": len(user_message) + len(aura_response)
+            }
+        ))
+    
+    # Analyze for emotional pattern tracking
+    emotional_keywords = [
+        "feel", "emotion", "mood", "happy", "sad", "excited", "worried", 
+        "anxious", "calm", "peaceful", "frustrated", "angry", "love"
+    ]
+    
+    if any(keyword in user_message.lower() for keyword in emotional_keywords):
+        potential_tasks.append((
+            f"Deep emotional pattern analysis for user {user_id}",
+            {
+                "task_type": "emotional_analysis",
+                "user_message": user_message,
+                "user_id": user_id,
+                "session_id": session_id,
+                "analysis_scope": "emotional_patterns"
+            }
+        ))
+    
+    # Analyze for learning pattern optimization
+    learning_keywords = [
+        "learn", "understand", "explain", "teach", "show", "how to", 
+        "what is", "why", "concept", "idea", "knowledge"
+    ]
+    
+    if any(keyword in user_message.lower() for keyword in learning_keywords):
+        potential_tasks.append((
+            f"Optimize learning patterns and knowledge structure for user {user_id}",
+            {
+                "task_type": "learning_optimization",
+                "user_message": user_message,
+                "user_id": user_id,
+                "session_id": session_id,
+                "learning_context": "knowledge_acquisition"
+            }
+        ))
+    
+    # Analyze for background memory search and preparation
+    if "remember" in user_message.lower() or "recall" in user_message.lower():
+        potential_tasks.append((
+            f"Proactive memory search and context preparation for user {user_id}",
+            {
+                "task_type": "proactive_memory_search",
+                "query": user_message,
+                "user_id": user_id,
+                "session_id": session_id,
+                "max_results": 15
+            }
+        ))
+    
+    # Analyze for relationship and context building
+    if len(potential_tasks) == 0 and len(user_message.split()) > 5:
+        # Default background task for context building
+        potential_tasks.append((
+            f"Background context analysis and relationship mapping for user {user_id}",
+            {
+                "task_type": "context_building",
+                "user_message": user_message,
+                "user_id": user_id,
+                "session_id": session_id,
+                "analysis_type": "relationship_mapping"
+            }
+        ))
+    
+    return potential_tasks
 @app.post("/search")
 async def search_memories(request: SearchRequest):
     """Search through conversation memories using Aura's internal MCP tools"""
@@ -1755,6 +1912,260 @@ async def get_vector_db_health():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
+
+@app.get("/autonomic/status")
+async def get_autonomic_status():
+    """Get comprehensive autonomic nervous system status"""
+    try:
+        autonomic_enabled = os.getenv('AUTONOMIC_ENABLED', 'true').lower() == 'true'
+        
+        if not autonomic_enabled:
+            return {
+                "status": "disabled",
+                "message": "Autonomic nervous system is disabled in configuration",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        if not autonomic_system:
+            return {
+                "status": "not_initialized",
+                "error": "Autonomic nervous system not initialized",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        status = autonomic_system.get_system_status()
+        return {
+            "status": "operational" if status["running"] else "stopped",
+            "system_status": status,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get autonomic status: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/autonomic/tasks/{user_id}")
+async def get_user_autonomic_tasks(user_id: str, limit: int = 20):
+    """Get autonomic tasks for a specific user"""
+    try:
+        if not autonomic_system:
+            raise HTTPException(status_code=500, detail="Autonomic system not initialized")
+        
+        # Get completed tasks for the user
+        user_tasks = []
+        for task_id, task in autonomic_system.completed_tasks.items():
+            if task.user_id == user_id:
+                user_tasks.append({
+                    "task_id": task.task_id,
+                    "task_type": task.task_type.value,
+                    "priority": task.priority.value,
+                    "description": task.description,
+                    "status": task.status.value,
+                    "created_at": task.created_at.isoformat() if task.created_at else None,
+                    "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+                    "execution_time_ms": task.execution_time_ms,
+                    "has_result": task.result is not None,
+                    "has_error": task.error is not None
+                })
+        
+        # Get active tasks for the user
+        active_user_tasks = []
+        for task_id, task in autonomic_system.active_tasks.items():
+            if task.user_id == user_id:
+                active_user_tasks.append({
+                    "task_id": task.task_id,
+                    "task_type": task.task_type.value,
+                    "priority": task.priority.value,
+                    "description": task.description,
+                    "status": task.status.value,
+                    "created_at": task.created_at.isoformat() if task.created_at else None,
+                    "started_at": task.started_at.isoformat() if task.started_at else None
+                })
+        
+        # Sort by creation time (newest first) and limit
+        user_tasks.sort(key=lambda x: x["created_at"] or "", reverse=True)
+        user_tasks = user_tasks[:limit]
+        
+        return {
+            "user_id": user_id,
+            "active_tasks": active_user_tasks,
+            "completed_tasks": user_tasks,
+            "total_active": len(active_user_tasks),
+            "total_completed": len(user_tasks),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get user autonomic tasks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/autonomic/task/{task_id}")
+async def get_autonomic_task_details(task_id: str):
+    """Get detailed information about a specific autonomic task"""
+    try:
+        if not autonomic_system:
+            raise HTTPException(status_code=500, detail="Autonomic system not initialized")
+        
+        # Check completed tasks first
+        task = autonomic_system.completed_tasks.get(task_id)
+        if not task:
+            # Check active tasks
+            task = autonomic_system.active_tasks.get(task_id)
+        
+        if not task:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        
+        task_details = {
+            "task_id": task.task_id,
+            "task_type": task.task_type.value,
+            "priority": task.priority.value,
+            "description": task.description,
+            "status": task.status.value,
+            "user_id": task.user_id,
+            "session_id": task.session_id,
+            "created_at": task.created_at.isoformat() if task.created_at else None,
+            "started_at": task.started_at.isoformat() if task.started_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "execution_time_ms": task.execution_time_ms,
+            "payload": task.payload,
+            "result": task.result,
+            "error": task.error
+        }
+        
+        return task_details
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to get task details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/autonomic/submit-task")
+async def submit_autonomic_task(
+    description: str,
+    payload: Dict[str, Any],
+    user_id: str,
+    session_id: Optional[str] = None,
+    force_offload: bool = False
+):
+    """Manually submit a task to the autonomic system"""
+    try:
+        if not autonomic_system:
+            raise HTTPException(status_code=500, detail="Autonomic system not initialized")
+        
+        was_offloaded, task_id = await autonomic_system.submit_task(
+            description=description,
+            payload=payload,
+            user_id=user_id,
+            session_id=session_id,
+            force_offload=force_offload
+        )
+        
+        if was_offloaded and task_id:
+            return {
+                "status": "submitted",
+                "task_id": task_id,
+                "message": f"Task {task_id} submitted to autonomic system",
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            return {
+                "status": "not_offloaded",
+                "message": "Task did not meet criteria for autonomic processing",
+                "force_offload_option": "Set force_offload=true to override",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to submit autonomic task: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/autonomic/task/{task_id}/result")
+async def get_autonomic_task_result(task_id: str, timeout: Optional[float] = None):
+    """Get the result of an autonomic task, optionally waiting for completion"""
+    try:
+        if not autonomic_system:
+            raise HTTPException(status_code=500, detail="Autonomic system not initialized")
+        
+        task = await autonomic_system.get_task_result(task_id, timeout)
+        
+        if not task:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        
+        return {
+            "task_id": task.task_id,
+            "status": task.status.value,
+            "result": task.result,
+            "error": task.error,
+            "execution_time_ms": task.execution_time_ms,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to get task result: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/autonomic/control/{action}")
+async def control_autonomic_system(action: str):
+    """Control autonomic system (start/stop/restart)"""
+    try:
+        if not autonomic_system:
+            raise HTTPException(status_code=500, detail="Autonomic system not initialized")
+        
+        if action == "start":
+            if autonomic_system._running:
+                return {
+                    "status": "already_running",
+                    "message": "Autonomic system is already running",
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                await autonomic_system.start()
+                return {
+                    "status": "started",
+                    "message": "Autonomic system started successfully",
+                    "timestamp": datetime.now().isoformat()
+                }
+        
+        elif action == "stop":
+            if not autonomic_system._running:
+                return {
+                    "status": "already_stopped",
+                    "message": "Autonomic system is already stopped",
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                await autonomic_system.stop()
+                return {
+                    "status": "stopped",
+                    "message": "Autonomic system stopped successfully",
+                    "timestamp": datetime.now().isoformat()
+                }
+        
+        elif action == "restart":
+            await autonomic_system.stop()
+            await autonomic_system.start()
+            return {
+                "status": "restarted",
+                "message": "Autonomic system restarted successfully",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid action: {action}. Use start, stop, or restart")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to control autonomic system: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/vector-db/optimize")
 async def optimize_vector_db():
