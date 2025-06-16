@@ -41,6 +41,25 @@ class AuraUIManager {
   private chatHistoryList!: HTMLElement;
   private leftPanel!: HTMLElement;
   private rightPanel!: HTMLElement;
+  
+  // Enhanced header elements
+  private headerElement!: HTMLElement;
+  private userGreetingElement!: HTMLElement;
+  private brainwaveValueElement!: HTMLElement;
+  private ntValueElement!: HTMLElement;
+  private emotionIconElement!: HTMLElement;
+  private emotionIntensityElement!: HTMLElement;
+  private cognitiveIconElement!: HTMLElement;
+  private cognitiveEnergyElement!: HTMLElement;
+  private systemStatusElement!: HTMLElement;
+  private connectionStatusElement!: HTMLElement;
+  private systemDetailsElement!: HTMLElement;
+  private usernameInputElement!: HTMLInputElement;
+  private currentUserElement!: HTMLElement;
+  private saveUsernameButton!: HTMLButtonElement;
+  private userSettingsButton!: HTMLButtonElement;
+  private wavePatternElement!: HTMLElement;
+  private chemicalLevelElement!: HTMLElement;
 
   constructor(apiInstance?: AuraAPI) {
     this.api = apiInstance ?? AuraAPI.getInstance();
@@ -80,7 +99,26 @@ class AuraUIManager {
     this.leftPanel = this.getRequiredElement('left-panel');
     this.rightPanel = this.getRequiredElement('right-panel');
 
-    console.log("✅ DOM elements initialized");
+    // Enhanced header elements
+    this.headerElement = this.getRequiredElement('aura-header');
+    this.userGreetingElement = this.getRequiredElement('user-greeting');
+    this.brainwaveValueElement = this.getRequiredElement('brainwave-value');
+    this.ntValueElement = this.getRequiredElement('nt-value');
+    this.emotionIconElement = this.getRequiredElement('emotion-icon');
+    this.emotionIntensityElement = this.getRequiredElement('emotion-intensity');
+    this.cognitiveIconElement = this.getRequiredElement('cognitive-icon');
+    this.cognitiveEnergyElement = this.getRequiredElement('cognitive-energy');
+    this.systemStatusElement = this.getRequiredElement('system-status');
+    this.connectionStatusElement = this.getRequiredElement('connection-status');
+    this.systemDetailsElement = this.getRequiredElement('system-details');
+    this.usernameInputElement = this.getRequiredElement('username-input') as HTMLInputElement;
+    this.currentUserElement = this.getRequiredElement('current-user');
+    this.saveUsernameButton = this.getRequiredElement('save-username') as HTMLButtonElement;
+    this.userSettingsButton = this.getRequiredElement('user-settings-btn') as HTMLButtonElement;
+    this.wavePatternElement = this.getRequiredElement('wave-pattern');
+    this.chemicalLevelElement = this.getRequiredElement('chemical-level');
+
+    console.log("✅ Enhanced DOM elements initialized");
   }
 
   private getRequiredElement(id: string): HTMLElement {
@@ -94,8 +132,11 @@ class AuraUIManager {
   private async checkBackendHealth(): Promise<void> {
     try {
       console.log("🔍 Checking backend health...");
+      this.updateSystemHealth('connecting', 'Checking...', 'Testing backend connection');
+      
       const healthData = await this.api.healthCheck();
       this.backendConnected = true;
+      this.updateSystemHealth('optimal', 'Connected', 'All systems operational');
       console.log("✅ Backend connected:", healthData);
 
       // Test if the backend is actually responding to conversation endpoint
@@ -104,25 +145,36 @@ class AuraUIManager {
         // We'll test this during the first actual message
       } catch (testError) {
         console.warn("⚠️ Backend health check passed but endpoints may not be working:", testError);
+        this.updateSystemHealth('warning', 'Limited', 'Some endpoints may not be responding');
       }
 
     } catch (error) {
       console.warn("⚠️ Backend health check failed:", error);
       this.backendConnected = false;
+      this.updateSystemHealth('error', 'Disconnected', 'Backend connection failed');
       this.showConnectionWarning();
     }
   }
 
   private async loadUserData(): Promise<void> {
     const storedName = localStorage.getItem('auraUserName');
-    if (storedName) {
-      this.userName = storedName;
-      this.awaitingNameInput = false; // User is known
-      console.log(`User data loaded from localStorage: ${this.userName}`);
+    if (storedName && storedName.trim().length >= 2) {
+      this.userName = storedName.trim();
+      this.awaitingNameInput = false;
+      console.log(`✅ User data loaded: ${this.userName}`);
+      
+      // Update UI elements immediately
+      this.updateCurrentUserDisplay();
+      this.updateUserGreeting();
     } else {
-      this.userName = null; // Explicitly null if not found
-      this.awaitingNameInput = true; // Aura needs to ask for the name
-      console.log("No user data found in local storage. Aura will ask for name.");
+      this.userName = null;
+      this.awaitingNameInput = false; // Let user set name via UI instead of chat
+      console.log("📝 No valid user data found. User can set name via settings.");
+      
+      // Clear any invalid stored name
+      if (storedName) {
+        localStorage.removeItem('auraUserName');
+      }
     }
   }
 
@@ -137,6 +189,8 @@ class AuraUIManager {
     this.setupEmotionalInsights();
     this.setupChatHistory();
     this.setupKeyboardShortcuts();
+    this.setupEnhancedHeader();
+    this.setupUsernameManagement();
     this.updateVideoArchiveStatus();
   }
 
@@ -303,6 +357,126 @@ class AuraUIManager {
     });
   }
 
+  private setupEnhancedHeader(): void {
+    // Initialize header with default state
+    this.updateSystemHealth('optimal', 'Connected', 'All systems operational');
+    this.updateBrainwaveDisplay('Alpha', 'Default');
+    this.updateNeurotransmitterDisplay('Serotonin', 70);
+    
+    // Set initial greeting
+    this.updateUserGreeting();
+
+    console.log("✅ Enhanced header initialized");
+  }
+
+  private setupUsernameManagement(): void {
+    // Load existing username into input
+    if (this.userName) {
+      this.usernameInputElement.value = this.userName;
+      this.updateCurrentUserDisplay();
+    }
+
+    // Save username button handler
+    this.saveUsernameButton.addEventListener('click', () => {
+      this.handleUsernameSave();
+    });
+
+    // Enter key in username input
+    this.usernameInputElement.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.handleUsernameSave();
+      }
+    });
+
+    console.log("✅ Username management setup complete");
+  }
+
+  private async handleUsernameSave(): Promise<void> {
+    const newUsername = this.usernameInputElement.value.trim();
+    
+    if (!newUsername) {
+      this.showUsernameError('Please enter a valid name');
+      return;
+    }
+
+    if (newUsername.length < 2) {
+      this.showUsernameError('Name must be at least 2 characters');
+      return;
+    }
+
+    if (newUsername.length > 30) {
+      this.showUsernameError('Name must be less than 30 characters');
+      return;
+    }
+
+    try {
+      const oldName = this.userName;
+      this.userName = newUsername;
+      localStorage.setItem('auraUserName', this.userName);
+      
+      this.updateCurrentUserDisplay();
+      this.updateUserGreeting();
+      this.updateUserSpecificUI();
+
+      // Notify backend about name change
+      if (oldName !== this.userName && this.backendConnected) {
+        const nameChangeRequest = {
+          user_id: this.userName,
+          message: `[SYSTEM] User name updated from "${oldName || 'unknown'}" to "${this.userName}". Please use existing data for "${this.userName}" if available.`,
+          session_id: this.currentSessionId || undefined
+        };
+
+        try {
+          const response = await this.api.sendMessage(nameChangeRequest);
+          console.log(`✅ Backend notified of name change: ${oldName} → ${this.userName}`);
+          
+          if (response.session_id && !this.currentSessionId) {
+            this.currentSessionId = response.session_id;
+          }
+        } catch (error) {
+          console.warn(`⚠️ Failed to notify backend of name change: ${error}`);
+        }
+      }
+
+      this.showUsernameSuccess('Name saved successfully!');
+
+    } catch (error) {
+      console.error('Failed to save username:', error);
+      this.showUsernameError('Failed to save name');
+    }
+  }
+
+  private updateCurrentUserDisplay(): void {
+    this.currentUserElement.textContent = this.userName || 'Not set';
+  }
+
+  private updateUserGreeting(): void {
+    if (this.userName) {
+      this.userGreetingElement.textContent = `Hello, ${this.userName}!`;
+    } else {
+      this.userGreetingElement.textContent = 'Your AI Companion';
+    }
+  }
+
+  private showUsernameError(message: string): void {
+    this.currentUserElement.textContent = `Error: ${message}`;
+    this.currentUserElement.style.color = 'var(--accent-error)';
+    setTimeout(() => {
+      this.updateCurrentUserDisplay();
+      this.currentUserElement.style.color = '';
+    }, 3000);
+  }
+
+  private showUsernameSuccess(message: string): void {
+    this.currentUserElement.textContent = message;
+    this.currentUserElement.style.color = 'var(--accent-success)';
+    setTimeout(() => {
+      this.updateCurrentUserDisplay();
+      this.currentUserElement.style.color = '';
+    }, 2000);
+  }
+
   // ============================================================================
   // CHAT FUNCTIONALITY
   // ============================================================================
@@ -315,14 +489,24 @@ class AuraUIManager {
       let initialGreeting: string;
 
       if (this.userName) {
-        initialGreeting = `**Welcome back, ${this.userName}!**\n\n*${timeString}*\n\nI'm ready to continue our conversation. What would you like to explore today?`;
+        initialGreeting = `**Welcome back, ${this.userName}!** 🌟\n\n*${timeString}*\n\nI'm ready to continue our conversation. What would you like to explore today?`;
       } else {
-        this.awaitingNameInput = true;
-        initialGreeting = `**Hello! I'm Aura 🌟**\n\n*${timeString}*\n\nI'm your adaptive reflective companion. Before we begin, what would you like me to call you?`;
+        initialGreeting = `**Hello! I'm Aura** 🌟\n\n*${timeString}*\n\nI'm your adaptive reflective companion. You can set your name using the user settings button (👤) in the header, or we can begin our conversation right away. How can I help you today?`;
       }
 
-      this.updateEmotionalState({ name: "Normal", intensity: "Medium", brainwave: "Alpha", neurotransmitter: "Serotonin" });
-      this.updateCognitiveState({ focus: "Learning", description: "Ready to assist and learn together" });
+      // Initialize with default states
+      this.updateEmotionalState({ 
+        name: "Normal", 
+        intensity: "Medium", 
+        brainwave: "Alpha", 
+        neurotransmitter: "Serotonin",
+        description: "Balanced and ready for interaction"
+      });
+      
+      this.updateCognitiveState({ 
+        focus: "Learning", 
+        description: "Ready to assist and learn together"
+      });
 
       await this.displayMessage(initialGreeting, 'aura');
       this.setFormState(false);
@@ -330,6 +514,7 @@ class AuraUIManager {
 
     } catch (error) {
       console.error("❌ Failed to start chat:", error);
+      this.updateSystemHealth('error', 'Failed', 'Chat initialization failed');
       await this.displayMessage("I'm having trouble starting up. Please refresh the page if the issue persists.", 'error');
     }
   }
@@ -365,19 +550,7 @@ class AuraUIManager {
       return;
     }
 
-    // Handle name input flow
-    if (this.awaitingNameInput) {
-      await this.handleNameInput(userMessage);
-      return;
-    }
-
-    if (!this.userName) {
-      this.awaitingNameInput = true;
-      await this.displayMessage("Before we continue, what would you like me to call you?", 'aura');
-      this.setFormState(false);
-      return;
-    }
-
+    // Process message regardless of username - user can set name via UI
     await this.processMessage(userMessage);
   }
 
@@ -388,23 +561,27 @@ class AuraUIManager {
   private async handleSpecialCommands(message: string): Promise<boolean> {
     const lowerMessage = message.toLowerCase().trim();
 
-    // Command to change name
+    // Command to change name - works with UI system
     if (lowerMessage.startsWith('/name ') || lowerMessage.startsWith('/setname ')) {
       const newName = message.substring(message.indexOf(' ') + 1).trim();
-      if (newName && newName.length >= 2) {
-        const extractedName = this.extractNameFromInput(newName) || newName.split(/\s+/)[0];
+      if (newName && newName.length >= 2 && newName.length <= 30) {
         const oldName = this.userName;
-        this.userName = extractedName;
+        this.userName = newName;
         localStorage.setItem('auraUserName', this.userName);
 
-        await this.displayMessage(`Great! I've updated your name to ${this.userName}.`, 'aura');
+        // Update UI elements
+        this.usernameInputElement.value = this.userName;
+        this.updateCurrentUserDisplay();
+        this.updateUserGreeting();
+        this.updateUserSpecificUI();
 
-        // Notify the backend about the name change so it can use existing user data
+        await this.displayMessage(`✅ Name updated to **${this.userName}**! You can also change it anytime using the user settings (👤) in the header.`, 'aura');
+
+        // Notify the backend about the name change
         if (oldName !== this.userName) {
           try {
             console.log(`🔄 Notifying backend of name change: "${oldName}" → "${this.userName}"`);
 
-            // Send a special message to backend to update user context
             const nameChangeRequest = {
               user_id: this.userName,
               message: `[SYSTEM] User name updated from "${oldName || 'unknown'}" to "${this.userName}". Please use existing data for "${this.userName}" if available.`,
@@ -414,7 +591,6 @@ class AuraUIManager {
             const response = await this.api.sendMessage(nameChangeRequest);
             console.log(`✅ Backend notified of name change, response: ${response.response}`);
 
-            // Update session ID if needed
             if (response.session_id && !this.currentSessionId) {
               this.currentSessionId = response.session_id;
             }
@@ -425,23 +601,25 @@ class AuraUIManager {
           }
         }
 
-        this.updateUserSpecificUI();
         this.setFormState(false);
         return true;
       } else {
-        await this.displayMessage("Please provide a valid name. Example: `/name Ty`", 'aura');
+        await this.displayMessage("Please provide a valid name (2-30 characters). Example: `/name Ty`", 'aura');
         this.setFormState(false);
         return true;
       }
     }
 
-    // Command to reset name
+    // Command to reset name - clears UI and storage
     if (lowerMessage === '/resetname' || lowerMessage === '/changename') {
       this.userName = null;
       localStorage.removeItem('auraUserName');
-      this.awaitingNameInput = true;
-      await this.displayMessage("I've cleared your name. What would you like me to call you?", 'aura');
+      this.usernameInputElement.value = '';
+      this.updateCurrentUserDisplay();
+      this.updateUserGreeting();
       this.updateUserSpecificUI();
+      
+      await this.displayMessage("✅ Name cleared! You can set a new name using the user settings (👤) in the header.", 'aura');
       this.setFormState(false);
       return true;
     }
@@ -449,78 +627,25 @@ class AuraUIManager {
     return false; // Not a special command
   }
 
-  private async handleNameInput(userInput: string): Promise<void> {
-    const trimmedInput = userInput.trim();
-    if (!trimmedInput) {
-      await this.displayMessage("I need a name to call you by. Could you please tell me?", 'aura');
-      this.awaitingNameInput = true;
-      return;
-    }
 
-    // Extract name from conversational input
-    let extractedName = this.extractNameFromInput(trimmedInput);
-
-    if (!extractedName) {
-      await this.displayMessage("I didn't catch your name clearly. Could you tell me just your name or nickname?", 'aura');
-      this.awaitingNameInput = true;
-      return;
-    }
-
-    this.userName = extractedName;
-    this.awaitingNameInput = false;
-    localStorage.setItem('auraUserName', this.userName);
-    await this.displayMessage(`Great, I'll call you ${this.userName}! How can I help you today?`, 'aura');
-    console.log(`User name set to: ${this.userName} and saved to localStorage.`);
-    this.updateUserSpecificUI(); // Update UI elements that depend on the user name
-  }
-
-  private extractNameFromInput(input: string): string | null {
-    const trimmed = input.trim();
-
-    // If it's just a simple name (1-2 words, no complex grammar), use it directly
-    const words = trimmed.split(/\s+/);
-    if (words.length <= 2 && !/^(hi|hello|hey|my|name|is|i'm|im|call|me)\b/i.test(trimmed)) {
-      return trimmed;
-    }
-
-    // Common patterns for name introduction
-    const patterns = [
-      /(?:my name is|i'm|im|i am|call me|name's)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
-      /(?:hi|hello|hey)(?:\s+aura)?[,\s]*(?:my name is|i'm|im|i am)?\s*([a-zA-Z]+)/i,
-      /^([a-zA-Z]+)(?:\s+here|$)/i // "Ty here" or just "Ty"
-    ];
-
-    for (const pattern of patterns) {
-      const match = trimmed.match(pattern);
-      if (match && match[1]) {
-        // Take only the first word of the captured name to avoid titles/extra words
-        const extractedName = match[1].trim().split(/\s+/)[0];
-        // Make sure it's a reasonable name (not a common word)
-        if (extractedName.length >= 2 && !/^(aura|hi|hello|hey|name|call|me|my|is|am)$/i.test(extractedName)) {
-          return extractedName;
-        }
-      }
-    }
-
-    return null; // Couldn't extract a clear name
-  }
 
   private updateUserSpecificUI(): void {
-    // Example: Enable/disable search button based on userName
+    // Enable/disable search button based on userName
     const searchButton = document.getElementById('unified-search-button') as HTMLButtonElement | null;
     if (searchButton) {
       searchButton.disabled = !this.userName;
     }
-    // The following assumes the existence of an element with id 'user-name-display-area' in the DOM.
-    // If this element is missing, the update will silently fail.
-    // To ensure robustness, provide a fallback warning in the console.
-    const userNameDisplayElement = document.getElementById('user-name-display-area');
-    if (userNameDisplayElement) {
-      userNameDisplayElement.textContent = this.userName ? `User: ${this.userName}` : 'User: Not identified';
-    } else {
-      console.warn("user-name-display-area element not found in the DOM. Username display will not be updated.");
+
+    // Update username input field
+    if (this.usernameInputElement && this.userName) {
+      this.usernameInputElement.value = this.userName;
     }
 
+    // Update current user display
+    this.updateCurrentUserDisplay();
+    this.updateUserGreeting();
+
+    // Handle search UI based on username status
     if (!this.userName) {
       const searchInput = document.getElementById('unified-search-input') as HTMLInputElement | null;
       if (searchInput) searchInput.value = '';
@@ -529,8 +654,18 @@ class AuraUIManager {
       if (searchResultsArea) searchResultsArea.innerHTML = '';
 
       const searchErrorElement = document.getElementById('unified-search-error');
-      if (searchErrorElement) searchErrorElement.textContent = 'User not identified. Please tell Aura your name in the chat.';
+      if (searchErrorElement) {
+        searchErrorElement.textContent = 'Please set your name using the user settings (👤) to enable memory search.';
+      }
+    } else {
+      // Clear any error messages when username is set
+      const searchErrorElement = document.getElementById('unified-search-error');
+      if (searchErrorElement) {
+        searchErrorElement.textContent = '';
+      }
     }
+
+    console.log(`🔄 UI updated for user: ${this.userName || 'Anonymous'}`);
   }
 
   private async processMessage(userMessage: string): Promise<void> {
@@ -545,15 +680,15 @@ class AuraUIManager {
       });
 
       if (!this.backendConnected) {
+        this.updateSystemHealth('error', 'Disconnected', 'Backend connection not available');
         throw new Error('Backend connection not available');
       }
 
-      if (!this.userName) {
-        throw new Error('User name not set');
-      }
-
+      // Use "Anonymous" if no username is set, but still allow conversation
+      const effectiveUserId = this.userName || 'Anonymous';
+      
       const requestData = {
-        user_id: this.userName,
+        user_id: effectiveUserId,
         message: userMessage,
         session_id: this.currentSessionId || undefined
       };
@@ -595,6 +730,9 @@ class AuraUIManager {
         console.warn('⚠️ No cognitive state in response');
       }
 
+      // Update system health to show successful communication
+      this.updateSystemHealth('optimal', 'Connected', 'Communication successful');
+
       await this.displayMessage(response.response, 'aura');
 
     } catch (error) {
@@ -611,12 +749,16 @@ class AuraUIManager {
 
       // Handle specific database errors
       if (errorStr.includes('disk I/O error') || errorStr.includes('database')) {
+        this.updateSystemHealth('error', 'Database Error', 'I/O conflict detected');
         errorMessage = "🚨 Database connection issue detected. The conversation system is experiencing technical difficulties. Please try restarting the application.";
       } else if (errorStr.includes('ChromaDB') || errorStr.includes('instance')) {
+        this.updateSystemHealth('error', 'DB Conflict', 'Multiple instances running');
         errorMessage = "⚙️ Database configuration conflict detected. Multiple instances may be running. Please restart the application.";
       } else if (!this.backendConnected) {
+        this.updateSystemHealth('error', 'Disconnected', 'Backend unavailable');
         errorMessage = "🔌 Backend connection lost. Please check if the server is running and refresh the page.";
       } else {
+        this.updateSystemHealth('warning', 'Error', 'Processing failed');
         errorMessage = `💥 Processing error: ${errorStr}`;
       }
 
@@ -729,10 +871,33 @@ class AuraUIManager {
 
   private updateEmotionalState(emotionalState: EmotionalState): void {
     try {
+      // Update basic emotion display
       this.emotionStatusElement.textContent = emotionalState.name;
-      this.emotionDetailsElement.textContent = `Brainwave: ${emotionalState.brainwave} | NT: ${emotionalState.neurotransmitter}`;
+      this.emotionDetailsElement.textContent = emotionalState.description || 'Emotional processing active';
+      
+      // Update intensity
+      if (this.emotionIntensityElement) {
+        this.emotionIntensityElement.textContent = emotionalState.intensity || 'Medium';
+      }
 
-      console.log(`🎭 Updated emotion: ${emotionalState.name} (${emotionalState.intensity})`);
+      // Update emotion icon based on emotion
+      if (this.emotionIconElement) {
+        this.emotionIconElement.textContent = this.getEmotionIcon(emotionalState.name);
+      }
+
+      // Update header background class for dynamic coloring
+      this.updateHeaderEmotionalState(emotionalState.name);
+
+      // Update neural activity displays
+      if (emotionalState.brainwave) {
+        this.updateBrainwaveDisplay(emotionalState.brainwave, emotionalState.name);
+      }
+      
+      if (emotionalState.neurotransmitter) {
+        this.updateNeurotransmitterDisplay(emotionalState.neurotransmitter, this.getNeurotransmitterLevel(emotionalState.intensity));
+      }
+
+      console.log(`🎭 Enhanced emotion update: ${emotionalState.name} (${emotionalState.intensity})`);
     } catch (error) {
       console.warn('Failed to update emotional state display:', error);
     }
@@ -740,13 +905,128 @@ class AuraUIManager {
 
   private updateCognitiveState(cognitiveState: CognitiveState): void {
     try {
+      // Update basic cognitive display
       this.cognitiveFocusElement.textContent = cognitiveState.focus;
       this.cognitiveFocusDetailsElement.textContent = cognitiveState.description;
 
-      console.log(`🧠 Updated cognitive focus: ${cognitiveState.focus}`);
+      // Update cognitive icon
+      if (this.cognitiveIconElement) {
+        this.cognitiveIconElement.textContent = this.getCognitiveIcon(cognitiveState.focus);
+      }
+
+      // Update cognitive energy level
+      if (this.cognitiveEnergyElement) {
+        this.cognitiveEnergyElement.textContent = this.getCognitiveEnergyLevel(cognitiveState.focus);
+      }
+
+      console.log(`🧠 Enhanced cognitive update: ${cognitiveState.focus}`);
     } catch (error) {
       console.warn('Failed to update cognitive state display:', error);
     }
+  }
+
+  private updateBrainwaveDisplay(brainwave: string, emotionalContext: string): void {
+    try {
+      this.brainwaveValueElement.textContent = brainwave;
+      
+      // Update wave pattern animation based on brainwave type
+      const wavePatternClass = `wave-${brainwave.toLowerCase()}`;
+      this.wavePatternElement.className = `wave-pattern ${wavePatternClass}`;
+      
+      console.log(`🧠 Brainwave updated: ${brainwave} (context: ${emotionalContext})`);
+    } catch (error) {
+      console.warn('Failed to update brainwave display:', error);
+    }
+  }
+
+  private updateNeurotransmitterDisplay(neurotransmitter: string, level: number): void {
+    try {
+      this.ntValueElement.textContent = neurotransmitter;
+      
+      // Update chemical level indicator
+      this.chemicalLevelElement.style.setProperty('--chemical-intensity', `${level}%`);
+      
+      console.log(`⚡ Neurotransmitter updated: ${neurotransmitter} (${level}%)`);
+    } catch (error) {
+      console.warn('Failed to update neurotransmitter display:', error);
+    }
+  }
+
+  private updateSystemHealth(status: string, connection: string, details: string): void {
+    try {
+      this.systemStatusElement.textContent = status;
+      this.connectionStatusElement.textContent = connection;
+      this.systemDetailsElement.textContent = details;
+
+      // Update system health class
+      const healthContainer = this.systemStatusElement.closest('.system-health');
+      if (healthContainer) {
+        healthContainer.className = `status-container system-health ${status.toLowerCase()}`;
+      }
+
+      console.log(`💚 System health updated: ${status} - ${connection}`);
+    } catch (error) {
+      console.warn('Failed to update system health display:', error);
+    }
+  }
+
+  private updateHeaderEmotionalState(emotionName: string): void {
+    try {
+      // Remove existing emotion classes
+      const emotionClasses = ['emotion-normal', 'emotion-happy', 'emotion-sad', 'emotion-angry', 
+                             'emotion-excited', 'emotion-love', 'emotion-curious', 'emotion-creative', 
+                             'emotion-peaceful', 'emotion-fear'];
+      
+      emotionClasses.forEach(cls => this.headerElement.classList.remove(cls));
+      
+      // Add new emotion class
+      const emotionClass = `emotion-${emotionName.toLowerCase()}`;
+      this.headerElement.classList.add(emotionClass);
+      
+      // Update emotional state container class
+      const emotionalContainer = this.emotionStatusElement.closest('.emotional-state');
+      if (emotionalContainer) {
+        emotionClasses.forEach(cls => emotionalContainer.classList.remove(cls.replace('emotion-', '')));
+        emotionalContainer.classList.add(emotionName.toLowerCase());
+      }
+      
+    } catch (error) {
+      console.warn('Failed to update header emotional state:', error);
+    }
+  }
+
+  private getEmotionIcon(emotion: string): string {
+    const iconMap: Record<string, string> = {
+      'Happy': '😊', 'Sad': '😢', 'Angry': '😠', 'Excited': '🤩',
+      'Fear': '😰', 'Love': '💖', 'Curious': '🤔', 'Creative': '🎨',
+      'Peaceful': '😌', 'Normal': '😊', 'Joy': '😄', 'Surprise': '😲',
+      'Disgust': '🤢', 'Awe': '😮', 'Hope': '🌟', 'Optimism': '☀️'
+    };
+    return iconMap[emotion] || '😊';
+  }
+
+  private getCognitiveIcon(focus: string): string {
+    const iconMap: Record<string, string> = {
+      'Learning': '🎯', 'Creative': '💡', 'Analytical': '🔍',
+      'Social': '🤝', 'Focused': '🧩', 'KS': '📚', 'CE': '⚡',
+      'IS': '🔗', 'KI': '🧠', 'KP': '📡', 'ESA': '🎭', 'SDA': '👥'
+    };
+    return iconMap[focus] || '🎯';
+  }
+
+  private getCognitiveEnergyLevel(focus: string): string {
+    const energyMap: Record<string, string> = {
+      'Learning': 'High', 'Creative': 'Very High', 'Analytical': 'High',
+      'Social': 'Medium', 'Focused': 'Very High', 'CE': 'High'
+    };
+    return energyMap[focus] || 'Medium';
+  }
+
+  private getNeurotransmitterLevel(intensity: string): number {
+    const levelMap: Record<string, number> = {
+      'Low': 40, 'Medium': 70, 'High': 95
+    };
+    return levelMap[intensity] || 70;
   }
 
   // ============================================================================

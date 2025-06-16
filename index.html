@@ -16,26 +16,90 @@
 </head>
 <body>
   <div id="app-container">
-    <!-- Header -->
-    <header>
+    <!-- Enhanced Dynamic Header -->
+    <header class="aura-enhanced-header" id="aura-header">
       <button class="mobile-menu-btn" id="left-menu-btn" aria-label="Toggle Chat History">☰</button>
-      <h1>Aura - Your AI Companion</h1>
-      <div id="header-controls">
-        <div id="aura-status-grid">
-          <div class="status-container">
-            <span>Emotion: <span id="aura-emotion-status" aria-live="polite">Normal</span></span>
-            <span id="aura-emotion-details" class="tooltip">Brainwave: Alpha | NT: Serotonin</span>
+      
+      <div class="header-main-section">
+        <div class="aura-title-section">
+          <h1>Aura</h1>
+          <div class="user-greeting" id="user-greeting">Your AI Companion</div>
+        </div>
+        
+        <div class="neural-activity-display" id="neural-display">
+          <div class="brainwave-indicator" id="brainwave-indicator">
+            <span class="label">🧠</span>
+            <span class="value" id="brainwave-value">Alpha</span>
+            <div class="wave-pattern" id="wave-pattern"></div>
           </div>
-          <div class="status-container">
-            <span>Focus: <span id="aura-cognitive-focus" aria-live="polite">Learning</span></span>
-            <span id="aura-cognitive-focus-details" class="tooltip">Processing information</span>
+          <div class="neurotransmitter-indicator" id="nt-indicator">
+            <span class="label">⚡</span>
+            <span class="value" id="nt-value">Serotonin</span>
+            <div class="chemical-level" id="chemical-level"></div>
           </div>
         </div>
+      </div>
+
+      <div id="header-controls">
+        <div class="user-controls">
+          <button class="user-settings-btn" id="user-settings-btn" aria-label="User Settings">👤</button>
+          <div class="user-dropdown" id="user-dropdown">
+            <div class="username-section">
+              <label for="username-input">Your Name:</label>
+              <input type="text" id="username-input" placeholder="Enter your name" maxlength="30">
+              <button id="save-username">Save</button>
+            </div>
+            <div class="current-user" id="current-user">Not set</div>
+          </div>
+        </div>
+        
+        <div id="aura-status-grid">
+          <div class="status-container emotional-state">
+            <div class="status-header">
+              <span class="status-icon" id="emotion-icon">😊</span>
+              <span class="status-label">Emotional State</span>
+            </div>
+            <div class="status-main">
+              <span class="status-value" id="aura-emotion-status" aria-live="polite">Normal</span>
+              <span class="intensity-level" id="emotion-intensity">Medium</span>
+            </div>
+            <div class="status-details" id="aura-emotion-details">Balanced emotional processing</div>
+          </div>
+          
+          <div class="status-container cognitive-state">
+            <div class="status-header">
+              <span class="status-icon" id="cognitive-icon">🎯</span>
+              <span class="status-label">Cognitive Focus</span>
+            </div>
+            <div class="status-main">
+              <span class="status-value" id="aura-cognitive-focus" aria-live="polite">Learning</span>
+              <span class="focus-energy" id="cognitive-energy">High</span>
+            </div>
+            <div class="status-details" id="aura-cognitive-focus-details">Processing information</div>
+          </div>
+          
+          <div class="status-container system-health">
+            <div class="status-header">
+              <span class="status-icon" id="system-icon">💚</span>
+              <span class="status-label">System Health</span>
+            </div>
+            <div class="status-main">
+              <span class="status-value" id="system-status">Optimal</span>
+              <span class="connection-status" id="connection-status">Connected</span>
+            </div>
+            <div class="status-details" id="system-details">All systems operational</div>
+          </div>
+        </div>
+        
         <button class="theme-toggle" id="theme-toggle" aria-label="Toggle Dark Mode">
           <span class="theme-toggle-slider"></span>
         </button>
       </div>
+      
       <button class="mobile-menu-btn" id="right-menu-btn" aria-label="Toggle Memory Panel">☰</button>
+      
+      <!-- Dynamic background effects -->
+      <div class="neural-background" id="neural-bg"></div>
     </header>
 
     <!-- Left Panel - Chat History -->

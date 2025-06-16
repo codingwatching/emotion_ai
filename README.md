@@ -7,6 +7,8 @@
 
 > **Sophisticated AI Companion with Vector Database, Emotional Intelligence, and Model Context Protocol Integration**
 
+![alt text](image-2.png)
+
 ## 🌟 Features
 
 ### 🧠 Advanced Cognitive Architecture

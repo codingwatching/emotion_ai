@@ -74,23 +74,233 @@ body {
   gap: 0;
 }
 
-/* Header */
-header {
+/* Enhanced Dynamic Header */
+.aura-enhanced-header {
   grid-column: 1 / -1;
-  background-color: var(--header-bg);
+  background: linear-gradient(135deg, var(--header-bg), var(--accent-secondary));
   color: var(--header-text);
-  padding: 0 20px;
+  padding: 8px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2px 4px var(--shadow-color);
+  box-shadow: 0 4px 12px var(--shadow-color);
   z-index: 100;
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  min-height: 80px;
 }
 
-header h1 {
-  font-size: 1.3rem;
+/* Dynamic background overlay for emotional states */
+.aura-enhanced-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--emotion-color, transparent);
+  opacity: 0.2;
+  transition: all 1.2s ease;
+  z-index: -1;
+}
+
+/* Animated neural background */
+.neural-background {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+  background-size: 30px 30px;
+  animation: neural-drift 25s linear infinite;
+  z-index: -1;
+  opacity: 0.3;
+}
+
+@keyframes neural-drift {
+  from { transform: translate(0, 0) rotate(0deg); }
+  to { transform: translate(30px, 30px) rotate(360deg); }
+}
+
+.header-main-section {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+}
+
+.aura-title-section h1 {
+  font-size: 1.6rem;
   margin: 0;
+  font-weight: 700;
+  background: linear-gradient(45deg, #ffffff, rgba(255,255,255,0.8));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.user-greeting {
+  font-size: 0.85rem;
+  opacity: 0.9;
+  margin-top: 2px;
+}
+
+/* Neural Activity Display */
+.neural-activity-display {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.brainwave-indicator, .neurotransmitter-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 8px 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.brainwave-indicator .label, .neurotransmitter-indicator .label {
+  font-size: 1rem;
+}
+
+.brainwave-indicator .value, .neurotransmitter-indicator .value {
+  font-size: 0.85rem;
   font-weight: 600;
+}
+
+.wave-pattern {
+  width: 40px;
+  height: 16px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255,255,255,0.6) 50%, 
+    transparent 100%);
+  border-radius: 8px;
+  animation: brainwave-pulse 2s ease-in-out infinite;
+}
+
+.chemical-level {
+  width: 30px;
+  height: 4px;
+  background: rgba(255,255,255,0.3);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.chemical-level::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: var(--chemical-intensity, 70%);
+  background: linear-gradient(90deg, #4caf50, #8bc34a);
+  border-radius: 2px;
+  transition: width 0.8s ease;
+}
+
+@keyframes brainwave-pulse {
+  0%, 100% { opacity: 0.6; transform: scaleX(1); }
+  50% { opacity: 1; transform: scaleX(1.2); }
+}
+
+/* User Controls */
+.user-controls {
+  position: relative;
+}
+
+.user-settings-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.user-settings-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.user-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 280px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  backdrop-filter: blur(20px);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1000;
+  margin-top: 8px;
+}
+
+.user-controls:hover .user-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.username-section {
+  margin-bottom: 12px;
+}
+
+.username-section label {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+
+.username-section input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+
+.username-section button {
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.3s ease;
+}
+
+.username-section button:hover {
+  background: var(--accent-secondary);
+}
+
+.current-user {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  text-align: center;
 }
 
 #header-controls {
@@ -157,36 +367,266 @@ header h1 {
   box-shadow: 0 0 12px rgba(0, 0, 0, 0.3);
 }
 
-/* Status Grid */
+/* Enhanced Status Grid */
 #aura-status-grid {
   display: flex;
-  gap: 20px;
+  gap: 16px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .status-container {
   position: relative;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 12px;
+  min-width: 140px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.tooltip {
-  position: absolute;
-  bottom: -30px;
-  left: 50%;
-  transform: translateX(-50%);
-  background-color: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
+.status-container:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+}
+
+.status-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.status-icon {
+  font-size: 1.1rem;
+  transition: transform 0.3s ease;
+}
+
+.status-container:hover .status-icon {
+  transform: scale(1.1);
+}
+
+.status-label {
   font-size: 0.75rem;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--transition-speed);
+  opacity: 0.8;
+  font-weight: 500;
 }
 
-.status-container:hover .tooltip {
-  opacity: 1;
+.status-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.status-value {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: white;
+}
+
+.intensity-level, .focus-energy, .connection-status {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.status-details {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  line-height: 1.2;
+}
+
+/* Emotional State Specific Styling */
+.emotional-state {
+  border-left: 4px solid var(--emotion-accent, #4caf50);
+}
+
+.emotional-state.happy { --emotion-accent: #ffeb3b; }
+.emotional-state.sad { --emotion-accent: #2196f3; }
+.emotional-state.angry { --emotion-accent: #f44336; }
+.emotional-state.excited { --emotion-accent: #ff9800; }
+.emotional-state.calm { --emotion-accent: #4caf50; }
+.emotional-state.curious { --emotion-accent: #9c27b0; }
+.emotional-state.love { --emotion-accent: #e91e63; }
+.emotional-state.fear { --emotion-accent: #795548; }
+
+/* Cognitive State Specific Styling */
+.cognitive-state {
+  border-left: 4px solid var(--cognitive-accent, #2196f3);
+}
+
+.cognitive-state.learning { --cognitive-accent: #2196f3; }
+.cognitive-state.creative { --cognitive-accent: #9c27b0; }
+.cognitive-state.analytical { --cognitive-accent: #607d8b; }
+.cognitive-state.social { --cognitive-accent: #4caf50; }
+.cognitive-state.focused { --cognitive-accent: #ff9800; }
+
+/* System Health Styling */
+.system-health {
+  border-left: 4px solid var(--system-accent, #4caf50);
+}
+
+.system-health.optimal { --system-accent: #4caf50; }
+.system-health.warning { --system-accent: #ff9800; }
+.system-health.error { --system-accent: #f44336; }
+.system-health.connecting { --system-accent: #2196f3; }
+
+/* Emotional State Color Variables */
+:root {
+  --emotion-normal: #4caf50;
+  --emotion-happy: #ffeb3b;
+  --emotion-sad: #2196f3;
+  --emotion-angry: #f44336;
+  --emotion-excited: #ff9800;
+  --emotion-fear: #795548;
+  --emotion-love: #e91e63;
+  --emotion-curious: #9c27b0;
+  --emotion-creative: #673ab7;
+  --emotion-peaceful: #009688;
+}
+
+/* Dynamic header background based on emotion */
+.aura-enhanced-header.emotion-happy {
+  --emotion-color: var(--emotion-happy);
+}
+
+.aura-enhanced-header.emotion-sad {
+  --emotion-color: var(--emotion-sad);
+}
+
+.aura-enhanced-header.emotion-angry {
+  --emotion-color: var(--emotion-angry);
+}
+
+.aura-enhanced-header.emotion-excited {
+  --emotion-color: var(--emotion-excited);
+}
+
+.aura-enhanced-header.emotion-love {
+  --emotion-color: var(--emotion-love);
+}
+
+.aura-enhanced-header.emotion-curious {
+  --emotion-color: var(--emotion-curious);
+}
+
+.aura-enhanced-header.emotion-creative {
+  --emotion-color: var(--emotion-creative);
+}
+
+.aura-enhanced-header.emotion-peaceful {
+  --emotion-color: var(--emotion-peaceful);
+}
+
+.aura-enhanced-header.emotion-normal {
+  --emotion-color: var(--emotion-normal);
+}
+
+/* Brainwave-specific animations */
+.wave-alpha { animation: brainwave-alpha 2s ease-in-out infinite; }
+.wave-beta { animation: brainwave-beta 1.5s ease-in-out infinite; }
+.wave-gamma { animation: brainwave-gamma 1s ease-in-out infinite; }
+.wave-theta { animation: brainwave-theta 3s ease-in-out infinite; }
+.wave-delta { animation: brainwave-delta 4s ease-in-out infinite; }
+
+@keyframes brainwave-alpha {
+  0%, 100% { opacity: 0.6; transform: scaleX(1) scaleY(0.8); }
+  50% { opacity: 1; transform: scaleX(1.2) scaleY(1.2); }
+}
+
+@keyframes brainwave-beta {
+  0%, 100% { opacity: 0.7; transform: scaleX(1) scaleY(0.9); }
+  25%, 75% { opacity: 1; transform: scaleX(1.1) scaleY(1.1); }
+  50% { opacity: 0.8; transform: scaleX(1.3) scaleY(1.3); }
+}
+
+@keyframes brainwave-gamma {
+  0%, 100% { opacity: 0.8; transform: scaleX(1) scaleY(1); }
+  33% { opacity: 1; transform: scaleX(1.1) scaleY(1.1); }
+  66% { opacity: 0.9; transform: scaleX(1.2) scaleY(1.2); }
+}
+
+@keyframes brainwave-theta {
+  0%, 100% { opacity: 0.5; transform: scaleX(1) scaleY(0.7); }
+  50% { opacity: 0.9; transform: scaleX(1.1) scaleY(1.1); }
+}
+
+@keyframes brainwave-delta {
+  0%, 100% { opacity: 0.4; transform: scaleX(1) scaleY(0.6); }
+  50% { opacity: 0.8; transform: scaleX(1.05) scaleY(1.05); }
+}
+
+/* Mobile responsiveness for enhanced header */
+@media (max-width: 1024px) {
+  .aura-enhanced-header {
+    min-height: 100px;
+    flex-direction: column;
+    padding: 8px 16px;
+    gap: 8px;
+  }
+
+  .header-main-section {
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .neural-activity-display {
+    justify-content: center;
+  }
+
+  #aura-status-grid {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .status-container {
+    min-width: 120px;
+    padding: 8px;
+  }
+
+  .user-dropdown {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90vw;
+    max-width: 320px;
+  }
+
+  .user-controls:hover .user-dropdown {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .aura-enhanced-header {
+    min-height: 120px;
+  }
+
+  .aura-title-section h1 {
+    font-size: 1.4rem;
+  }
+
+  .neural-activity-display {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #aura-status-grid {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .status-container {
+    width: 100%;
+    max-width: 200px;
+  }
 }
 
 /* Left Panel - Chat History */
