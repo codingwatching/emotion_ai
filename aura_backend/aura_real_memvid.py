@@ -287,25 +287,49 @@ class AuraRealMemvid:
                         try:
                             doc_timestamp = datetime.fromisoformat(timestamp_str)
                             if doc_timestamp < cutoff_date:
-                                # Create rich memory context for video encoding
-                                video_memory_text = f"""
-AURA MEMORY ARCHIVE
-==================
-ID: {doc_id}
-User: {metadata.get('user_id', 'unknown')}
-Timestamp: {timestamp_str}
-Emotional State: {metadata.get('emotion_name', 'none')}
-Intensity: {metadata.get('emotion_intensity', 'none')}
-Cognitive Focus: {metadata.get('cognitive_focus', 'none')}
-Brainwave: {metadata.get('brainwave', 'none')}
-Neurotransmitter: {metadata.get('neurotransmitter', 'none')}
-
-CONVERSATION:
-{doc}
-==================
-"""
-
-                                encoder.add_text(video_memory_text.strip())
+                                # FIXED: Create properly chunked, searchable content instead of monolithic blocks
+                                # Create metadata context that's searchable
+                                metadata_context = f"User: {metadata.get('user_id', 'unknown')} | Timestamp: {timestamp_str} | Emotion: {metadata.get('emotion_name', 'none')} | Brainwave: {metadata.get('brainwave', 'none')}"
+                                
+                                # Split large conversations into searchable chunks (max ~500 chars per chunk)
+                                conversation_text = str(doc).strip()
+                                chunk_size = 400  # Optimal size for semantic search
+                                
+                                # Handle both single messages and multi-turn conversations
+                                if len(conversation_text) <= chunk_size:
+                                    # Small conversation - add as single chunk with full context
+                                    searchable_chunk = f"{metadata_context}\n\nContent: {conversation_text}"
+                                    encoder.add_text(searchable_chunk)
+                                else:
+                                    # Large conversation - split into searchable chunks with context
+                                    # Try to split on sentence boundaries for better semantic coherence
+                                    sentences = conversation_text.replace('. ', '.|').replace('! ', '!|').replace('? ', '?|').split('|')
+                                    
+                                    current_chunk = ""
+                                    chunk_num = 1
+                                    
+                                    for sentence in sentences:
+                                        sentence = sentence.strip()
+                                        if not sentence:
+                                            continue
+                                            
+                                        # Check if adding this sentence would exceed chunk size
+                                        test_chunk = f"{current_chunk} {sentence}".strip()
+                                        
+                                        if len(test_chunk) <= chunk_size:
+                                            current_chunk = test_chunk
+                                        else:
+                                            # Current chunk is full, save it and start new one
+                                            if current_chunk:
+                                                searchable_chunk = f"{metadata_context} | Part {chunk_num}\n\nContent: {current_chunk}"
+                                                encoder.add_text(searchable_chunk)
+                                                chunk_num += 1
+                                            current_chunk = sentence
+                                    
+                                    # Add the final chunk
+                                    if current_chunk:
+                                        searchable_chunk = f"{metadata_context} | Part {chunk_num}\n\nContent: {current_chunk}"
+                                        encoder.add_text(searchable_chunk)
 
                                 conversations_to_archive.append(doc_id)
                                 ids_to_delete.append(doc_id)
