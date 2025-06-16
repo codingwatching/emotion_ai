@@ -36,12 +36,21 @@ class AuraInternalTools:
         self.intelligent_memory = None
         if MEMVID_TOOLS_AVAILABLE and get_aura_internal_memvid_tools is not None and get_intelligent_memory_manager is not None:
             try:
-                # Pass the ChromaDB client specifically for memvid tools
-                self.memvid_tools = get_aura_internal_memvid_tools(vector_db.client)
-                self.intelligent_memory = get_intelligent_memory_manager(vector_db.client)
-                logger.info("✅ Memvid internal tools and intelligent memory manager initialized")
+                # CRITICAL FIX: Pass the shared ChromaDB client to prevent conflicts
+                # The vector_db.client is already initialized and connected - reuse it
+                shared_chroma_client = getattr(vector_db, 'client', None)
+                if shared_chroma_client is None:
+                    logger.error("❌ Vector DB client not available - memvid tools disabled")
+                    self.memvid_tools = None
+                    self.intelligent_memory = None
+                else:
+                    logger.info("🔗 Using shared ChromaDB client for memvid tools (conflict prevention)")
+                    self.memvid_tools = get_aura_internal_memvid_tools(shared_chroma_client)
+                    self.intelligent_memory = get_intelligent_memory_manager(shared_chroma_client)
+                    logger.info("✅ Memvid internal tools and intelligent memory manager initialized with shared client")
             except Exception as e:
                 logger.error(f"❌ Failed to initialize memvid tools: {e}")
+                logger.error(f"❌ Error details: {type(e).__name__}: {e}")
                 self.memvid_tools = None
                 self.intelligent_memory = None
 

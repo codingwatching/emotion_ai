@@ -417,6 +417,7 @@ class RobustAuraVectorDB:
                 "brainwave": emotional_state.brainwave,
                 "neurotransmitter": emotional_state.neurotransmitter,
                 "timestamp": emotional_state.timestamp.isoformat(),
+                "timestamp_unix": int(emotional_state.timestamp.timestamp()),  # For numeric comparisons
                 "formula": emotional_state.formula
             }
 
@@ -441,39 +442,93 @@ class RobustAuraVectorDB:
             return doc_id
 
     async def analyze_emotional_trends(self, user_id: str, days: int = 7) -> Dict[str, Any]:
-        """Analyze emotional trends with retry"""
+        """Analyze emotional trends with retry and proper date filtering"""
         async with self._safe_operation("analyze_emotional_trends"):
             cutoff_date = datetime.now() - timedelta(days=days)
 
-            results = self.emotional_patterns.get(
-                where={
-                    "$and": [
-                        {"user_id": {"$eq": user_id}},
-                        {"timestamp": {"$gte": cutoff_date.isoformat()}}
-                    ]
-                },
-                include=["metadatas"]
-            )
+            # Get all emotional patterns for the user and filter by date in Python
+            # This avoids the ChromaDB date comparison issue
+            try:
+                results = self.emotional_patterns.get(
+                    where={"user_id": {"$eq": user_id}},
+                    include=["metadatas"]
+                )
 
-            if not results['metadatas']:
-                return {"message": "No emotional data found for analysis"}
+                if not results or not results.get('metadatas'):
+                    return {
+                        "message": "No emotional data found for analysis",
+                        "period_days": days,
+                        "total_entries": 0,
+                        "dominant_emotions": [],
+                        "intensity_distribution": {},
+                        "brainwave_patterns": {},
+                        "emotional_stability": 1.0,
+                        "recommendations": ["Start interacting to build emotional patterns"]
+                    }
 
-            # Analyze patterns
-            emotions = [str(meta['emotion_name']) for meta in results['metadatas']]
-            intensities = [str(meta['intensity']) for meta in results['metadatas']]
-            brainwaves = [str(meta['brainwave']) for meta in results['metadatas']]
+                # Filter results by date in Python (more reliable than ChromaDB date comparison)
+                filtered_metadatas = []
+                current_metadatas = results.get('metadatas')
+                if current_metadatas: # Ensures current_metadatas is not None and not an empty list
+                    for meta in current_metadatas:
+                        if meta and 'timestamp' in meta:
+                            try:
+                                # Ensure timestamp is a string before calling replace
+                                timestamp_str = meta['timestamp']
+                                if not isinstance(timestamp_str, str):
+                                    logger.warning(f"Timestamp is not a string: {timestamp_str}, skipping.")
+                                    continue
+                                # Parse the timestamp and compare
+                                meta_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                                if meta_timestamp >= cutoff_date:
+                                    filtered_metadatas.append(meta)
+                            except (ValueError, AttributeError):
+                                # Skip entries with invalid timestamps
+                                logger.warning(f"Invalid timestamp in emotional pattern: {meta.get('timestamp')}")
+                                continue
 
-            analysis = {
-                "period_days": days,
-                "total_entries": len(emotions),
-                "dominant_emotions": self._get_top_items(emotions, 3),
-                "intensity_distribution": self._get_distribution(intensities),
-                "brainwave_patterns": self._get_distribution(brainwaves),
-                "emotional_stability": self._calculate_stability(emotions),
-                "recommendations": self._generate_emotional_recommendations(emotions, intensities)
-            }
+                if not filtered_metadatas:
+                    return {
+                        "message": f"No emotional data found in the last {days} days",
+                        "period_days": days,
+                        "total_entries": 0,
+                        "dominant_emotions": [],
+                        "intensity_distribution": {},
+                        "brainwave_patterns": {},
+                        "emotional_stability": 1.0,
+                        "recommendations": ["Continue interacting to build recent emotional patterns"]
+                    }
 
-            return analysis
+                # Analyze patterns from filtered data
+                emotions = [str(meta['emotion_name']) for meta in filtered_metadatas if 'emotion_name' in meta]
+                intensities = [str(meta['intensity']) for meta in filtered_metadatas if 'intensity' in meta]
+                brainwaves = [str(meta['brainwave']) for meta in filtered_metadatas if 'brainwave' in meta]
+
+                analysis = {
+                    "period_days": days,
+                    "total_entries": len(filtered_metadatas),
+                    "dominant_emotions": self._get_top_items(emotions, 3),
+                    "intensity_distribution": self._get_distribution(intensities),
+                    "brainwave_patterns": self._get_distribution(brainwaves),
+                    "emotional_stability": self._calculate_stability(emotions),
+                    "recommendations": self._generate_emotional_recommendations(emotions, intensities)
+                }
+
+                logger.info(f"✅ Emotional analysis completed: {len(filtered_metadatas)} entries from last {days} days")
+                return analysis
+
+            except Exception as e:
+                logger.error(f"❌ Error in emotional trends analysis: {e}")
+                return {
+                    "message": f"Error analyzing emotional trends: {str(e)}",
+                    "period_days": days,
+                    "total_entries": 0,
+                    "dominant_emotions": [],
+                    "intensity_distribution": {},
+                    "brainwave_patterns": {},
+                    "emotional_stability": 1.0,
+                    "recommendations": ["Analysis temporarily unavailable"]
+                }
 
     def _get_top_items(self, items: List[str], top_n: int) -> List[Tuple[str, int]]:
         """Get top N most frequent items"""

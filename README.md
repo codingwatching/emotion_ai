@@ -426,7 +426,7 @@ results = await vector_db.search_conversations(
    echo $GOOGLE_API_KEY
    ```
 
-3. **Vector DB Issues**:
+3. **Vector DB Issues**: This is asshole AI- you will lose your db
    ```bash
    # Reset database
    rm -rf aura_chroma_db/

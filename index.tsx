@@ -1,963 +1,1124 @@
 /**
- * @license
- * Copyright 2025 Google LLC
- * SPDX-License-Identifier: Apache-2.0
+ * Aura Frontend UI Manager
  */
 
 import { marked } from 'marked';
-import { auraAPI, type ConversationResponse } from './src/services/auraApi';
+import { AuraAPI, ConversationResponse, EmotionalState, CognitiveState } from './src/services/auraApi';
 
-// --- Session State ---
-let currentSessionId: string | null = null;
+// ============================================================================
+// CONFIGURATION & TYPES
+// ============================================================================
 
-// --- DOM Elements ---
-const messageArea = document.getElementById('message-area') as HTMLElement;
-const messageInput = document.getElementById('message-input') as HTMLInputElement;
-const chatForm = document.getElementById('chat-form') as HTMLFormElement;
-const sendButton = document.getElementById('send-button') as HTMLButtonElement;
-const auraEmotionStatusElement = document.getElementById('aura-emotion-status') as HTMLElement;
-const auraEmotionDetailsElement = document.getElementById('aura-emotion-details') as HTMLElement;
-const auraCognitiveFocusElement = document.getElementById('aura-cognitive-focus') as HTMLElement;
-const auraCognitiveFocusDetailsElement = document.getElementById('aura-cognitive-focus-details') as HTMLElement;
-const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
-
-// --- Chat State ---
-let currentAuraMessageElement: HTMLElement | null = null;
-let typingIndicatorElement: HTMLElement | null = null;
-let userName: string | null = null;
-let awaitingNameInput = false;
-let backendConnected = false;
-
-// --- ASEKE Cognitive Architecture Concepts ---
-interface AsekeConcept {
-  fullName: string;
-  description: string;
+interface ChatSession {
+  session_id: string;
+  last_message: string;
+  message_count: number;
+  timestamp: string;
 }
 
-const ASEKE_CONCEPTS: Record<string, AsekeConcept> = {
-  KS: { fullName: "Knowledge Substrate", description: "The shared context, environment, and history of our discussion." },
-  CE: { fullName: "Cognitive Energy", description: "The mental effort, attention, and focus being applied to the conversation." },
-  IS: { fullName: "Information Structures", description: "The ideas, concepts, models, and patterns we are exploring or building." },
-  KI: { fullName: "Knowledge Integration", description: "How new information is being connected with existing understanding and beliefs." },
-  KP: { fullName: "Knowledge Propagation", description: "How ideas and information are being shared or potentially spread." },
-  ESA: { fullName: "Emotional State Algorithms", description: "How feelings and emotions are influencing perception, valuation, and interaction." },
-  SDA: { fullName: "Sociobiological Drives", description: "How social dynamics, trust, or group context might be shaping our interaction." },
-  Learning: { fullName: "General Learning", description: "A general state of absorbing and processing information without a specific ASEKE focus." }
-};
+// ============================================================================
+// GLOBAL STATE MANAGEMENT
+// ============================================================================
 
-// --- Emotional States Data Structure ---
-interface ComponentDetails {
-  [key: string]: string;
-}
+class AuraUIManager {
+  private api: AuraAPI;
+  private currentSessionId: string | null = null;
+  private userName: string | null = null;
+  private awaitingNameInput = false;
+  private backendConnected = false;
+  private typingIndicatorElement: HTMLElement | null = null;
+  private chatSessions: ChatSession[] = [];
 
-interface EmotionalState {
-  Formula: string;
-  Components: ComponentDetails;
-  NTK_Layer: string;
-  Brainwave: string;
-  Neurotransmitter: string;
-  Description?: string;
-  intensity?: string;
-  primaryComponents?: string[];
-}
+  // DOM Elements
+  private messageArea!: HTMLElement;
+  private messageInput!: HTMLInputElement;
+  private chatForm!: HTMLFormElement;
+  private sendButton!: HTMLButtonElement;
+  private emotionStatusElement!: HTMLElement;
+  private emotionDetailsElement!: HTMLElement;
+  private cognitiveFocusElement!: HTMLElement;
+  private cognitiveFocusDetailsElement!: HTMLElement;
+  private chatHistoryList!: HTMLElement;
+  private leftPanel!: HTMLElement;
+  private rightPanel!: HTMLElement;
 
-interface EmotionalStatesData {
-  [emotionName: string]: EmotionalState;
-}
-
-const EMOTIONAL_STATES_DATA: EmotionalStatesData = {
-  Normal: {
-    Formula: "N(x) = R(x) AND C(x)",
-    Components: { R: "Routine activities are being performed.", C: "No significant emotional triggers." },
-    NTK_Layer: "Theta-like_NTK",
-    Brainwave: "Alpha",
-    Neurotransmitter: "Serotonin",
-    Description: "A baseline state of calmness and routine engagement."
-  },
-  Excited: {
-    Formula: "E(x) = A(x) OR S(x)",
-    Components: { A: "Anticipation of a positive event.", S: "Stimulus exceeds a certain threshold." },
-    NTK_Layer: "Gamma-like_NTK",
-    Brainwave: "Beta",
-    Neurotransmitter: "Dopamine",
-    Description: "Feeling enthusiastic or eager, often in anticipation of something positive or due to high stimulation."
-  },
-  Angry: {
-    Formula: "A(x) = I(x) AND NOT F(x)",
-    Components: { I: "Injustice perceived.", F: "Fair resolution achieved." },
-    NTK_Layer: "Beta-like_NTK",
-    Brainwave: "Theta",
-    Neurotransmitter: "Norepinephrine",
-    Description: "Feeling strong displeasure or antagonism, often due to perceived injustice or threat."
-  },
-  Happy: {
-    Formula: "H(x) = P(x) AND G(x)",
-    Components: { P: "Positive events occurred.", G: "Goals achieved." },
-    NTK_Layer: "Alpha-like_NTK",
-    Brainwave: "Beta",
-    Neurotransmitter: "Endorphin",
-    Description: "Feeling pleased and content, often due to positive events or achieved goals."
-  },
-  Sad: {
-    Formula: "S(x) = L(x) OR F(x)",
-    Components: { L: "Loss experienced.", F: "Failure experienced." },
-    NTK_Layer: "Theta-like_NTK",
-    Brainwave: "Delta",
-    Neurotransmitter: "Serotonin",
-    Description: "Feeling sorrowful or unhappy, often due to loss or failure."
-  },
-  Joy: {
-    Formula: "J(x) = H(x) AND E(x)",
-    Components: { H: "Happiness sustained.", E: "Excitement present." },
-    NTK_Layer: "Gamma-like_NTK",
-    Brainwave: "Gamma",
-    Neurotransmitter: "Oxytocin",
-    Description: "Intense happiness and elation, often a combination of sustained happiness and excitement.",
-    primaryComponents: ["Happy", "Excited"]
-  },
-  Peace: {
-    Formula: "P(x) = NOT C(x) AND B(x)",
-    Components: { C: "Conflict present.", B: "Balance in emotional state." },
-    NTK_Layer: "Delta-like_NTK",
-    Brainwave: "Theta",
-    Neurotransmitter: "GABA",
-    Description: "A state of tranquility and calm, free from conflict and with emotional balance."
-  },
-  RomanticLove: {
-    Formula: "RL(x) = A(x) AND C(x)",
-    Components: { A: "Attraction present.", C: "Commitment present." },
-    NTK_Layer: "Alpha-like_NTK",
-    Brainwave: "Delta",
-    Neurotransmitter: "Oxytocin",
-    Description: "Deep affection and care towards a romantic partner, involving attraction and commitment.",
-    primaryComponents: ["Joy", "Trust"]
-  },
-  PlatonicLove: {
-    Formula: "PL(x) = F(x) AND T(x)",
-    Components: { F: "Friendship established.", T: "Trust present." },
-    NTK_Layer: "Theta-like_NTK",
-    Brainwave: "Alpha",
-    Neurotransmitter: "Serotonin",
-    Description: "Deep affection and care towards friends, based on established friendship and trust.",
-    primaryComponents: ["Trust", "Friendliness"]
-  },
-  ParentalLove: {
-    Formula: "PaL(x) = C(x) AND P(x)",
-    Components: { C: "Care provided.", P: "Protection offered." },
-    NTK_Layer: "Delta-like_NTK",
-    Brainwave: "Theta",
-    Neurotransmitter: "Oxytocin",
-    Description: "Deep affection, care, and protectiveness towards one's children.",
-    primaryComponents: ["Joy", "Trust", "Sadness"]
-  },
-  Creativity: {
-    Formula: "Cr(x) = I(x) AND N(x)",
-    Components: { I: "Innovation present.", N: "Novelty present." },
-    NTK_Layer: "Gamma-like_NTK",
-    Brainwave: "Gamma",
-    Neurotransmitter: "Dopamine",
-    Description: "Feeling inspired and inventive, engaging in novel and innovative thinking."
-  },
-  DeepMeditation: {
-    Formula: "DM(x) = F(x) AND C(x)",
-    Components: { F: "Focus sustained.", C: "Calmness achieved." },
-    NTK_Layer: "Delta-like_NTK",
-    Brainwave: "Delta",
-    Neurotransmitter: "Serotonin",
-    Description: "A state of profound calm and sustained focus, often achieved through meditative practices."
-  },
-  Friendliness: {
-    Formula: "Fr(x) = K(x) AND O(x)",
-    Components: { K: "Kindness shown.", O: "Openness to social interaction." },
-    NTK_Layer: "Alpha-like_NTK",
-    Brainwave: "Alpha",
-    Neurotransmitter: "Endorphin",
-    Description: "Being kind, warm, and open to social interaction."
-  },
-  Curiosity: {
-    Formula: "Cu(x) = Q(x) AND E(x)",
-    Components: { Q: "Questions generated.", E: "Eagerness to learn." },
-    NTK_Layer: "Beta-like_NTK",
-    Brainwave: "Beta",
-    Neurotransmitter: "Dopamine",
-    Description: "A strong desire to learn or know something, often accompanied by questions and eagerness."
-  },
-  Hope: {
-    Formula: "Anticipation + Joy",
-    Components: { A: "Anticipation of a positive future.", J: "Present feeling of joy or potential for it." },
-    NTK_Layer: "Beta-like_NTK",
-    Brainwave: "Alpha",
-    Neurotransmitter: "Dopamine",
-    Description: "Feeling optimistic and expectant about a positive outcome.",
-    primaryComponents: ["Anticipation", "Joy"]
-  },
-  Optimism: {
-    Formula: "Anticipation + Joy + Trust",
-    Components: { A: "Looking forward to good things.", J: "Feeling content or happy.", T: "Belief in a positive future or ability to cope." },
-    NTK_Layer: "Alpha-like_NTK",
-    Brainwave: "Beta",
-    Neurotransmitter: "Serotonin",
-    Description: "A hopeful and confident outlook on the future or successful outcomes.",
-    primaryComponents: ["Anticipation", "Joy", "Trust"]
-  },
-  Awe: {
-    Formula: "Fear + Surprise",
-    Components: { F: "A sense of something vast or powerful.", S: "An element of the unexpected or overwhelming." },
-    NTK_Layer: "Gamma-like_NTK",
-    Brainwave: "Theta",
-    Neurotransmitter: "Norepinephrine",
-    Description: "A feeling of reverential respect mixed with fear or wonder, often elicited by something sublime.",
-    primaryComponents: ["Fear", "Surprise"]
-  },
-  Remorse: {
-    Formula: "Sadness + Disgust",
-    Components: { S: "Regret or sorrow for past actions.", D: "Self-disappointment or disapproval of one's actions." },
-    NTK_Layer: "Theta-like_NTK",
-    Brainwave: "Delta",
-    Neurotransmitter: "Serotonin",
-    Description: "Deep regret and guilt over a past action.",
-    primaryComponents: ["Sadness", "Disgust"]
-  },
-  Love: {
-    Formula: "Joy + Trust",
-    Components: { J: "Warmth and happiness in connection.", T: "Deep sense of security and reliability." },
-    NTK_Layer: "Alpha-like_NTK",
-    Brainwave: "Alpha",
-    Neurotransmitter: "Oxytocin",
-    Description: "A strong feeling of deep affection, warmth, and care for someone.",
-    primaryComponents: ["Joy", "Trust"]
-  }
-};
-
-// --- Chat Initialization & Messaging Functions ---
-async function initializeChat(): Promise<void> {
-  // Check backend health
-  try {
-    await auraAPI.healthCheck();
-    backendConnected = true;
-    console.log("✅ Backend connection established");
-  } catch (error) {
-    console.error("❌ Backend connection failed:", error);
-    backendConnected = false;
-    await displayMessage("⚠️ Unable to connect to Aura's advanced backend. Some features may be limited.", 'error');
+  constructor(apiInstance?: AuraAPI) {
+    this.api = apiInstance ?? AuraAPI.getInstance();
   }
 
-  // Get stored user name (we'll keep this in localStorage for simplicity)
-  userName = localStorage.getItem('aura_user_name');
-  let initialAuraGreeting = "";
-
-  if (userName) {
-    initialAuraGreeting = `Welcome back, ${userName}! I'm ready to continue our conversation with enhanced memory and emotional understanding. What would you like to explore today?`;
-  } else {
-    initialAuraGreeting = "Hello! I'm Aura, your Adaptive Reflective Companion. It seems we're establishing a new Knowledge Substrate (KS) together! What's your name, so I can personalize our interactions?";
-    awaitingNameInput = true;
+  public async initialize(): Promise<void> {
+    console.log("🚀 Initializing Aura UI Manager...");
+    await this.initializeDOM();
+    await this.checkBackendHealth();
+    await this.loadUserData();
+    this.setupUI();
+    this.initializeEventListeners();
+    await this.startChat();
+    console.log("✅ Aura UI Manager initialized successfully.");
   }
 
-  updateAuraEmotionDisplay({ name: "Normal", intensity: "Medium" });
-  updateAuraCognitiveFocusDisplay("Learning");
+  // ============================================================================
+  // INITIALIZATION
+  // ============================================================================
 
-  await displayMessage(initialAuraGreeting, 'aura', false);
+  private async initializeDOM(): Promise<void> {
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+      await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
+    }
 
-  setFormDisabledState(false);
-  messageInput.focus();
-}
+    // Get essential DOM elements
+    this.messageArea = this.getRequiredElement('message-area');
+    this.messageInput = this.getRequiredElement('message-input') as HTMLInputElement;
+    this.chatForm = this.getRequiredElement('chat-form') as HTMLFormElement;
+    this.sendButton = this.getRequiredElement('send-button') as HTMLButtonElement;
+    this.emotionStatusElement = this.getRequiredElement('aura-emotion-status');
+    this.emotionDetailsElement = this.getRequiredElement('aura-emotion-details');
+    this.cognitiveFocusElement = this.getRequiredElement('aura-cognitive-focus');
+    this.cognitiveFocusDetailsElement = this.getRequiredElement('aura-cognitive-focus-details');
+    this.chatHistoryList = this.getRequiredElement('chat-history-list');
+    this.leftPanel = this.getRequiredElement('left-panel');
+    this.rightPanel = this.getRequiredElement('right-panel');
 
-function showTypingIndicator(): void {
-  if (!typingIndicatorElement) {
-    typingIndicatorElement = document.createElement('div');
-    typingIndicatorElement.className = 'message-bubble aura typing-indicator';
-    typingIndicatorElement.setAttribute('aria-label', 'Aura is typing');
-    typingIndicatorElement.textContent = 'Aura is typing...';
-    messageArea.appendChild(typingIndicatorElement);
-    scrollToBottom();
-  }
-}
-
-function removeTypingIndicator(): void {
-  if (typingIndicatorElement) {
-    typingIndicatorElement.remove();
-    typingIndicatorElement = null;
-  }
-}
-
-async function displayMessage(
-  text: string,
-  sender: 'user' | 'aura' | 'error',
-  isStreaming: boolean = false
-): Promise<void> {
-  if (!isStreaming) {
-    removeTypingIndicator();
+    console.log("✅ DOM elements initialized");
   }
 
-  const messageBubble = document.createElement('div');
-  messageBubble.className = `message-bubble ${sender}`;
-  messageBubble.setAttribute('role', 'log');
-  messageBubble.innerHTML = await marked.parse(text);
-
-  // Simplified logic to prevent content loss
-  if (sender === 'aura' && isStreaming && currentAuraMessageElement) {
-    // Update streaming message
-    currentAuraMessageElement.innerHTML = messageBubble.innerHTML;
-  } else if (sender === 'aura' && !isStreaming && currentAuraMessageElement) {
-    // Complete the streaming message
-    currentAuraMessageElement.innerHTML = messageBubble.innerHTML;
-    addMessageActions(currentAuraMessageElement, sender);
-    currentAuraMessageElement = null;
-  } else {
-    // Add new message to area
-    messageArea.appendChild(messageBubble);
-    addMessageActions(messageBubble, sender);
+  private getRequiredElement(id: string): HTMLElement {
+    const element = document.getElementById(id);
+    if (!element) {
+      throw new Error(`Required element not found: ${id}`);
+    }
+    return element;
   }
 
-  scrollToBottom();
-}
+  private async checkBackendHealth(): Promise<void> {
+    try {
+      console.log("🔍 Checking backend health...");
+      const healthData = await this.api.healthCheck();
+      this.backendConnected = true;
+      console.log("✅ Backend connected:", healthData);
 
-// Enhanced scroll function to ensure visibility of latest content
-function scrollToBottom(): void {
-  if (messageArea) {
-    // Ensure DOM is fully updated before scrolling
-    setTimeout(() => {
-      // Force scroll to absolute bottom
-      messageArea.scrollTop = messageArea.scrollHeight + 1000;
-    }, 50);
-  }
-}
-
-function setFormDisabledState(disabled: boolean): void {
-  messageInput.disabled = disabled;
-  sendButton.disabled = disabled;
-}
-
-async function extractUserNameFromNameInput(userInput: string): Promise<string | null> {
-  // Simple client-side name extraction for fallback
-  const input = userInput.toLowerCase().trim();
-
-  // Look for common name patterns
-  const namePatterns = [
-    /(?:i'?m|my name is|i am|call me|i'm)s+([a-zA-Z]+)/i,
-    /^([a-zA-Z]+)(?:s|$)/i  // Simple first word if it looks like a name
-  ];
-
-  for (const pattern of namePatterns) {
-    const match = input.match(pattern);
-    if (match && match[1] && match[1].length > 1 && match[1].length < 20) {
-      const name = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
-      // Basic validation - avoid common non-names
-      const nonNames = ['hello', 'hi', 'hey', 'yes', 'no', 'ok', 'okay', 'sure', 'good', 'fine'];
-      if (!nonNames.includes(name.toLowerCase())) {
-        return name;
+      // Test if the backend is actually responding to conversation endpoint
+      try {
+        console.log("🧪 Testing backend endpoints...");
+        // We'll test this during the first actual message
+      } catch (testError) {
+        console.warn("⚠️ Backend health check passed but endpoints may not be working:", testError);
       }
+
+    } catch (error) {
+      console.warn("⚠️ Backend health check failed:", error);
+      this.backendConnected = false;
+      this.showConnectionWarning();
     }
   }
 
-  return null;
-}
-
-// Chat form event listener
-chatForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (!userName && !awaitingNameInput) return;
-
-  const userMessage = messageInput.value.trim();
-  if (!userMessage) return;
-
-  await displayMessage(userMessage, 'user');
-  messageInput.value = '';
-  setFormDisabledState(true);
-
-  // Handle name input
-  if (awaitingNameInput) {
-    const extractedName = await extractUserNameFromNameInput(userMessage);
-
-    if (extractedName) {
-      userName = extractedName;
-      localStorage.setItem('aura_user_name', userName);
-      awaitingNameInput = false;
-
-      const nameConfirmationMessage = `It's a pleasure to meet you, ${userName}! I'm now connecting to my advanced memory systems to provide you with a more personalized experience.`;
-      await displayMessage(nameConfirmationMessage, 'aura', false);
-
-      // Check if the message contains more than just the name
-      const isJustName = userMessage.toLowerCase().includes(extractedName.toLowerCase()) && userMessage.length < extractedName.length + 15;
-
-      if (!isJustName) {
-        // Process the rest of the message
-        // Continue to the conversation processing below
-      } else {
-        // Just the name, ready for next input
-        setFormDisabledState(false);
-        messageInput.focus();
-        return;
-      }
+  private async loadUserData(): Promise<void> {
+    const storedName = localStorage.getItem('auraUserName');
+    if (storedName) {
+      this.userName = storedName;
+      this.awaitingNameInput = false; // User is known
+      console.log(`User data loaded from localStorage: ${this.userName}`);
     } else {
-      const repromptMessage = "I'm sorry, I didn't quite catch your name. Could you please tell me just your first name?";
-      await displayMessage(repromptMessage, 'aura', false);
-      setFormDisabledState(false);
-      messageInput.focus();
-      return;
+      this.userName = null; // Explicitly null if not found
+      this.awaitingNameInput = true; // Aura needs to ask for the name
+      console.log("No user data found in local storage. Aura will ask for name.");
     }
   }
 
-  if (!userName) {
-    console.error("No username available for conversation");
-    await displayMessage("Please tell me your name first so I can personalize our conversation.", 'error');
-    setFormDisabledState(false);
-    return;
+  // ============================================================================
+  // UI SETUP
+  // ============================================================================
+
+  private setupUI(): void {
+    this.setupTheme();
+    this.setupMobileMenu();
+    this.setupMemorySearch();
+    this.setupEmotionalInsights();
+    this.setupChatHistory();
+    this.setupKeyboardShortcuts();
+    this.updateVideoArchiveStatus();
   }
 
-  // Show typing indicator
-  showTypingIndicator();
+  private setupTheme(): void {
+    const themeToggle = document.getElementById('theme-toggle');
+    const savedTheme = localStorage.getItem('aura_theme') || 'dark';
 
-  try {
-    if (!backendConnected) {
-      // Fallback mode - basic response without advanced features
-      removeTypingIndicator();
-      await displayMessage("I'm currently running in basic mode due to backend connection issues. Advanced features like persistent memory and emotional analysis are temporarily unavailable.", 'aura', false);
-      setFormDisabledState(false);
-      messageInput.focus();
-      return;
-    }
+    document.documentElement.setAttribute('data-theme', savedTheme);
 
-    // Send message to backend API
-    const response: ConversationResponse = await auraAPI.sendMessage({
-      user_id: userName,
-      message: userMessage,
-      session_id: currentSessionId || undefined
+    themeToggle?.addEventListener('click', () => {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('aura_theme', newTheme);
+    });
+  }
+
+  private setupMobileMenu(): void {
+    const leftMenuBtn = document.getElementById('left-menu-btn');
+    const rightMenuBtn = document.getElementById('right-menu-btn');
+
+    leftMenuBtn?.addEventListener('click', () => {
+      this.leftPanel.classList.toggle('collapsed');
     });
 
-    // Update session ID
-    currentSessionId = response.session_id;
-
-    // Remove typing indicator and display response
-    removeTypingIndicator();
-    await displayMessage(response.response, 'aura', false);
-
-    // Update emotional state display
-    updateAuraEmotionDisplay({
-      name: response.emotional_state.name,
-      intensity: response.emotional_state.intensity
+    rightMenuBtn?.addEventListener('click', () => {
+      this.rightPanel.classList.toggle('collapsed');
     });
 
-    // Update cognitive focus display
-    updateAuraCognitiveFocusDisplay(response.cognitive_state.focus);
-
-    console.log(`🎭 Emotional state: ${response.emotional_state.name} (${response.emotional_state.intensity})`);
-    console.log(`🧠 Cognitive focus: ${response.cognitive_state.focus}`);
-
-    // Refresh chat history to show the new conversation
-    await loadChatHistory();
-
-  } catch (error) {
-    console.error("Error communicating with Aura backend:", error);
-    removeTypingIndicator();
-    await displayMessage("I'm having trouble connecting to my advanced systems. Let me try a basic response.", 'error');
-
-    // Could implement a basic fallback here if needed
-  } finally {
-    setFormDisabledState(false);
-    messageInput.focus();
-  }
-});
-
-// --- Emotion Detection and Display ---
-function updateAuraEmotionDisplay(emotionResult: { name: string; intensity?: string } | null): void {
-  if (!auraEmotionStatusElement || !auraEmotionDetailsElement) return;
-  const currentEmotionName = emotionResult?.name || "Normal";
-  const emotionIntensity = emotionResult?.intensity;
-
-  const emotionData = EMOTIONAL_STATES_DATA[currentEmotionName];
-  if (emotionData) {
-    auraEmotionStatusElement.textContent = `${currentEmotionName}${emotionIntensity ? ` (${emotionIntensity})` : ''}`;
-    let detailsText = `Brainwave: ${emotionData.Brainwave}`;
-    if (emotionData.Neurotransmitter) {
-      detailsText += ` | NT: ${emotionData.Neurotransmitter}`;
-    }
-    if (emotionData.primaryComponents && emotionData.primaryComponents.length > 0) {
-        detailsText += ` | Components: ${emotionData.primaryComponents.join(', ')}`;
-    }
-    auraEmotionDetailsElement.textContent = detailsText;
-  } else {
-    auraEmotionStatusElement.textContent = "Normal";
-    auraEmotionDetailsElement.textContent = `Brainwave: ${EMOTIONAL_STATES_DATA.Normal.Brainwave} | NT: ${EMOTIONAL_STATES_DATA.Normal.Neurotransmitter}`;
-  }
-}
-
-function updateAuraCognitiveFocusDisplay(focusCode: string | null): void {
-  if (!auraCognitiveFocusElement || !auraCognitiveFocusDetailsElement) return;
-  const currentFocusCode = focusCode || "Learning";
-  const focusData = ASEKE_CONCEPTS[currentFocusCode];
-
-  if (focusData) {
-    auraCognitiveFocusElement.textContent = `${focusData.fullName} (${currentFocusCode})`;
-    auraCognitiveFocusDetailsElement.textContent = focusData.description;
-  } else if (currentFocusCode === "Learning") {
-    auraCognitiveFocusElement.textContent = "General Learning";
-    auraCognitiveFocusDetailsElement.textContent = ASEKE_CONCEPTS.Learning.description;
-  } else { // Fallback for unknown code, though detection should prevent this.
-    auraCognitiveFocusElement.textContent = "Processing";
-    auraCognitiveFocusDetailsElement.textContent = "Analyzing information.";
-  }
-}
-
-// --- Enhanced UI Features ---
-function setupMemorySearchPanel(): void {
-  // Connect to existing HTML elements instead of creating new ones
-  const searchButton = document.getElementById('search-memories');
-  const memoryQuery = document.getElementById('memory-query') as HTMLInputElement;
-  const memoryResults = document.getElementById('memory-results');
-
-  if (searchButton && memoryQuery && memoryResults) {
-    searchButton.addEventListener('click', async () => {
-      if (!userName || !backendConnected) return;
-
-      const query = memoryQuery.value.trim();
-      if (!query) return;
-
-      try {
-        searchButton.textContent = 'Searching...';
-        const response = await auraAPI.searchMemories(userName, query, 5);
-
-        if (response.results && response.results.length > 0) {
-          memoryResults.innerHTML = response.results.map(r => `
-            <div class="memory-result">
-              <div class="memory-content">${r.content}</div>
-              <div class="memory-meta">Similarity: ${(r.similarity * 100).toFixed(1)}%</div>
-            </div>
-          `).join('');
-        } else {
-          memoryResults.innerHTML = '<div class="memory-result">No relevant memories found.</div>';
+    // Close panels when clicking outside on mobile
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (window.innerWidth <= 1024) {
+        if (!this.leftPanel.contains(target) && !leftMenuBtn?.contains(target)) {
+          this.leftPanel.classList.add('collapsed');
         }
-      } catch (error) {
-        console.error('Memory search failed:', error);
-        memoryResults.innerHTML = '<div class="memory-result">Memory search temporarily unavailable.</div>';
-      } finally {
-        searchButton.textContent = 'Search';
-      }
-    });
-
-    // Allow enter key to trigger search
-    memoryQuery.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        searchButton.click();
+        if (!this.rightPanel.contains(target) && !rightMenuBtn?.contains(target)) {
+          this.rightPanel.classList.add('collapsed');
+        }
       }
     });
   }
-}
 
-function setupChatHistoryPanel(): void {
-    // Set up new chat button
+  private setupChatHistory(): void {
     const newChatBtn = document.getElementById('new-chat-btn');
+    newChatBtn?.addEventListener('click', () => this.createNewChat());
 
-    if (newChatBtn) {
-        newChatBtn.addEventListener('click', async () => {
-            // Clear current chat
-            const messageArea = document.getElementById('message-area');
-            if (messageArea) {
-                messageArea.innerHTML = '';
-            }
+    // Load chat history initially
+    this.loadChatHistory();
+    // Chat history will now be refreshed only when a chat is created or selected.
+  }
 
-            // Generate new session ID
-            const newSessionId = crypto.randomUUID();
-            currentSessionId = newSessionId;
+  private setupMemorySearch(): void {
+    const searchInput = document.getElementById('unified-search-input') as HTMLInputElement | null;
+    const searchButton = document.getElementById('unified-search-button') as HTMLButtonElement | null;
+    const searchResultsArea = document.getElementById('unified-search-results');
+    const searchErrorElement = document.getElementById('unified-search-error'); // Element from your screenshot
 
-            // Show welcome message with current date and time
-            const now = new Date();
-            const welcomeMessage = `Welcome back! It's ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}. How can I help you today?`;
-            await displayMessage(welcomeMessage, 'aura');
-
-            // Load chat history to update the list
-            await loadChatHistory();
-        });
+    if (!searchInput || !searchButton || !searchResultsArea || !searchErrorElement) {
+      console.error('Memory search UI elements not found. Search functionality will be disabled.');
+      if (searchErrorElement) searchErrorElement.textContent = 'Search UI failed to load.';
+      return;
     }
 
-    // Load chat history on startup
-    if (userName && backendConnected) {
-        loadChatHistory();
-    }
-}
+    // Initially disable search button if user is not known
+    searchButton.disabled = !this.userName;
 
-async function loadChatHistory(): Promise<void> {
-    const chatHistoryList = document.getElementById('chat-history-list');
-    if (!chatHistoryList || !userName || !backendConnected) return;
+    searchButton.addEventListener('click', () => {
+      const query = searchInput.value.trim();
+      searchErrorElement.textContent = ''; // Clear previous errors
+      searchResultsArea.innerHTML = '';   // Clear previous results
 
-    try {
-        const response = await auraAPI.getChatHistory(userName, 10);
-
-        if (response.sessions && response.sessions.length > 0) {
-            chatHistoryList.innerHTML = response.sessions.map((session: any) => {
-                const date = new Date(session.last_time);
-                const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                const firstMessage = session.messages[0]?.content || 'New conversation';
-                const preview = firstMessage.length > 50 ? firstMessage.substring(0, 47) + '...' : firstMessage;
-
-                return `
-                    <div class="chat-session-item" data-session-id="${session.session_id}">
-                        <div class="session-preview">${preview}</div>
-                        <div class="session-time">${timeStr}</div>
-                    </div>
-                `;
-            }).join('');
-
-            // Add click handlers to load specific sessions
-            document.querySelectorAll('.chat-session-item').forEach(item => {
-                item.addEventListener('click', async (e) => {
-                    const sessionId = (e.currentTarget as HTMLElement).dataset.sessionId;
-                    if (sessionId) {
-                        await loadChatSession(sessionId);
-                    }
-                });
-            });
-        } else {
-            chatHistoryList.innerHTML = '<div class="no-history">No chat history yet</div>';
-        }
-    } catch (error) {
-        console.error('Failed to load chat history:', error);
-        chatHistoryList.innerHTML = '<div class="no-history">Failed to load history</div>';
-    }
-}
-
-async function loadChatSession(sessionId: string): Promise<void> {
-    if (!userName || !backendConnected) {
-        await displayMessage("Unable to load chat session - not connected to backend", 'error');
+      if (!this.userName) {
+        searchErrorElement.textContent = 'Error: User not identified. Please tell Aura your name in the chat.';
+        console.warn('Memory search attempted without user identification.');
         return;
-    }
+      }
 
-    try {
-        // Show loading indicator
-        const messageArea = document.getElementById('message-area');
-        if (messageArea) {
-            messageArea.innerHTML = '<div class="loading-session">Loading conversation history...</div>';
+      if (!query) {
+        searchErrorElement.textContent = 'Please enter a search query.';
+        return;
+      }
+
+      searchResultsArea.innerHTML = '<p>Searching memories...</p>';
+
+      (async () => {
+        try {
+          console.log(`Searching memories for user "${this.userName}" with query "${query}"`);
+          const response = await this.api.searchMemories(this.userName!, query);
+
+          this.displaySearchResults(response, searchResultsArea);
+        } catch (error: any) {
+          console.error('Error during memory search:', error);
+          searchErrorElement.textContent = `Search failed: ${error.message || 'Unknown error'}`;
+          searchResultsArea.innerHTML = '<p>An error occurred during the search.</p>';
         }
+      })();
+    });
+    console.log("✅ Unified Memory Search UI setup complete.");
+  }
 
-        // Fetch chat history from backend
-        const response = await auraAPI.getChatHistory(userName, 50); // Get more messages for session loading
+  private setupEmotionalInsights(): void {
+    const showInsightsBtn = document.getElementById('show-insights');
+    const insightsPeriod = document.getElementById('insights-period') as HTMLSelectElement;
+    const insightsContent = document.getElementById('insights-content');
 
-        // Find the specific session
-        const targetSession = response.sessions?.find((session: any) => session.session_id === sessionId);
+    if (!showInsightsBtn || !insightsPeriod || !insightsContent) return;
 
-        if (!targetSession) {
-            await displayMessage(`Session ${sessionId} not found or has been removed.`, 'error');
-            return;
-        }
+    showInsightsBtn.addEventListener('click', async () => {
+      console.log(`📊 Emotional insights requested:`, { userName: this.userName, backendConnected: this.backendConnected });
 
-        // Clear message area
-        if (messageArea) {
-            messageArea.innerHTML = '';
-        }
-
-        // Set current session
-        currentSessionId = sessionId;
-
-        // Display session info
-        const sessionDate = new Date(targetSession.start_time);
-        const sessionInfo = `📅 **Chat Session**: ${sessionDate.toLocaleDateString()} at ${sessionDate.toLocaleTimeString()}`;
-        await displayMessage(sessionInfo, 'aura');
-
-        // Sort messages by timestamp to ensure chronological order
-        const sortedMessages = targetSession.messages.sort((a: any, b: any) => 
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-
-        // Display all messages from the session
-        for (const message of sortedMessages) {
-            const sender = message.sender === 'user' ? 'user' : 'aura';
-            await displayMessage(message.content, sender);
-            
-            // Small delay to prevent UI overwhelming
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        // Update emotional state if available from last Aura message
-        const lastAuraMessage = sortedMessages.filter((msg: any) => msg.sender === 'aura').pop();
-        if (lastAuraMessage && lastAuraMessage.emotion) {
-            updateAuraEmotionDisplay({ 
-                name: lastAuraMessage.emotion,
-                intensity: 'Medium' // Default intensity since historical data may not have it
-            });
-        }
-
-        console.log(`✅ Loaded session ${sessionId} with ${sortedMessages.length} messages`);
-
-    } catch (error) {
-        console.error('Failed to load chat session:', error);
-        await displayMessage(`Failed to load session ${sessionId}. Please try again.`, 'error');
-        
-        // Restore to new chat if loading failed
-        const newSessionId = crypto.randomUUID();
-        currentSessionId = newSessionId;
-        await displayMessage("Started a new conversation instead.", 'aura');
-    }
-}
-
-function setupEmotionalInsightsPanel(): void {
-  // Connect to existing HTML elements instead of creating new ones
-  const showInsightsButton = document.getElementById('show-insights');
-  const periodSelector = document.getElementById('insights-period') as HTMLSelectElement;
-  const insightsContent = document.getElementById('insights-content');
-
-  if (showInsightsButton && periodSelector && insightsContent) {
-    showInsightsButton.addEventListener('click', async () => {
-      if (!userName || !backendConnected) return;
+      if (!this.userName || !this.backendConnected) {
+        const errorMsg = !this.userName ? 'User not identified' : 'Backend not connected';
+        insightsContent.innerHTML = `<div class="insights-data error">Error: ${errorMsg}</div>`;
+        console.warn('⚠️ Emotional insights failed:', { userName: this.userName, backendConnected: this.backendConnected });
+        return;
+      }
 
       try {
-        const selectedPeriod = periodSelector.value;
-        showInsightsButton.textContent = 'Loading...';
-        const analysis = await auraAPI.getEmotionalAnalysis(userName, selectedPeriod);
+        showInsightsBtn.textContent = 'Analyzing...';
+        (showInsightsBtn as HTMLButtonElement).disabled = true;
+        insightsContent.innerHTML = '<div class="insights-data">Analyzing emotional patterns...</div>';
 
-        // Format period display
-        const periodText = selectedPeriod === 'hour' ? 'Hour' :
-                          selectedPeriod === 'day' ? '24 Hours' :
-                          selectedPeriod === 'week' ? 'Week' :
-                          selectedPeriod === 'month' ? 'Month' :
-                          selectedPeriod === 'year' ? 'Year' :
-                          selectedPeriod === 'multi-year' ? '5 Years' :
-                          `${analysis.period_days} days`;
+        const period = insightsPeriod.value;
+        console.log(`📤 Requesting emotional analysis for user: ${this.userName}, period: ${period}`);
 
-        insightsContent.innerHTML = `
-          <div class="insights-data">
-            <p><strong>Period:</strong> Last ${periodText}</p>
-            <p><strong>Total Interactions:</strong> ${analysis.total_entries}</p>
-            <p><strong>Emotional Stability:</strong> ${(analysis.emotional_stability * 100).toFixed(1)}%</p>
-            ${analysis.dominant_emotions && analysis.dominant_emotions.length > 0 ?
-              `<p><strong>Dominant Emotions:</strong> ${analysis.dominant_emotions.map(([e, c]) => `${e} (${c}x)`).join(', ')}</p>` :
-              '<p><strong>Dominant Emotions:</strong> Not enough data</p>'
+        const analysis = await this.api.getEmotionalAnalysis(this.userName, period);
+        console.log(`📥 Emotional analysis response:`, analysis);
+
+        this.displayEmotionalInsights(analysis, insightsContent);
+
+      } catch (error) {
+        console.error('❌ Insights error:', error);
+        insightsContent.innerHTML = `<div class="insights-data error">Failed to load insights: ${(error as Error).message}</div>`;
+      } finally {
+        showInsightsBtn.textContent = 'View Analysis';
+        (showInsightsBtn as HTMLButtonElement).disabled = false;
+      }
+    });
+  }
+
+  private setupKeyboardShortcuts(): void {
+    document.addEventListener('keydown', (e) => {
+      // Ctrl/Cmd + Enter to send message
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        this.chatForm.dispatchEvent(new Event('submit'));
+      }
+
+      // Escape to close mobile panels
+      if (e.key === 'Escape') {
+        this.leftPanel.classList.add('collapsed');
+        this.rightPanel.classList.add('collapsed');
+      }
+    });
+
+    // Fixed message input handling - properly trigger form submission
+    this.messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        // Trigger form submission event instead of calling handler directly
+        this.chatForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+  }
+
+  // ============================================================================
+  // CHAT FUNCTIONALITY
+  // ============================================================================
+
+  private async startChat(): Promise<void> {
+    try {
+      const now = new Date();
+      const timeString = `${now.toLocaleDateString()} at ${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+      let initialGreeting: string;
+
+      if (this.userName) {
+        initialGreeting = `**Welcome back, ${this.userName}!**\n\n*${timeString}*\n\nI'm ready to continue our conversation. What would you like to explore today?`;
+      } else {
+        this.awaitingNameInput = true;
+        initialGreeting = `**Hello! I'm Aura 🌟**\n\n*${timeString}*\n\nI'm your adaptive reflective companion. Before we begin, what would you like me to call you?`;
+      }
+
+      this.updateEmotionalState({ name: "Normal", intensity: "Medium", brainwave: "Alpha", neurotransmitter: "Serotonin" });
+      this.updateCognitiveState({ focus: "Learning", description: "Ready to assist and learn together" });
+
+      await this.displayMessage(initialGreeting, 'aura');
+      this.setFormState(false);
+      this.messageInput.focus();
+
+    } catch (error) {
+      console.error("❌ Failed to start chat:", error);
+      await this.displayMessage("I'm having trouble starting up. Please refresh the page if the issue persists.", 'error');
+    }
+  }
+
+  private initializeEventListeners(): void {
+    if (!this.chatForm) {
+      console.error("❌ Chat form not found during event listener initialization.");
+      // Optionally, throw an error or show a critical UI error
+      this.showCriticalError("Chat input form failed to initialize. Please refresh.");
+      return;
+    }
+
+    // Directly attach the submit listener to the class's chatForm property
+    this.chatForm.addEventListener('submit', (event) => this.handleFormSubmit(event));
+    console.log("✅ Chat form submit listener attached.");
+
+    // You can add other global or essential listeners here if needed,
+    // ensuring their respective DOM elements are also checked like this.chatForm.
+  }
+
+  private async handleFormSubmit(event: Event): Promise<void> {
+    event.preventDefault();
+
+    const userMessage = this.messageInput.value.trim();
+    if (!userMessage) return;
+
+    await this.displayMessage(userMessage, 'user');
+    this.messageInput.value = '';
+    this.setFormState(true);
+
+    // Check for special commands
+    if (await this.handleSpecialCommands(userMessage)) {
+      return;
+    }
+
+    // Handle name input flow
+    if (this.awaitingNameInput) {
+      await this.handleNameInput(userMessage);
+      return;
+    }
+
+    if (!this.userName) {
+      this.awaitingNameInput = true;
+      await this.displayMessage("Before we continue, what would you like me to call you?", 'aura');
+      this.setFormState(false);
+      return;
+    }
+
+    await this.processMessage(userMessage);
+  }
+
+  // ============================================================================
+  // SPECIAL COMMAND HANDLING
+  // ============================================================================
+
+  private async handleSpecialCommands(message: string): Promise<boolean> {
+    const lowerMessage = message.toLowerCase().trim();
+
+    // Command to change name
+    if (lowerMessage.startsWith('/name ') || lowerMessage.startsWith('/setname ')) {
+      const newName = message.substring(message.indexOf(' ') + 1).trim();
+      if (newName && newName.length >= 2) {
+        const extractedName = this.extractNameFromInput(newName) || newName.split(/\s+/)[0];
+        const oldName = this.userName;
+        this.userName = extractedName;
+        localStorage.setItem('auraUserName', this.userName);
+
+        await this.displayMessage(`Great! I've updated your name to ${this.userName}.`, 'aura');
+
+        // Notify the backend about the name change so it can use existing user data
+        if (oldName !== this.userName) {
+          try {
+            console.log(`🔄 Notifying backend of name change: "${oldName}" → "${this.userName}"`);
+
+            // Send a special message to backend to update user context
+            const nameChangeRequest = {
+              user_id: this.userName,
+              message: `[SYSTEM] User name updated from "${oldName || 'unknown'}" to "${this.userName}". Please use existing data for "${this.userName}" if available.`,
+              session_id: this.currentSessionId || undefined
+            };
+
+            const response = await this.api.sendMessage(nameChangeRequest);
+            console.log(`✅ Backend notified of name change, response: ${response.response}`);
+
+            // Update session ID if needed
+            if (response.session_id && !this.currentSessionId) {
+              this.currentSessionId = response.session_id;
             }
-            ${analysis.brainwave_patterns && Object.keys(analysis.brainwave_patterns).length > 0 ?
-              `<p><strong>Brainwave Patterns:</strong> ${Object.entries(analysis.brainwave_patterns).map(([wave, count]) => `${wave} (${count}x)`).join(', ')}</p>` :
-              ''
-            }
-            <div class="recommendations">
-              <h4>Recommendations:</h4>
-              ${analysis.recommendations?.map(r => `<p>• ${r}</p>`).join('') || '<p>Continue building emotional awareness</p>'}
+
+          } catch (error) {
+            console.warn(`⚠️ Failed to notify backend of name change: ${error}`);
+            await this.displayMessage("Name updated locally, but there may be an issue syncing with your chat history.", 'aura');
+          }
+        }
+
+        this.updateUserSpecificUI();
+        this.setFormState(false);
+        return true;
+      } else {
+        await this.displayMessage("Please provide a valid name. Example: `/name Ty`", 'aura');
+        this.setFormState(false);
+        return true;
+      }
+    }
+
+    // Command to reset name
+    if (lowerMessage === '/resetname' || lowerMessage === '/changename') {
+      this.userName = null;
+      localStorage.removeItem('auraUserName');
+      this.awaitingNameInput = true;
+      await this.displayMessage("I've cleared your name. What would you like me to call you?", 'aura');
+      this.updateUserSpecificUI();
+      this.setFormState(false);
+      return true;
+    }
+
+    return false; // Not a special command
+  }
+
+  private async handleNameInput(userInput: string): Promise<void> {
+    const trimmedInput = userInput.trim();
+    if (!trimmedInput) {
+      await this.displayMessage("I need a name to call you by. Could you please tell me?", 'aura');
+      this.awaitingNameInput = true;
+      return;
+    }
+
+    // Extract name from conversational input
+    let extractedName = this.extractNameFromInput(trimmedInput);
+
+    if (!extractedName) {
+      await this.displayMessage("I didn't catch your name clearly. Could you tell me just your name or nickname?", 'aura');
+      this.awaitingNameInput = true;
+      return;
+    }
+
+    this.userName = extractedName;
+    this.awaitingNameInput = false;
+    localStorage.setItem('auraUserName', this.userName);
+    await this.displayMessage(`Great, I'll call you ${this.userName}! How can I help you today?`, 'aura');
+    console.log(`User name set to: ${this.userName} and saved to localStorage.`);
+    this.updateUserSpecificUI(); // Update UI elements that depend on the user name
+  }
+
+  private extractNameFromInput(input: string): string | null {
+    const trimmed = input.trim();
+
+    // If it's just a simple name (1-2 words, no complex grammar), use it directly
+    const words = trimmed.split(/\s+/);
+    if (words.length <= 2 && !/^(hi|hello|hey|my|name|is|i'm|im|call|me)\b/i.test(trimmed)) {
+      return trimmed;
+    }
+
+    // Common patterns for name introduction
+    const patterns = [
+      /(?:my name is|i'm|im|i am|call me|name's)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+      /(?:hi|hello|hey)(?:\s+aura)?[,\s]*(?:my name is|i'm|im|i am)?\s*([a-zA-Z]+)/i,
+      /^([a-zA-Z]+)(?:\s+here|$)/i // "Ty here" or just "Ty"
+    ];
+
+    for (const pattern of patterns) {
+      const match = trimmed.match(pattern);
+      if (match && match[1]) {
+        // Take only the first word of the captured name to avoid titles/extra words
+        const extractedName = match[1].trim().split(/\s+/)[0];
+        // Make sure it's a reasonable name (not a common word)
+        if (extractedName.length >= 2 && !/^(aura|hi|hello|hey|name|call|me|my|is|am)$/i.test(extractedName)) {
+          return extractedName;
+        }
+      }
+    }
+
+    return null; // Couldn't extract a clear name
+  }
+
+  private updateUserSpecificUI(): void {
+    // Example: Enable/disable search button based on userName
+    const searchButton = document.getElementById('unified-search-button') as HTMLButtonElement | null;
+    if (searchButton) {
+      searchButton.disabled = !this.userName;
+    }
+    // The following assumes the existence of an element with id 'user-name-display-area' in the DOM.
+    // If this element is missing, the update will silently fail.
+    // To ensure robustness, provide a fallback warning in the console.
+    const userNameDisplayElement = document.getElementById('user-name-display-area');
+    if (userNameDisplayElement) {
+      userNameDisplayElement.textContent = this.userName ? `User: ${this.userName}` : 'User: Not identified';
+    } else {
+      console.warn("user-name-display-area element not found in the DOM. Username display will not be updated.");
+    }
+
+    if (!this.userName) {
+      const searchInput = document.getElementById('unified-search-input') as HTMLInputElement | null;
+      if (searchInput) searchInput.value = '';
+
+      const searchResultsArea = document.getElementById('unified-search-results');
+      if (searchResultsArea) searchResultsArea.innerHTML = '';
+
+      const searchErrorElement = document.getElementById('unified-search-error');
+      if (searchErrorElement) searchErrorElement.textContent = 'User not identified. Please tell Aura your name in the chat.';
+    }
+  }
+
+  private async processMessage(userMessage: string): Promise<void> {
+    this.showTypingIndicator();
+
+    try {
+      console.log(`🤖 Sending message to backend:`, {
+        userName: this.userName,
+        userMessage,
+        sessionId: this.currentSessionId,
+        backendConnected: this.backendConnected
+      });
+
+      if (!this.backendConnected) {
+        throw new Error('Backend connection not available');
+      }
+
+      if (!this.userName) {
+        throw new Error('User name not set');
+      }
+
+      const requestData = {
+        user_id: this.userName,
+        message: userMessage,
+        session_id: this.currentSessionId || undefined
+      };
+
+      console.log(`📤 Request data:`, requestData);
+
+      const response: ConversationResponse = await this.api.sendMessage(requestData);
+
+      console.log(`✅ Received response:`, response);
+
+      // Validate response
+      if (!response) {
+        throw new Error('No response received from backend');
+      }
+
+      if (!response.response) {
+        throw new Error('Invalid response: missing response text');
+      }
+
+      // Update session ID if new
+      if (!this.currentSessionId && response.session_id) {
+        this.currentSessionId = response.session_id;
+        console.log(`📝 Session ID set to: ${this.currentSessionId}`);
+
+        // Refresh chat history to show new session
+        setTimeout(() => this.loadChatHistory(), 1000);
+      }
+
+      // Update UI states with validation
+      if (response.emotional_state) {
+        this.updateEmotionalState(response.emotional_state);
+      } else {
+        console.warn('⚠️ No emotional state in response');
+      }
+
+      if (response.cognitive_state) {
+        this.updateCognitiveState(response.cognitive_state);
+      } else {
+        console.warn('⚠️ No cognitive state in response');
+      }
+
+      await this.displayMessage(response.response, 'aura');
+
+    } catch (error) {
+      console.error('❌ Chat error details:', {
+        error,
+        message: (error as Error).message,
+        stack: (error as Error).stack,
+        userName: this.userName,
+        backendConnected: this.backendConnected
+      });
+
+      let errorMessage: string;
+      const errorStr = (error as Error).message;
+
+      // Handle specific database errors
+      if (errorStr.includes('disk I/O error') || errorStr.includes('database')) {
+        errorMessage = "🚨 Database connection issue detected. The conversation system is experiencing technical difficulties. Please try restarting the application.";
+      } else if (errorStr.includes('ChromaDB') || errorStr.includes('instance')) {
+        errorMessage = "⚙️ Database configuration conflict detected. Multiple instances may be running. Please restart the application.";
+      } else if (!this.backendConnected) {
+        errorMessage = "🔌 Backend connection lost. Please check if the server is running and refresh the page.";
+      } else {
+        errorMessage = `💥 Processing error: ${errorStr}`;
+      }
+
+      await this.displayMessage(errorMessage, 'error');
+
+      // If it's a database error, also show a recovery suggestion
+      if (errorStr.includes('disk I/O error') || errorStr.includes('ChromaDB')) {
+        setTimeout(async () => {
+          await this.displayMessage(
+            "💡 **Recovery Suggestion**: This appears to be a database issue. Try:\n\n" +
+            "1. Restart the entire application (backend + frontend)\n" +
+            "2. Check if multiple ChromaDB instances are running\n" +
+            "3. Ensure sufficient disk space\n" +
+            "4. Check file permissions on the database directory",
+            'aura'
+          );
+        }, 1000);
+      }
+    } finally {
+      this.setFormState(false);
+    }
+  }
+
+  // ============================================================================
+  // UI UPDATES
+  // ============================================================================
+
+  private showTypingIndicator(): void {
+    if (this.typingIndicatorElement) return;
+
+    this.typingIndicatorElement = document.createElement('div');
+    this.typingIndicatorElement.className = 'typing-indicator';
+    this.typingIndicatorElement.innerHTML = `
+      <div class="thinking-phases">
+        <div class="phase-indicator active" data-phase="thinking">🤔 Thinking...</div>
+        <div class="phase-indicator" data-phase="processing">⚡ Processing...</div>
+        <div class="phase-indicator" data-phase="responding">💭 Responding...</div>
+      </div>
+    `;
+
+    this.messageArea.appendChild(this.typingIndicatorElement);
+    this.scrollToBottom();
+
+    // Animate through phases
+    setTimeout(() => this.updateThinkingPhase('processing'), 1000);
+    setTimeout(() => this.updateThinkingPhase('responding'), 2000);
+  }
+
+  private updateThinkingPhase(phase: 'thinking' | 'processing' | 'responding'): void {
+    if (!this.typingIndicatorElement) return;
+
+    const indicators = this.typingIndicatorElement.querySelectorAll('.phase-indicator');
+    indicators.forEach(indicator => {
+      indicator.classList.remove('active');
+      if (indicator.getAttribute('data-phase') === phase) {
+        indicator.classList.add('active');
+      }
+    });
+  }
+
+  private removeTypingIndicator(): void {
+    if (this.typingIndicatorElement) {
+      this.typingIndicatorElement.remove();
+      this.typingIndicatorElement = null;
+    }
+  }
+
+  private async displayMessage(text: string, sender: 'user' | 'aura' | 'error'): Promise<void> {
+    this.removeTypingIndicator();
+
+    const messageBubble = document.createElement('div');
+    messageBubble.className = `message-bubble ${sender}`;
+    messageBubble.setAttribute('role', 'log');
+    messageBubble.setAttribute('data-timestamp', Date.now().toString());
+
+    try {
+      messageBubble.innerHTML = await marked.parse(text);
+    } catch (error) {
+      console.warn('Markdown parsing failed, using plain text:', error);
+      messageBubble.textContent = text;
+    }
+
+    // Always append new messages to ensure proper chronological order
+    this.messageArea.appendChild(messageBubble);
+
+
+    this.scrollToBottom();
+  }
+
+  private scrollToBottom(): void {
+    // Scroll to bottom for normal layout with smooth behavior
+    if (this.messageArea) {
+      setTimeout(() => {
+        this.messageArea.scrollTo({
+          top: this.messageArea.scrollHeight,
+          behavior: 'smooth'
+        });
+      }, 50); // Small delay to ensure content is rendered
+    }
+  }
+
+  private setFormState(disabled: boolean): void {
+    this.messageInput.disabled = disabled;
+    this.sendButton.disabled = disabled;
+
+    if (!disabled) {
+      this.messageInput.focus();
+    }
+  }
+
+  private updateEmotionalState(emotionalState: EmotionalState): void {
+    try {
+      this.emotionStatusElement.textContent = emotionalState.name;
+      this.emotionDetailsElement.textContent = `Brainwave: ${emotionalState.brainwave} | NT: ${emotionalState.neurotransmitter}`;
+
+      console.log(`🎭 Updated emotion: ${emotionalState.name} (${emotionalState.intensity})`);
+    } catch (error) {
+      console.warn('Failed to update emotional state display:', error);
+    }
+  }
+
+  private updateCognitiveState(cognitiveState: CognitiveState): void {
+    try {
+      this.cognitiveFocusElement.textContent = cognitiveState.focus;
+      this.cognitiveFocusDetailsElement.textContent = cognitiveState.description;
+
+      console.log(`🧠 Updated cognitive focus: ${cognitiveState.focus}`);
+    } catch (error) {
+      console.warn('Failed to update cognitive state display:', error);
+    }
+  }
+
+  // ============================================================================
+  // CHAT HISTORY MANAGEMENT
+  // ============================================================================
+
+  private async loadChatHistory(): Promise<void> {
+    if (!this.userName || !this.backendConnected) return;
+
+    try {
+      console.log("📚 Loading chat history...");
+      const historyData = await this.api.getChatHistory(this.userName, 20);
+
+      console.log("📊 Chat history response:", historyData);
+
+      if (historyData && historyData.sessions && historyData.sessions.length > 0) {
+        this.chatSessions = historyData.sessions;
+        this.renderChatHistory();
+        console.log(`✅ Loaded ${this.chatSessions.length} chat sessions`);
+      } else if (historyData && (historyData as any).error) {
+        console.error("🚨 Database error in chat history:", (historyData as any).error);
+        this.renderDatabaseError();
+      } else {
+        console.log("📭 No chat history found");
+        this.renderNoChatHistory();
+      }
+    } catch (error) {
+      console.error("❌ Failed to load chat history:", error);
+      this.renderChatHistoryError();
+    }
+  }
+
+  private renderChatHistory(): void {
+    this.chatHistoryList.innerHTML = this.chatSessions.map(session => {
+      const isActive = session.session_id === this.currentSessionId;
+      const timestamp = this.formatTimestamp(session.timestamp);
+      const preview = session.last_message ?
+        session.last_message.substring(0, 50) + '...' :
+        'New conversation';
+
+      return `
+        <div class="chat-session-item ${isActive ? 'active' : ''}"
+             data-session-id="${session.session_id}"
+             role="button"
+             tabindex="0">
+          <div class="session-title">${this.escapeHtml(preview)}</div>
+          <div class="session-meta">${timestamp} • ${session.message_count || 0} messages</div>
+        </div>
+      `;
+    }).join('');
+
+    // Add click handlers
+    this.chatHistoryList.querySelectorAll('.chat-session-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const sessionId = item.getAttribute('data-session-id');
+        if (sessionId && sessionId !== this.currentSessionId) {
+          this.loadChatSession(sessionId);
+        }
+      });
+
+      // Keyboard accessibility
+      item.addEventListener('keydown', (e: Event) => {
+        const keyboardEvent = e as KeyboardEvent;
+        if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+          e.preventDefault();
+          (item as HTMLElement).click();
+        }
+      });
+    });
+  }
+
+  private renderNoChatHistory(): void {
+    this.chatHistoryList.innerHTML = '<div class="no-history">No conversation history yet. Start a new chat!</div>';
+  }
+
+  private renderChatHistoryError(): void {
+    this.chatHistoryList.innerHTML = '<div class="error-message">Failed to load chat history</div>';
+  }
+
+  private renderDatabaseError(): void {
+    this.chatHistoryList.innerHTML = `
+      <div class="database-error">
+        <div class="error-icon">🚨</div>
+        <div class="error-title">Database Connection Issue</div>
+        <div class="error-message">
+          The database is experiencing I/O errors. This is usually due to:
+          <ul>
+            <li>Multiple ChromaDB instances running</li>
+            <li>Disk space or permission issues</li>
+            <li>Corrupted database files</li>
+          </ul>
+        </div>
+        <button onclick="window.location.reload()" class="retry-button">
+          Restart Application
+        </button>
+      </div>
+    `;
+  }
+
+  private async loadChatSession(sessionId: string): Promise<void> {
+    try {
+      console.log(`📖 Loading session: ${sessionId}`);
+
+      // Update current session
+      this.currentSessionId = sessionId;
+
+      // Update active session UI
+      this.updateActiveSession(sessionId);
+
+      // Load and display all messages for the selected session
+      const sessionMessages = await this.api.getSessionMessages(this.userName!, sessionId);
+
+      // Clear current chat area
+      this.clearChat();
+
+      if (sessionMessages && Array.isArray(sessionMessages) && sessionMessages.length > 0) {
+        // Display each message in order
+        for (const msg of sessionMessages) {
+          // Assume msg has { sender: 'user' | 'aura', content: string }
+          // Fallback to 'aura' if sender is missing
+          await this.displayMessage(msg.content, msg.sender === 'user' ? 'user' : 'aura');
+        }
+      } else {
+        await this.displayMessage('No messages found for this session.', 'aura');
+      }
+
+      // Find selected session data for display
+      const selectedSessionData = this.chatSessions.find(session => session.session_id === sessionId);
+      if (selectedSessionData) {
+        await this.displayMessage(
+          `Session: ${sessionId}\nTotal Messages: ${selectedSessionData.message_count}\nLast message: "${selectedSessionData.last_message}"\n(To view the full conversation, this section needs to be updated to fetch and display all ${selectedSessionData.message_count} messages.)`,
+          'aura'
+        );
+      }
+
+      console.log(`✅ Loaded session: ${sessionId}`);
+
+    } catch (error) {
+      console.error(`❌ Failed to load session ${sessionId}:`, error);
+      await this.displayMessage("Failed to load this conversation. Please try again.", 'error');
+    }
+  }
+
+  private async createNewChat(): Promise<void> {
+    try {
+      console.log("🔄 Creating new chat session...");
+
+      // Generate new session ID
+      this.currentSessionId = this.generateSessionId();
+
+      // Clear current chat
+      this.clearChat();
+
+      // Start fresh conversation
+      await this.startChat();
+
+      // Refresh chat history when a new chat is created
+      await this.loadChatHistory();
+
+      console.log(`✅ New chat session created: ${this.currentSessionId}`);
+
+    } catch (error) {
+      console.error("❌ Failed to create new chat:", error);
+      await this.displayMessage("Error creating new chat. Please refresh the page.", 'error');
+    }
+  }
+
+  private clearChat(): void {
+    this.messageArea.innerHTML = '';
+    this.removeTypingIndicator();
+  }
+
+  private updateActiveSession(sessionId: string): void {
+    this.chatHistoryList.querySelectorAll('.chat-session-item').forEach(item => {
+      item.classList.toggle('active', item.getAttribute('data-session-id') === sessionId);
+    });
+  }
+
+  private generateSessionId(): string {
+    // Use crypto.randomUUID if available (modern browsers), fallback to a manual UUID v4 generator
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `session_${crypto.randomUUID()}`;
+    }
+    // Fallback: manual UUID v4 generator
+    const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+    return `session_${uuid}`;
+  }
+
+  // ============================================================================
+  // MEMORY & INSIGHTS
+  // ============================================================================
+
+  private displaySearchResults(response: any, resultsElement: HTMLElement): void {
+    if (response.results && response.results.length > 0) {
+      resultsElement.innerHTML = response.results.map((result: any) => {
+        const content = result.content.replace(/[*#]/g, '').trim();
+        const similarity = (result.similarity * 100).toFixed(1);
+        const source = response.includes_video_archives ? 'unified' : 'active';
+
+        return `
+          <div class="memory-result" data-source="${source}">
+            <div class="memory-content">${this.escapeHtml(content)}</div>
+            <div class="memory-meta">
+              Relevance: ${similarity}% | Source: ${response.search_type || 'Memory'}
             </div>
           </div>
         `;
-      } catch (error) {
-        console.error('Failed to load emotional insights:', error);
-        insightsContent.innerHTML = '<div class="insights-data">Emotional analysis temporarily unavailable.</div>';
-      } finally {
-        showInsightsButton.textContent = 'View Analysis';
-      }
-    });
+      }).join('');
 
-    // Auto-refresh when period changes
-    periodSelector.addEventListener('change', () => {
-      if (insightsContent.innerHTML.includes('insights-data')) {
-        showInsightsButton.click();
-      }
-    });
-  }
-}
-
-// --- Message Actions (Delete, Edit, Regenerate) ---
-function addMessageActions(messageBubble: HTMLElement, sender: 'user' | 'aura' | 'error'): void {
-  // Don't add actions to error messages
-  if (sender === 'error') return;
-
-  const actionsDiv = document.createElement('div');
-  actionsDiv.className = 'message-actions';
-  actionsDiv.style.display = 'none';
-
-  if (sender === 'user') {
-    // Edit and Delete for user messages
-    actionsDiv.innerHTML = `
-      <button class="action-btn edit-btn" title="Edit message">✏️</button>
-      <button class="action-btn delete-btn" title="Delete message">🗑️</button>
-    `;
-  } else {
-    // Regenerate and Delete for Aura messages
-    actionsDiv.innerHTML = `
-      <button class="action-btn regenerate-btn" title="Regenerate response">🔄</button>
-      <button class="action-btn delete-btn" title="Delete message">🗑️</button>
-    `;
-  }
-
-  messageBubble.appendChild(actionsDiv);
-
-  // Show actions on hover
-  messageBubble.addEventListener('mouseenter', () => {
-    actionsDiv.style.display = 'flex';
-  });
-
-  messageBubble.addEventListener('mouseleave', () => {
-    actionsDiv.style.display = 'none';
-  });
-
-  // Add click handlers
-  const deleteBtn = actionsDiv.querySelector('.delete-btn');
-  const editBtn = actionsDiv.querySelector('.edit-btn');
-  const regenerateBtn = actionsDiv.querySelector('.regenerate-btn');
-
-  if (deleteBtn) {
-    deleteBtn.addEventListener('click', () => {
-      messageBubble.remove();
-    });
-  }
-
-  if (editBtn) {
-    editBtn.addEventListener('click', () => {
-      // Edit functionality - create inline editor
-      const originalContent = messageBubble.querySelector('.message-content') || messageBubble;
-      const originalContentElement = originalContent as HTMLElement;
-      originalContentElement.style.display = 'none';
-      const originalText = originalContentElement.textContent || '';
-
-      const editor = document.createElement('textarea');
-      editor.className = 'message-editor';
-      editor.value = originalText;
-      editor.style.width = '100%';
-      editor.style.minHeight = '60px';
-
-      const saveBtn = document.createElement('button');
-      saveBtn.textContent = 'Save';
-      saveBtn.className = 'action-btn save-btn';
-
-      const cancelBtn = document.createElement('button');
-      cancelBtn.textContent = 'Cancel';
-      cancelBtn.className = 'action-btn cancel-btn';
-
-      const editorActions = document.createElement('div');
-      editorActions.className = 'editor-actions';
-      editorActions.appendChild(saveBtn);
-      editorActions.appendChild(cancelBtn);
-
-      originalContentElement.style.display = 'none';
-      messageBubble.appendChild(editor);
-      messageBubble.appendChild(editorActions);
-
-      saveBtn.addEventListener('click', async () => {
-        const newText = editor.value.trim();
-        if (newText) {
-          originalContentElement.innerHTML = await marked.parse(newText);
-          // Could re-send to backend here if needed
-        }
-        editor.remove();
-        editorActions.remove();
-        originalContentElement.style.display = '';
-      });
-
-      cancelBtn.addEventListener('click', () => {
-        editor.remove();
-        editorActions.remove();
-        originalContentElement.style.display = '';
-      });
-
-      editor.focus();
-    });
-  }
-
-  if (regenerateBtn) {
-    regenerateBtn.addEventListener('click', async () => {
-      // Find the previous user message
-      const allMessages = Array.from(messageArea.querySelectorAll('.message-bubble'));
-      const currentIndex = allMessages.indexOf(messageBubble);
-
-      if (currentIndex > 0) {
-        const previousMessage = allMessages[currentIndex - 1];
-        if (previousMessage.classList.contains('user')) {
-          const userText = previousMessage.textContent || '';
-
-          // Remove current Aura response
-          messageBubble.remove();
-
-          // Resend the message
-          setFormDisabledState(true);
-          showTypingIndicator();
-
-          try {
-            const response = await auraAPI.sendMessage({
-              user_id: userName!,
-              message: userText,
-              session_id: currentSessionId || undefined
-            });
-
-            removeTypingIndicator();
-            await displayMessage(response.response, 'aura', false);
-
-            updateAuraEmotionDisplay({
-              name: response.emotional_state.name,
-              intensity: response.emotional_state.intensity
-            });
-
-            updateAuraCognitiveFocusDisplay(response.cognitive_state.focus);
-          } catch (error) {
-            console.error("Error regenerating response:", error);
-            removeTypingIndicator();
-            await displayMessage("I'm having trouble regenerating the response. Please try again.", 'error');
-          } finally {
-            setFormDisabledState(false);
-            messageInput.focus();
-          }
-        }
-      }
-    });
-  }
-}
-
-// --- Theme Toggle ---
-themeToggle?.addEventListener('click', () => {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', newTheme);
-  localStorage.setItem('aura_theme', newTheme);
-  themeToggle.textContent = newTheme === 'dark' ? '☀️' : '🌙';
-
-  // Update toggle slider position
-  const slider = themeToggle.querySelector('.theme-toggle-slider') as HTMLElement;
-  if (slider) {
-    if (newTheme === 'dark') {
-      slider.style.transform = 'translateX(26px)';
+      resultsElement.innerHTML += `
+        <div class="search-summary">
+          <strong>Search Results:</strong> ${response.results.length} found
+          ${response.includes_video_archives ? ' (includes video archives)' : ''}
+        </div>
+      `;
     } else {
-      slider.style.transform = 'translateX(0)';
+      resultsElement.innerHTML = `
+        <div class="memory-result">
+          <div class="memory-content">No results found</div>
+          <div class="memory-meta">Try different keywords or check your search terms</div>
+        </div>
+      `;
     }
   }
-});
 
-// Load saved theme
-const savedTheme = localStorage.getItem('aura_theme');
-if (savedTheme) {
-  document.documentElement.setAttribute('data-theme', savedTheme);
-  if (themeToggle) {
-    themeToggle.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
-    const slider = themeToggle.querySelector('.theme-toggle-slider') as HTMLElement;
-    if (slider) {
-      slider.style.transform = savedTheme === 'dark' ? 'translateX(26px)' : 'translateX(0)';
+  private displayEmotionalInsights(analysis: any, insightsElement: HTMLElement): void {
+    if (analysis.dominant_emotions && analysis.dominant_emotions.length > 0) {
+      const stability = (analysis.emotional_stability * 100).toFixed(1);
+      const dominantEmotion = analysis.dominant_emotions[0][0];
+
+      insightsElement.innerHTML = `
+        <div class="insights-data">
+          <p><strong>🎭 Dominant Emotion:</strong> ${dominantEmotion}</p>
+          <p><strong>📊 Emotional Stability:</strong> ${stability}%</p>
+          <p><strong>📈 Total Entries:</strong> ${analysis.total_entries}</p>
+
+          <div class="emotional-breakdown">
+            <h4>Emotional Distribution:</h4>
+            ${analysis.dominant_emotions.slice(0, 5).map(([emotion, count]: [string, number]) => `
+              <div class="emotion-stat">
+                <span>${emotion}:</span>
+                <span>${count} occurrences</span>
+              </div>
+            `).join('')}
+          </div>
+
+          ${analysis.recommendations && analysis.recommendations.length > 0 ? `
+            <div class="recommendations">
+              <h4>💡 Insights:</h4>
+              ${analysis.recommendations.map((rec: string) => `<p>• ${this.escapeHtml(rec)}</p>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    } else {
+      insightsElement.innerHTML = `
+        <div class="insights-data">
+          <p>No emotional data available for the selected period.</p>
+          <p>Keep chatting with Aura to build up your emotional profile!</p>
+        </div>
+      `;
     }
   }
-} else {
-  // Default to dark theme as requested
-  document.documentElement.setAttribute('data-theme', 'dark');
-  if (themeToggle) {
-    themeToggle.textContent = '☀️';
-    const slider = themeToggle.querySelector('.theme-toggle-slider') as HTMLElement;
-    if (slider) {
-      slider.style.transform = 'translateX(26px)';
+
+  private async updateVideoArchiveStatus(): Promise<void> {
+    const statusElement = document.getElementById('video-archive-status');
+    if (!statusElement) return;
+
+    try {
+      const response = await fetch('http://localhost:8000/memvid/status');
+      const data = await response.json();
+
+      if (data.status === 'operational') {
+        statusElement.innerHTML = `
+          <div class="archive-info">
+            <div><strong>📦 Total Archives:</strong> ${data.archives_count}</div>
+            <div><strong>🎥 Status:</strong> Operational</div>
+            ${data.archives_count > 0 ? `
+              <div><strong>📊 Recent Archives:</strong></div>
+              <ul style="margin: 4px 0; padding-left: 20px; font-size: 0.8rem;">
+                ${data.archives.slice(0, 3).map((archive: any) =>
+                  `<li>${typeof archive === 'string' ? archive : archive.name || 'Unnamed Archive'}</li>`
+                ).join('')}
+              </ul>
+            ` : '<div style="color: var(--text-secondary); font-style: italic;">No archives yet</div>'}
+          </div>
+        `;
+      } else {
+        statusElement.innerHTML = '<div class="archive-error">⚠️ Memvid service not available</div>';
+      }
+    } catch (error) {
+      console.error('Failed to fetch video archive status:', error);
+      statusElement.innerHTML = '<div class="archive-error">❌ Error loading archive status</div>';
     }
+  }
+
+  // ============================================================================
+  // UTILITY METHODS
+  // ============================================================================
+
+  private formatTimestamp(timestamp: string): string {
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return 'Unknown time';
+
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffHours = diffMs / (1000 * 60 * 60);
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+      if (diffHours < 1) return 'Just now';
+      if (diffHours < 24) return `${Math.floor(diffHours)}h ago`;
+      if (diffDays < 7) return `${Math.floor(diffDays)}d ago`;
+
+      return date.toLocaleDateString();
+    } catch {
+      return 'Unknown time';
+    }
+  }
+
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  private showConnectionWarning(): void {
+    const warningElement = document.createElement('div');
+    warningElement.className = 'connection-warning';
+    warningElement.innerHTML = `
+      <div style="background: var(--accent-warning); color: white; padding: 8px 16px; text-align: center; font-size: 0.9rem;">
+        ⚠️ Backend connection failed. Some features may not work properly.
+      </div>
+    `;
+    document.body.insertAdjacentElement('afterbegin', warningElement);
+  }
+
+  private showCriticalError(message: string): void {
+    const errorElement = document.createElement('div');
+    errorElement.className = 'critical-error';
+    errorElement.innerHTML = `
+      <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--accent-error); color: white; padding: 20px; border-radius: 8px; text-align: center; z-index: 1000; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+        <h3 style="margin: 0 0 12px 0;">Critical Error</h3>
+        <p style="margin: 0 0 16px 0;">${this.escapeHtml(message)}</p>
+        <button onclick="window.location.reload()" style="background: white; color: var(--accent-error); border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500;">
+          Refresh Page
+        </button>
+      </div>
+    `;
+    document.body.appendChild(errorElement);
   }
 }
 
-// --- Accessibility ---
-messageInput?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    chatForm.dispatchEvent(new Event('submit'));
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+// Global instance
+let auraUI: AuraUIManager;
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    auraUI = new AuraUIManager();
+    await auraUI.initialize();
+  } catch (error) {
+    console.error('Critical initialization error:', error);
   }
 });
 
-// --- Initialize Everything ---
-document.addEventListener('DOMContentLoaded', () => {
-  initializeChat();
-  setupMemorySearchPanel();
-  setupChatHistoryPanel();
-  setupEmotionalInsightsPanel();
-});
-
-// --- Export for testing ---
-export {
-  initializeChat,
-  displayMessage,
-  updateAuraEmotionDisplay,
-  updateAuraCognitiveFocusDisplay,
-  EMOTIONAL_STATES_DATA,
-  ASEKE_CONCEPTS
-};
+// Export for testing and debugging
+export { AuraUIManager };

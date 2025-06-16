@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "aiofiles>=24.1.0",
+    "anthropic>=0.54.0",
     "asyncio-mqtt>=0.16.2",
     "beautifulsoup4>=4.13.4",
     "chromadb>=0.5.23",
@@ -18,6 +19,7 @@ dependencies = [
     "mcp>=1.1.0",
     "memvid>=0.1.3",
     "numpy>=1.21.0,<2.0.0",
+    "openai>=1.86.0",
     "opencv-python>=4.11.0.86",
     "pandas>=2.2.3",
     "pydantic>=2.10.4",

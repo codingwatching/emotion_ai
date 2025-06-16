@@ -43,6 +43,10 @@ aura_data/users/
 aura_data/sessions/
 aura_data/exports/
 aura_data/backups/
+memvid_data/
+memvid_videos/
+chromadb_backups/
+auto_backups/
 
 # MCP
 mcp_server.log
@@ -77,4 +81,4 @@ MANIFEST
 
 # UV
 .uv/
-uv.lock
+*.lock

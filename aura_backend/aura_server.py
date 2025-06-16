@@ -27,8 +27,6 @@ import mcp.types as types
 # @mcp.tool()
 
 # Core dependencies
-import chromadb
-from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from dotenv import load_dotenv
@@ -428,15 +426,46 @@ class AuraFileSystem:
             filename = f"mcp_conversation_export_{user_id}_{timestamp}.{format}"
             export_path = self.base_path / "exports" / filename
 
-            # Create export data structure
+            # Retrieve conversation history from vector DB
+            conversations = []
+            try:
+                conv_results = vector_db.conversations.get(
+                    where={"user_id": user_id},
+                    include=["documents", "metadatas"]
+                )
+                docs = conv_results.get("documents")
+                metas = conv_results.get("metadatas")
+                if docs and metas and len(docs) > 0 and len(metas) > 0:
+                    for doc, meta in zip(docs[0], metas[0]):
+                        conversations.append({
+                            "content": doc,
+                            "metadata": meta
+                        })
+            except Exception as e:
+                logger.error(f"❌ MCP: Failed to retrieve conversations for export: {e}")
+
+            # Retrieve emotional patterns from vector DB
+            emotional_patterns = []
+            try:
+                emo_results = vector_db.emotional_patterns.get(
+                    where={"user_id": user_id},
+                    include=["metadatas"]
+                )
+                metas = emo_results.get("metadatas")
+                if metas and len(metas) > 0:
+                    for meta in metas[0]:
+                        emotional_patterns.append(meta)
+            except Exception as e:
+                logger.error(f"❌ MCP: Failed to retrieve emotional patterns for export: {e}")
+
             export_data = {
                 "user_id": user_id,
                 "export_timestamp": datetime.now().isoformat(),
                 "format": format,
                 "source": "mcp_server",
-                "conversations": [],  # Would be populated from vector DB
-                "emotional_patterns": [],  # Would be populated from vector DB
-                "note": "This is a placeholder export from Internal Server. Full integration would populate actual data."
+                "conversations": conversations,
+                "emotional_patterns": emotional_patterns,
+                "note": "Exported from Internal Server with full integration."
             }
 
             if format == "json":

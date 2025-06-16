@@ -15,12 +15,11 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple, cast, Union
+from typing import Dict, List, Optional, Any
 from pathlib import Path
 import dataclasses
 from dataclasses import dataclass, asdict
 from enum import Enum
-import uuid
 
 # Import existing memvid integration
 try:

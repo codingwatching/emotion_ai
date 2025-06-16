@@ -19,6 +19,9 @@ import json
 from pathlib import Path
 import aiofiles
 
+# Import database protection service
+from database_protection import get_protection_service
+
 # Import types needed - these will be passed in as dependencies
 from typing import TYPE_CHECKING
 
@@ -76,7 +79,8 @@ class ConversationPersistenceService:
         max_retries: int = 3,
         backup_enabled: bool = True,
         chromadb_recovery_enabled: bool = True,
-        emergency_recovery_enabled: bool = True  # New parameter
+        emergency_recovery_enabled: bool = True,  # New parameter
+        use_database_protection: bool = True  # Integrate with database protection service
     ):
         self.vector_db = vector_db
         self.file_system = file_system
@@ -85,8 +89,21 @@ class ConversationPersistenceService:
         self.backup_enabled = backup_enabled
         self.chromadb_recovery_enabled = chromadb_recovery_enabled
         self.emergency_recovery_enabled = emergency_recovery_enabled
+        self.use_database_protection = use_database_protection
         self._consecutive_failures = 0
         self._emergency_recovery_threshold = 5  # Trigger emergency recovery after 5 consecutive failures
+
+        # Initialize database protection service if enabled
+        if self.use_database_protection:
+            try:
+                self._protection_service = get_protection_service()
+                logger.info("🛡️ Database protection service integrated")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize database protection service: {e}")
+                self._protection_service = None
+                self.use_database_protection = False
+        else:
+            self._protection_service = None
 
         # Semaphore ensures only one persistence operation at a time
         # This prevents the root cause of ChromaDB compaction conflicts
@@ -197,35 +214,46 @@ class ConversationPersistenceService:
 
     async def _trigger_emergency_recovery(self) -> bool:
         """
-        Trigger emergency database recovery when all else fails.
+        Trigger emergency database recovery using the database protection service.
 
         Returns:
             True if emergency recovery was initiated, False otherwise
         """
         try:
             logger.critical("🚨 INITIATING EMERGENCY DATABASE RECOVERY")
-            logger.critical("⚠️ This will reset the entire ChromaDB and may cause data loss!")
+            logger.critical("⚠️ Using database protection service for coordinated recovery!")
 
-            # Import here to avoid circular dependencies
-            from recover_chromadb import ChromaDBRecovery
+            # Use the database protection service for emergency backup
+            protection_service = get_protection_service()
+            backup_path = protection_service.emergency_backup()
 
-            recovery = ChromaDBRecovery()
-            backup_path = self.file_system.base_path / "emergency_recovery_backup"
-            extracted_data = {}  # Initialize empty dict for extracted data
-            result = recovery.create_recovery_report(backup_path, extracted_data)
+            if backup_path:
+                logger.critical("✅ Emergency backup created successfully")
+                logger.critical(f"💾 Backup location: {backup_path}")
 
-            if result["success"]:
-                logger.critical("✅ Emergency recovery completed successfully")
-                logger.critical(f"📊 Extracted {result['extracted_documents']} documents before reset")
-                logger.critical("🔄 Application needs restart to reinitialize database")
+                # Instead of using recovery tool that creates conflicts,
+                # we'll reset our database connection and let it reinitialize
+                logger.critical("🔄 Resetting database connection to resolve conflicts")
 
-                # Reset failure counters
-                self._consecutive_failures = 0
-                self._chromadb_error_count = 0
+                try:
+                    # Close current database connection if possible
+                    if hasattr(self.vector_db, 'client'):
+                        self.vector_db.client = None
 
-                return True
+                    # Signal that application needs restart for clean state
+                    logger.critical("🔄 Application needs restart to reinitialize database cleanly")
+
+                    # Reset failure counters
+                    self._consecutive_failures = 0
+                    self._chromadb_error_count = 0
+
+                    return True
+
+                except Exception as reset_error:
+                    logger.critical(f"❌ Database reset failed: {reset_error}")
+                    return False
             else:
-                logger.critical("❌ Emergency recovery failed")
+                logger.critical("❌ Failed to create emergency backup")
                 return False
 
         except Exception as e:
@@ -249,6 +277,25 @@ class ConversationPersistenceService:
 
         Returns:
             Dictionary containing storage results and any errors
+        """
+        # Use database protection service if available
+        if self.use_database_protection and self._protection_service:
+            return await self._perform_protected_operation(
+                "conversation_exchange_persistence",
+                self._persist_conversation_exchange_internal,
+                exchange,
+                update_profile
+            )
+        else:
+            return await self._persist_conversation_exchange_internal(exchange, update_profile)
+
+    async def _persist_conversation_exchange_internal(
+        self,
+        exchange: ConversationExchange,
+        update_profile: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Internal persistence method that does the actual work.
         """
         async with self._write_semaphore:
             start_time = datetime.now()
@@ -344,19 +391,19 @@ class ConversationPersistenceService:
         self,
         exchange: ConversationExchange,
         update_profile: bool = True,
-        timeout: float = 30.0
+        timeout: float = 30.0,
     ) -> Dict[str, Any]:
         """
         Immediate persistence with timeout for critical chat history saving.
 
         This method prioritizes speed and reliability for real-time chat history storage.
         It uses optimized settings and aggressive error recovery to ensure conversations
-        are saved consistently like the first conversation.
+        are saved consistently.
 
         Args:
             exchange: Complete conversation exchange data
             update_profile: Whether to update user profile after storage
-            timeout: Maximum time to spend on persistence (seconds)
+            timeout (float): Maximum time to spend on persistence (seconds)
 
         Returns:
             Dictionary containing storage results and any errors
@@ -627,6 +674,27 @@ class ConversationPersistenceService:
         Returns:
             Dictionary containing cleanup results
         """
+        # Use database protection service for this risky operation
+        if self.use_database_protection and self._protection_service:
+            return await self._perform_protected_operation(
+                "cleanup_old_conversations",
+                self._cleanup_old_conversations_internal,
+                user_id,
+                days_to_keep,
+                archive_before_cleanup
+            )
+        else:
+            return await self._cleanup_old_conversations_internal(user_id, days_to_keep, archive_before_cleanup)
+
+    async def _cleanup_old_conversations_internal(
+        self,
+        user_id: str,
+        days_to_keep: int = 30,
+        archive_before_cleanup: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Internal cleanup method that does the actual work.
+        """
         async with self._write_semaphore:
             start_time = datetime.now()
             cutoff_date = datetime.now() - timedelta(days=days_to_keep)
@@ -874,68 +942,39 @@ class ConversationPersistenceService:
         user_id: str
     ) -> Dict[str, Any]:
         """
-        Get temporal context around a specific message.
+        Get temporal context around a specific message by performing multiple queries.
+
+        This method performs two separate queries: one for messages before and one for messages after
+        the given message's timestamp. The context is determined based on the presence of messages
+        surrounding the target message, which helps assess conversation continuity or isolation.
 
         Args:
             message_result: Message search result
             user_id: User ID for context search
 
         Returns:
-            Temporal context information
+            Temporal context information, including counts of messages before and after,
+            and flags for conversation continuity or isolation.
         """
         try:
             timestamp = message_result.get("metadata", {}).get("timestamp")
             if not timestamp:
                 return {"context_available": False}
 
-            message_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            # Consolidated block: Query for messages before and after the given timestamp
+            # This helps determine conversation continuity and isolation in a maintainable way.
+            before_after_results = {}
+            for direction, op in [("before", "$lt"), ("after", "$gt")]:
+                before_after_results[direction] = self.vector_db.search_conversations(
+                    query="",  # Empty query to get by time only
+                    user_id=user_id,
+                    n_results=2,
+                    where_filter={"timestamp": {op: timestamp}}
+                )
 
-            # Get messages in a time window around this message
-            time_window = timedelta(minutes=30)  # 30-minute window
-            start_time = message_time - time_window
-            end_time = message_time + time_window
-
-            # Get messages before and after this one within the time window
-            before_messages = await self.vector_db.search_conversations(
-                query="",  # Empty query to get by time only
-                user_id=user_id,
-                n_results=2,
-                where_filter={
-                    "$and": [
-                        {"timestamp": {"$lt": timestamp}},
-                        {"timestamp": {"$gte": start_time.isoformat()}}
-                    ]
-                }
-            )
-
-            after_messages = await self.vector_db.search_conversations(
-                query="",  # Empty query to get by time only
-                user_id=user_id,
-                n_results=2,
-                where_filter={
-                    "$and": [
-                        {"timestamp": {"$gt": timestamp}},
-                        {"timestamp": {"$lte": end_time.isoformat()}}
-                    ]
-                }
-            )
-
-            # Get messages in a time window around this message
-            time_window = timedelta(minutes=30)  # 30-minute window
-
-            # Get messages before and after this one
-            before_messages = await self.vector_db.search_conversations(
-                query="",  # Empty query to get by time only
-                user_id=user_id,
-                n_results=2,
-                where_filter={"timestamp": {"$lt": timestamp}}
-            )
-
-            after_messages = await self.vector_db.search_conversations(
-                query="",  # Empty query to get by time only
-                user_id=user_id,
-                n_results=2,
-                where_filter={"timestamp": {"$gt": timestamp}}
+            before_messages, after_messages = await asyncio.gather(
+                before_after_results["before"],
+                before_after_results["after"]
             )
 
             return {
@@ -949,48 +988,6 @@ class ConversationPersistenceService:
         except Exception as e:
             logger.error(f"❌ Failed to get temporal context: {e}")
             return {"context_available": False, "error": str(e)}
-
-    async def retry_failed_operations(self) -> Dict[str, Any]:
-        """
-        Retry operations that previously failed.
-
-        Returns:
-            Results of retry attempts
-        """
-        if not self._failed_operations:
-            return {"message": "No failed operations to retry", "retries": 0}
-
-        retry_results = {
-            "total_retries": len(self._failed_operations),
-            "successful_retries": 0,
-            "failed_retries": 0,
-            "errors": []
-        }
-
-        failed_ops_copy = self._failed_operations.copy()
-        self._failed_operations.clear()
-
-        for failed_op in failed_ops_copy:
-            try:
-                if failed_op["type"] == "conversation_exchange":
-                    result = await self.persist_conversation_exchange(
-                        failed_op["exchange"],
-                        update_profile=failed_op.get("update_profile", True)
-                    )
-                    if result["success"]:
-                        retry_results["successful_retries"] += 1
-                    else:
-                        retry_results["failed_retries"] += 1
-                        retry_results["errors"].extend(result["errors"])
-
-                self._metrics["retries_performed"] += 1
-
-            except Exception as e:
-                logger.error(f"❌ Retry failed: {e}")
-                retry_results["failed_retries"] += 1
-                retry_results["errors"].append(str(e))
-
-        return retry_results
 
     async def get_conversation_statistics(self, user_id: str) -> Dict[str, Any]:
         """
@@ -1126,7 +1123,7 @@ class ConversationPersistenceService:
         These metrics help identify performance issues and bottlenecks
         in the storage pipeline.
         """
-        return {
+        metrics = {
             **self._metrics,
             "semaphore_available": self._write_semaphore._value,
             "failed_operations_queued": len(self._failed_operations),
@@ -1137,8 +1134,21 @@ class ConversationPersistenceService:
             "emergency_recovery_enabled": self.emergency_recovery_enabled,
             "last_chromadb_error": self._last_chromadb_error.isoformat() if self._last_chromadb_error else None,
             "chromadb_recovery_enabled": self.chromadb_recovery_enabled,
+            "database_protection_enabled": self.use_database_protection,
             "timestamp": datetime.now().isoformat()
         }
+
+        # Add protection service health if available
+        if self.use_database_protection and self._protection_service:
+            try:
+                protection_health = self._protection_service.get_health_status()
+                metrics["protection_service"] = protection_health
+            except Exception as e:
+                metrics["protection_service"] = {"error": str(e), "status": "unavailable"}
+        else:
+            metrics["protection_service"] = {"status": "disabled"}
+
+        return metrics
 
     async def safe_search_conversations(
         self,
@@ -1196,7 +1206,7 @@ class ConversationPersistenceService:
 
     async def safe_get_chat_history(self, user_id: str, limit: int = 50) -> Dict[str, Any]:
         """
-        Thread-safe retrieval of chat history.
+        Thread-safe retrieval of chat history with enhanced error handling.
 
         Uses the same semaphore to prevent concurrent access conflicts
         during history retrieval operations.
@@ -1206,53 +1216,198 @@ class ConversationPersistenceService:
                 # Allow brief settling time
                 await asyncio.sleep(0.05)
 
-                # Get recent conversations from vector DB
-                results = self.vector_db.conversations.get(
-                    where={"user_id": user_id},
-                    limit=limit,
-                    include=["documents", "metadatas"]
-                )
+                # Get recent conversations from vector DB with better error handling
+                try:
+                    results = self.vector_db.conversations.get(
+                        where={"user_id": {"$eq": user_id}},
+                        limit=limit,
+                        include=["documents", "metadatas"]
+                    )
+                except Exception as db_error:
+                    logger.error(f"❌ Database query failed for chat history: {db_error}")
+                    return {"sessions": [], "total": 0, "error": "Database query failed"}
 
                 if not results or not results.get('documents') or not isinstance(results['documents'], list):
+                    logger.info(f"📭 No chat history found for user {user_id}")
                     return {"sessions": [], "total": 0}
 
-                # Group by session with efficient processing
+                # Group by session with enhanced processing and validation
                 sessions = {}
-                for i, doc in enumerate(results['documents']):
-                    metadata = results['metadatas'][i] if results.get('metadatas') and results['metadatas'] is not None else {}
-                    session_id = metadata.get('session_id', 'unknown')
+                processed_messages = 0
 
-                    if session_id not in sessions:
-                        sessions[session_id] = {
-                            "session_id": session_id,
-                            "messages": [],
-                            "start_time": metadata.get('timestamp', ''),
-                            "last_time": metadata.get('timestamp', '')
+                for i, doc in enumerate(results['documents']):
+                    try:
+                        metadata = results['metadatas'][i] if results.get('metadatas') and results['metadatas'] is not None else {}
+                        session_id = metadata.get('session_id', 'unknown')
+
+                        # Validate essential fields
+                        if not doc or not metadata.get('timestamp'):
+                            logger.warning(f"⚠️ Skipping invalid message at index {i}: missing content or timestamp")
+                            continue
+
+                        if session_id not in sessions:
+                            sessions[session_id] = {
+                                "session_id": session_id,
+                                "messages": [],
+                                "start_time": metadata.get('timestamp', ''),
+                                "last_time": metadata.get('timestamp', '')
+                            }
+
+                        # Add message with validation
+                        message = {
+                            "content": str(doc),
+                            "sender": metadata.get('sender', 'unknown'),
+                            "timestamp": metadata.get('timestamp', ''),
+                            "emotion": metadata.get('emotion_name', 'Normal')
                         }
 
-                    sessions[session_id]["messages"].append({
-                        "content": doc,
-                        "sender": metadata.get('sender', 'unknown'),
-                        "timestamp": metadata.get('timestamp', ''),
-                        "emotion": metadata.get('emotion_name', 'Normal')
-                    })
+                        sessions[session_id]["messages"].append(message)
+                        processed_messages += 1
 
-                    # Update session times efficiently
-                    timestamp = metadata.get('timestamp', '')
-                    if timestamp < sessions[session_id]["start_time"]:
-                        sessions[session_id]["start_time"] = timestamp
-                    if timestamp > sessions[session_id]["last_time"]:
-                        sessions[session_id]["last_time"] = timestamp
+                        # Update session times with proper timestamp comparison
+                        timestamp = metadata.get('timestamp', '')
+                        if timestamp:
+                            # Use string comparison for ISO timestamps (works correctly)
+                            if not sessions[session_id]["start_time"] or timestamp < sessions[session_id]["start_time"]:
+                                sessions[session_id]["start_time"] = timestamp
+                            if not sessions[session_id]["last_time"] or timestamp > sessions[session_id]["last_time"]:
+                                sessions[session_id]["last_time"] = timestamp
+
+                    except Exception as message_error:
+                        logger.error(f"❌ Error processing message {i}: {message_error}")
+                        continue
 
                 # Convert to list and sort by last activity
                 session_list = list(sessions.values())
-                session_list.sort(key=lambda x: x["last_time"], reverse=True)
 
+                # Sort sessions by last_time (most recent first)
+                session_list.sort(key=lambda x: x.get("last_time", ""), reverse=True)
+
+                # Sort messages within each session by timestamp (chronological order)
+                for session in session_list:
+                    session["messages"].sort(key=lambda m: m.get("timestamp", ""))
+
+                logger.info(f"✅ Retrieved {len(session_list)} sessions with {processed_messages} total messages for {user_id}")
                 return {"sessions": session_list, "total": len(session_list)}
 
             except Exception as e:
                 logger.error(f"❌ Safe chat history retrieval failed: {e}")
-                return {"sessions": [], "total": 0}
+                return {"sessions": [], "total": 0, "error": str(e)}
+
+    async def safe_get_session_messages(self, user_id: str, session_id: str) -> List[Dict[str, Any]]:
+        """
+        Thread-safe retrieval of messages for a specific session with enhanced error handling.
+
+        Uses the same semaphore to prevent concurrent access conflicts during
+        session message retrieval operations. Provides proper error recovery
+        and ChromaDB protection.
+
+        Args:
+            user_id: The user ID to filter messages
+            session_id: The session ID to filter messages
+
+        Returns:
+            List of message dictionaries sorted by timestamp
+        """
+        async with self._write_semaphore:
+            for attempt in range(self.max_retries):
+                try:
+                    # Allow brief settling time
+                    await asyncio.sleep(0.05)
+
+                    # Get session messages from vector DB with better error handling
+                    try:
+                        results = self.vector_db.conversations.get(
+                            where={
+                                "$and": [
+                                    {"user_id": {"$eq": user_id}},
+                                    {"session_id": {"$eq": session_id}}
+                                ]
+                            },
+                            include=["documents", "metadatas"]
+                        )
+                    except Exception as db_error:
+                        logger.error(f"❌ Database query failed for session messages: {db_error}")
+
+                        # Handle ChromaDB-specific errors
+                        if self._is_chromadb_compaction_error(db_error):
+                            recovery_attempted = await self._handle_chromadb_error(db_error, f"get_session_messages (attempt {attempt + 1})")
+
+                            if recovery_attempted and attempt < self.max_retries - 1:
+                                logger.info(f"🔄 Retrying session message retrieval after ChromaDB recovery (attempt {attempt + 2})")
+                                continue
+
+                        # If this is the last attempt or not a ChromaDB error, raise
+                        if attempt == self.max_retries - 1:
+                            raise db_error
+                        continue
+
+                    if not results or not results.get('ids'):
+                        logger.info(f"📭 No messages found for session {session_id} for user {user_id}")
+                        return []
+
+                    messages = []
+                    ids_list = results['ids']
+                    documents_list = results.get('documents', [])
+                    metadatas_list = results.get('metadatas', [])
+
+                    for i in range(len(ids_list)):
+                        try:
+                            doc = documents_list[i] if i < len(documents_list) else None
+                            meta = metadatas_list[i] if i < len(metadatas_list) else {}
+
+                            if not doc:
+                                logger.warning(f"⚠️ Skipping message with missing document at index {i}")
+                                continue
+
+                            message_item = {
+                                "id": ids_list[i],
+                                "message": doc,  # Corresponds to ConversationMemory.message
+                                **meta  # Spreads all metadata like sender, timestamp, etc.
+                            }
+
+                            # Attempt to parse complex fields if they are stored as JSON strings
+                            for key in ["emotional_state", "cognitive_state"]:
+                                if key in message_item and isinstance(message_item[key], str):
+                                    try:
+                                        message_item[key] = json.loads(message_item[key])
+                                    except json.JSONDecodeError:
+                                        logger.warning(f"Failed to parse JSON for {key} in message {message_item['id']}")
+
+                            messages.append(message_item)
+
+                        except Exception as message_error:
+                            logger.error(f"❌ Error processing message {i} in session {session_id}: {message_error}")
+                            continue
+
+                    # Sort messages by timestamp to ensure proper order
+                    messages.sort(key=lambda x: x.get('timestamp', ''))
+
+                    # Reset error count on success
+                    if self._chromadb_error_count > 0:
+                        logger.info(f"✅ ChromaDB session message retrieval recovered after {self._chromadb_error_count} errors")
+                        self._chromadb_error_count = 0
+
+                    logger.info(f"✅ Retrieved {len(messages)} messages for session {session_id} for user {user_id}")
+                    return messages
+
+                except Exception as e:
+                    logger.error(f"❌ Safe session message retrieval attempt {attempt + 1} failed: {e}")
+
+                    # Handle ChromaDB-specific errors
+                    if self._is_chromadb_compaction_error(e):
+                        recovery_attempted = await self._handle_chromadb_error(e, f"get_session_messages (attempt {attempt + 1})")
+
+                        if recovery_attempted and attempt < self.max_retries - 1:
+                            logger.info(f"🔄 Retrying session message retrieval after ChromaDB recovery (attempt {attempt + 2})")
+                            continue
+
+                    # If this is the last attempt or not a ChromaDB error, give up
+                    if attempt == self.max_retries - 1:
+                        logger.error(f"❌ All session message retrieval attempts failed. Last error: {e}")
+                        return []
+
+            return []
 
     async def batch_persist_exchanges(
         self,
@@ -1311,6 +1466,28 @@ class ConversationPersistenceService:
 
         return results
 
+    async def _perform_protected_operation(self, operation_name: str, operation_func: Callable, *args, **kwargs):
+        """
+        Perform a database operation with protection service coordination.
+
+        Args:
+            operation_name: Name of the operation for logging
+            operation_func: The function to execute
+            *args, **kwargs: Arguments to pass to the operation function
+
+        Returns:
+            Result of the operation function
+        """
+        try:
+            # Use database protection service for risky operations
+            protection_service = get_protection_service()
+
+            with protection_service.protected_operation(operation_name):
+                return await operation_func(*args, **kwargs)
+
+        except Exception as e:
+            logger.error(f"❌ Protected operation '{operation_name}' failed: {e}")
+            raise
 
 class PersistenceHealthCheck:
     """

@@ -13,18 +13,15 @@ Core backend system for Aura (Adaptive Reflective Companion) featuring:
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple, Union
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
 import uuid
 from contextlib import asynccontextmanager
 import asyncio
 
-import chromadb
-from chromadb.config import Settings
-import numpy as np
 from sentence_transformers import SentenceTransformer
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,11 +35,11 @@ import os
 import aiofiles
 
 # Import MCP-Gemini Bridge
-from mcp_to_gemini_bridge import MCPGeminiBridge, format_function_call_result_for_model
+from mcp_to_gemini_bridge import MCPGeminiBridge
 
 # Import JSON serialization fix for NumPy types
 try:
-    from json_serialization_fix import convert_numpy_to_python, ensure_json_serializable
+    from json_serialization_fix import ensure_json_serializable
 except ImportError:
     logging.warning("JSON serialization fix not available, using fallback")
     # Fallback implementation
@@ -88,10 +85,7 @@ from aura_internal_tools import AuraInternalTools
 from aura_autonomic_system import (
     initialize_autonomic_system,
     shutdown_autonomic_system,
-    get_autonomic_system,
-    AutonomicNervousSystem,
-    TaskType,
-    TaskPriority
+    AutonomicNervousSystem
 )
 
 # Import the new persistence services
@@ -100,6 +94,13 @@ from memvid_archival_service import MemvidArchivalService
 
 # Import the robust vector DB with SQLite-level concurrency control
 from robust_vector_db import RobustAuraVectorDB as AuraVectorDB
+
+# Import database protection service
+from database_protection import (
+    DatabaseProtectionService,
+    get_protection_service,
+    # protected_db_operation this got broken unfortunately, so we will not use it for now
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -387,6 +388,7 @@ conversation_persistence: Optional[ConversationPersistenceService] = None
 memvid_archival: Optional[MemvidArchivalService] = None
 mcp_gemini_bridge: Optional[MCPGeminiBridge] = None
 autonomic_system: Optional[AutonomicNervousSystem] = None
+db_protection_service: Optional[DatabaseProtectionService] = None
 
 # Session management for persistent chat contexts
 active_chat_sessions: Dict[str, Any] = {}
@@ -729,7 +731,11 @@ async def lifespan(app: FastAPI):
 
     # Initialize global components (prevents duplicate initialization)
     global vector_db, aura_file_system, state_manager, aura_internal_tools
-    global conversation_persistence, memvid_archival, mcp_gemini_bridge, global_tool_version, autonomic_system
+    global conversation_persistence, memvid_archival, mcp_gemini_bridge, global_tool_version, autonomic_system, db_protection_service
+
+    # Initialize database protection service FIRST (before any database operations)
+    db_protection_service = get_protection_service()
+    logger.info("🛡️ Database Protection Service initialized and active")
 
     # Initialize with robust vector database with SQLite-level concurrency control
     vector_db = AuraVectorDB()
@@ -771,7 +777,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize Autonomic Nervous System
     autonomic_enabled = os.getenv('AUTONOMIC_ENABLED', 'true').lower() == 'true'
-    
+
     if autonomic_enabled:
         logger.info("🧠 Initializing Autonomic Nervous System...")
         try:
@@ -780,13 +786,13 @@ async def lifespan(app: FastAPI):
                 internal_tools=aura_internal_tools
             )
             logger.info("✅ Autonomic Nervous System initialized successfully")
-            
+
             # Get system status for logging
             autonomic_status = autonomic_system.get_system_status()
             logger.info(f"🤖 Autonomic Model: {autonomic_status['autonomic_model']}")
             logger.info(f"🔧 Max Concurrent Tasks: {autonomic_status['max_concurrent_tasks']}")
             logger.info(f"📊 Task Threshold: {autonomic_status['task_threshold']}")
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to initialize Autonomic Nervous System: {e}")
             logger.warning("⚠️ Continuing without autonomic processing")
@@ -799,16 +805,21 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("🛑 Shutting down Aura Backend...")
-    
+
     # Shutdown autonomic system first
     await shutdown_autonomic_system()
-    
+
     # Shutdown MCP system
     await shutdown_mcp_system()
 
     # Gracefully close the enhanced vector database
     if vector_db:
         await vector_db.close()
+
+    # Shutdown database protection service (after database operations complete)
+    if db_protection_service:
+        db_protection_service.stop_protection()
+        logger.info("🛡️ Database Protection Service stopped")
 
     logger.info("✅ Aura Backend shutdown complete")
 
@@ -820,12 +831,36 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Configure CORS with flexible origins for development
+# In production, replace with specific allowed origins from environment variables
+allowed_origins = os.getenv('ALLOWED_ORIGINS', '').split(',') if os.getenv('ALLOWED_ORIGINS') else []
+
+# For development, allow localhost on any port if no specific origins are set
+if not allowed_origins:
+    # In development mode, use wildcard to allow any localhost origin
+    if os.getenv('DEV_MODE', 'true').lower() == 'true':
+        # Use wildcard for development - this allows any origin
+        allowed_origins = ["*"]
+        logger.warning("⚠️ CORS: Using wildcard (*) origins for development mode")
+    else:
+        # Production mode - use specific origins
+        allowed_origins = [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:5174",  # Vite's alternative port
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
+        ]
+        logger.info(f"🔒 CORS: Using specific origins: {allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Add your frontend URLs
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Include MCP router
@@ -846,14 +881,19 @@ async def root():
     }
 
 @app.get("/health")
-async def health_check():
+# @protected_db_operation("health_check") # Causes error 422,Temporarily comment this line out
+async def health_check(background_tasks: BackgroundTasks):
     """Enhanced health check with vector database status"""
     try:
-        # Get vector database health status
-        db_status = "connected"
+        # Simple status check without heavy database operations
+        db_status = "unknown"
         if vector_db:
-            health_info = await vector_db.health_check()
-            db_status = health_info.get("status", "unknown")
+            # Use a simple check instead of full health_check to avoid conflicts
+            try:
+                # Just check if the vector_db object exists and is accessible
+                db_status = "connected" if hasattr(vector_db, 'client') else "disconnected"
+            except Exception:
+                db_status = "error"
 
         return {
             "status": "healthy",
@@ -959,7 +999,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             session_key,
             session_recovery_enabled
         )
-        
+
         # Autonomic task analysis and potential offloading
         if autonomic_system and autonomic_system._running:
             # Analyze conversation for potential autonomic tasks
@@ -969,7 +1009,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 user_id=request.user_id,
                 session_id=session_id
             )
-            
+
             # Submit tasks to autonomic system for background processing
             for task_description, task_payload in autonomic_tasks:
                 was_offloaded, task_id = await autonomic_system.submit_task(
@@ -978,7 +1018,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                     user_id=request.user_id,
                     session_id=session_id
                 )
-                
+
                 if was_offloaded:
                     logger.info(f"🤖 Offloaded autonomic task: {task_id} - {task_description[:50]}...")
 
@@ -1030,7 +1070,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         # IMMEDIATE PERSISTENCE - Use optimized immediate persistence for reliable chat history saving
         persistence_success = False
         immediate_persistence_enabled = os.getenv('IMMEDIATE_PERSISTENCE_ENABLED', 'true').lower() == 'true'
-        persistence_timeout = float(os.getenv('PERSISTENCE_TIMEOUT', '5.0'))
+        persistence_timeout = float(os.getenv('PERSISTENCE_TIMEOUT', '15.0'))  # Increased from 5.0 to 15.0 for GPU/embedding operations
         emergency_retries = int(os.getenv('EMERGENCY_PERSISTENCE_RETRIES', '2'))
 
         if conversation_persistence and immediate_persistence_enabled:
@@ -1359,12 +1399,12 @@ async def _analyze_conversation_for_autonomic_tasks(
 ) -> List[Tuple[str, Dict[str, Any]]]:
     """
     Analyze conversation for potential autonomic tasks that could enhance future interactions
-    
+
     Returns:
         List of (task_description, task_payload) tuples for autonomic processing
     """
     potential_tasks = []
-    
+
     # Analyze for memory consolidation opportunities
     if len(user_message.split()) > 10 or len(aura_response.split()) > 20:
         potential_tasks.append((
@@ -1378,13 +1418,13 @@ async def _analyze_conversation_for_autonomic_tasks(
                 "conversation_length": len(user_message) + len(aura_response)
             }
         ))
-    
+
     # Analyze for emotional pattern tracking
     emotional_keywords = [
-        "feel", "emotion", "mood", "happy", "sad", "excited", "worried", 
+        "feel", "emotion", "mood", "happy", "sad", "excited", "worried",
         "anxious", "calm", "peaceful", "frustrated", "angry", "love"
     ]
-    
+
     if any(keyword in user_message.lower() for keyword in emotional_keywords):
         potential_tasks.append((
             f"Deep emotional pattern analysis for user {user_id}",
@@ -1396,13 +1436,13 @@ async def _analyze_conversation_for_autonomic_tasks(
                 "analysis_scope": "emotional_patterns"
             }
         ))
-    
+
     # Analyze for learning pattern optimization
     learning_keywords = [
-        "learn", "understand", "explain", "teach", "show", "how to", 
+        "learn", "understand", "explain", "teach", "show", "how to",
         "what is", "why", "concept", "idea", "knowledge"
     ]
-    
+
     if any(keyword in user_message.lower() for keyword in learning_keywords):
         potential_tasks.append((
             f"Optimize learning patterns and knowledge structure for user {user_id}",
@@ -1414,7 +1454,7 @@ async def _analyze_conversation_for_autonomic_tasks(
                 "learning_context": "knowledge_acquisition"
             }
         ))
-    
+
     # Analyze for background memory search and preparation
     if "remember" in user_message.lower() or "recall" in user_message.lower():
         potential_tasks.append((
@@ -1427,7 +1467,7 @@ async def _analyze_conversation_for_autonomic_tasks(
                 "max_results": 15
             }
         ))
-    
+
     # Analyze for relationship and context building
     if len(potential_tasks) == 0 and len(user_message.split()) > 5:
         # Default background task for context building
@@ -1441,7 +1481,7 @@ async def _analyze_conversation_for_autonomic_tasks(
                 "analysis_type": "relationship_mapping"
             }
         ))
-    
+
     return potential_tasks
 @app.post("/search")
 async def search_memories(request: SearchRequest):
@@ -1461,25 +1501,48 @@ async def search_memories(request: SearchRequest):
                     }
                 )
 
+                logger.info(f"🔧 Advanced search raw result: {advanced_result}")
+
                 if advanced_result and advanced_result.get("status") == "success":
-                    memories = advanced_result.get("memories", [])
+                    # Check multiple possible result keys in the response  
+                    memories = (advanced_result.get("memories", []) or
+                              advanced_result.get("results", []) or
+                              advanced_result.get("data", []) or
+                              advanced_result.get("all_results", []) or
+                              [])
+
+                    # If still empty, check if the result itself is a list
+                    if not memories and isinstance(advanced_result.get("result"), list):
+                        memories = advanced_result.get("result", [])
+
                     # Convert to expected frontend format
                     formatted_results = []
                     for memory in memories:
-                        formatted_results.append({
-                            "content": memory.get("content", ""),
-                            "metadata": memory.get("metadata", {}),
-                            "similarity": memory.get("similarity", 0.0)
-                        })
+                        # Handle different memory formats
+                        if isinstance(memory, dict):
+                            formatted_results.append({
+                                "content": memory.get("content", memory.get("text", memory.get("document", str(memory)))),
+                                "metadata": memory.get("metadata", memory.get("meta", {})),
+                                "similarity": float(memory.get("similarity", memory.get("score", memory.get("distance", 0.0))))
+                            })
+                        else:
+                            # Handle string results
+                            formatted_results.append({
+                                "content": str(memory),
+                                "metadata": {},
+                                "similarity": 0.5
+                            })
 
                     logger.info(f"🔍 Advanced search found {len(formatted_results)} memories using video + active search")
-                    return {
-                        "results": formatted_results,
-                        "query": request.query,
-                        "total_found": len(formatted_results),
-                        "search_type": "unified_memory_search",
-                        "includes_video_archives": True
-                    }
+
+                    if formatted_results:
+                        return {
+                            "results": formatted_results,
+                            "query": request.query,
+                            "total_found": len(formatted_results),
+                            "search_type": "unified_memory_search",
+                            "includes_video_archives": True
+                        }
 
             except Exception as e:
                 logger.warning(f"⚠️ Advanced search failed, falling back to basic search: {e}")
@@ -1597,10 +1660,52 @@ async def get_chat_history(user_id: str, limit: int = 50):
 
         # Use the persistence service's thread-safe method
         result = await conversation_persistence.safe_get_chat_history(user_id, limit)
-        return result
+
+        # Transform the result to match frontend expectations
+        transformed_sessions = []
+        for session in result.get("sessions", []):
+            # Get the last message content for preview
+            messages = session.get("messages", [])
+            last_message_content = messages[-1]["content"] if messages else "No messages"
+
+            transformed_session = {
+                "session_id": session["session_id"],
+                "last_message": last_message_content[:100] + "..." if len(last_message_content) > 100 else last_message_content,
+                "message_count": len(messages),
+                "timestamp": session.get("last_time", session.get("start_time", ""))  # Use last_time as timestamp
+            }
+            transformed_sessions.append(transformed_session)
+
+        # Transform response to match frontend interface
+        return {
+            "sessions": transformed_sessions,
+            "total_sessions": result.get("total", 0),  # Frontend expects 'total_sessions'
+            "user_id": user_id  # Frontend expects user_id in response
+        }
 
     except Exception as e:
         logger.error(f"❌ Failed to get chat history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/chat-history/{user_id}/{session_id}")
+async def get_session_messages(user_id: str, session_id: str):
+    """Get all messages for a specific chat session with improved error handling"""
+    try:
+        if not conversation_persistence:
+            raise HTTPException(status_code=500, detail="Conversation persistence service not initialized")
+
+        # Use the safe_get_session_messages method from conversation persistence service
+        messages = await conversation_persistence.safe_get_session_messages(user_id, session_id)
+
+        if not messages:
+            logger.info(f"No messages found for session {session_id} for user {user_id}")
+            return []
+
+        logger.info(f"✅ Retrieved {len(messages)} messages for session {session_id}")
+        return messages
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get session messages for {session_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/chat-history/{user_id}/{session_id}")
@@ -1913,33 +2018,94 @@ async def get_vector_db_health():
             "timestamp": datetime.now().isoformat()
         }
 
+@app.get("/database-protection/status")
+async def get_database_protection_status():
+    """Get database protection service status and health"""
+    try:
+        if not db_protection_service:
+            return {
+                "status": "not_initialized",
+                "error": "Database protection service not initialized",
+                "timestamp": datetime.now().isoformat()
+            }
+
+        health_status = db_protection_service.get_health_status()
+
+        return {
+            "status": "operational" if health_status["protection_active"] else "inactive",
+            "health_status": health_status,
+            "backup_directory": str(db_protection_service.backup_dir),
+            "protection_features": [
+                "Automatic backup before risky operations",
+                "Health monitoring",
+                "Emergency recovery triggers",
+                "Transaction-like safety for database operations"
+            ],
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get database protection status: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.post("/database-protection/emergency-backup")
+async def trigger_emergency_backup():
+    """Trigger emergency database backup manually"""
+    try:
+        if not db_protection_service:
+            raise HTTPException(status_code=500, detail="Database protection service not initialized")
+
+        backup_path = db_protection_service.emergency_backup()
+
+        if backup_path:
+            return {
+                "status": "success",
+                "message": "Emergency backup created successfully",
+                "backup_path": str(backup_path),
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            return {
+                "status": "failed",
+                "message": "Emergency backup failed to create",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to create emergency backup: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/autonomic/status")
 async def get_autonomic_status():
     """Get comprehensive autonomic nervous system status"""
     try:
         autonomic_enabled = os.getenv('AUTONOMIC_ENABLED', 'true').lower() == 'true'
-        
+
         if not autonomic_enabled:
             return {
                 "status": "disabled",
                 "message": "Autonomic nervous system is disabled in configuration",
                 "timestamp": datetime.now().isoformat()
             }
-        
+
         if not autonomic_system:
             return {
                 "status": "not_initialized",
                 "error": "Autonomic nervous system not initialized",
                 "timestamp": datetime.now().isoformat()
             }
-        
+
         status = autonomic_system.get_system_status()
         return {
             "status": "operational" if status["running"] else "stopped",
             "system_status": status,
             "timestamp": datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         logger.error(f"❌ Failed to get autonomic status: {e}")
         return {
@@ -1954,7 +2120,7 @@ async def get_user_autonomic_tasks(user_id: str, limit: int = 20):
     try:
         if not autonomic_system:
             raise HTTPException(status_code=500, detail="Autonomic system not initialized")
-        
+
         # Get completed tasks for the user
         user_tasks = []
         for task_id, task in autonomic_system.completed_tasks.items():
@@ -1971,7 +2137,7 @@ async def get_user_autonomic_tasks(user_id: str, limit: int = 20):
                     "has_result": task.result is not None,
                     "has_error": task.error is not None
                 })
-        
+
         # Get active tasks for the user
         active_user_tasks = []
         for task_id, task in autonomic_system.active_tasks.items():
@@ -1985,11 +2151,11 @@ async def get_user_autonomic_tasks(user_id: str, limit: int = 20):
                     "created_at": task.created_at.isoformat() if task.created_at else None,
                     "started_at": task.started_at.isoformat() if task.started_at else None
                 })
-        
+
         # Sort by creation time (newest first) and limit
         user_tasks.sort(key=lambda x: x["created_at"] or "", reverse=True)
         user_tasks = user_tasks[:limit]
-        
+
         return {
             "user_id": user_id,
             "active_tasks": active_user_tasks,
@@ -1998,7 +2164,7 @@ async def get_user_autonomic_tasks(user_id: str, limit: int = 20):
             "total_completed": len(user_tasks),
             "timestamp": datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         logger.error(f"❌ Failed to get user autonomic tasks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2009,16 +2175,16 @@ async def get_autonomic_task_details(task_id: str):
     try:
         if not autonomic_system:
             raise HTTPException(status_code=500, detail="Autonomic system not initialized")
-        
+
         # Check completed tasks first
         task = autonomic_system.completed_tasks.get(task_id)
         if not task:
             # Check active tasks
             task = autonomic_system.active_tasks.get(task_id)
-        
+
         if not task:
             raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
-        
+
         task_details = {
             "task_id": task.task_id,
             "task_type": task.task_type.value,
@@ -2035,9 +2201,9 @@ async def get_autonomic_task_details(task_id: str):
             "result": task.result,
             "error": task.error
         }
-        
+
         return task_details
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -2056,7 +2222,7 @@ async def submit_autonomic_task(
     try:
         if not autonomic_system:
             raise HTTPException(status_code=500, detail="Autonomic system not initialized")
-        
+
         was_offloaded, task_id = await autonomic_system.submit_task(
             description=description,
             payload=payload,
@@ -2064,7 +2230,7 @@ async def submit_autonomic_task(
             session_id=session_id,
             force_offload=force_offload
         )
-        
+
         if was_offloaded and task_id:
             return {
                 "status": "submitted",
@@ -2079,7 +2245,7 @@ async def submit_autonomic_task(
                 "force_offload_option": "Set force_offload=true to override",
                 "timestamp": datetime.now().isoformat()
             }
-        
+
     except Exception as e:
         logger.error(f"❌ Failed to submit autonomic task: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2090,12 +2256,12 @@ async def get_autonomic_task_result(task_id: str, timeout: Optional[float] = Non
     try:
         if not autonomic_system:
             raise HTTPException(status_code=500, detail="Autonomic system not initialized")
-        
+
         task = await autonomic_system.get_task_result(task_id, timeout)
-        
+
         if not task:
             raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
-        
+
         return {
             "task_id": task.task_id,
             "status": task.status.value,
@@ -2105,7 +2271,7 @@ async def get_autonomic_task_result(task_id: str, timeout: Optional[float] = Non
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
             "timestamp": datetime.now().isoformat()
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -2118,7 +2284,7 @@ async def control_autonomic_system(action: str):
     try:
         if not autonomic_system:
             raise HTTPException(status_code=500, detail="Autonomic system not initialized")
-        
+
         if action == "start":
             if autonomic_system._running:
                 return {
@@ -2133,7 +2299,7 @@ async def control_autonomic_system(action: str):
                     "message": "Autonomic system started successfully",
                     "timestamp": datetime.now().isoformat()
                 }
-        
+
         elif action == "stop":
             if not autonomic_system._running:
                 return {
@@ -2148,7 +2314,7 @@ async def control_autonomic_system(action: str):
                     "message": "Autonomic system stopped successfully",
                     "timestamp": datetime.now().isoformat()
                 }
-        
+
         elif action == "restart":
             await autonomic_system.stop()
             await autonomic_system.start()
@@ -2157,10 +2323,10 @@ async def control_autonomic_system(action: str):
                 "message": "Autonomic system restarted successfully",
                 "timestamp": datetime.now().isoformat()
             }
-        
+
         else:
             raise HTTPException(status_code=400, detail=f"Invalid action: {action}. Use start, stop, or restart")
-        
+
     except HTTPException:
         raise
     except Exception as e:

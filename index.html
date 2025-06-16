@@ -66,12 +66,34 @@
         <button class="collapse-btn" id="right-collapse-btn" aria-label="Collapse Panel">▶</button>
       </div>
 
-      <!-- Memory Search -->
+      <!-- Unified Memory Search -->
       <div class="memory-panel">
-        <h3>🔍 Memory Search</h3>
-        <input type="text" id="memory-query" placeholder="Search conversations..." />
-        <button id="search-memories">Search</button>
-        <div id="memory-results"></div>
+        <h3>🔍 Unified Memory Search</h3>
+        <div class="memory-search-controls">
+          <input type="text" id="unified-search-input" placeholder="Search conversations..." />
+          <div class="search-options">
+            <label class="search-option">
+              <input type="checkbox" id="search-active-memory" checked> Active Memory
+            </label>
+            <label class="search-option">
+              <input type="checkbox" id="search-video-archives" checked> Video Archives
+            </label>
+          </div>
+          <button id="unified-search-button">Search All</button>
+        </div>
+        <div id="unified-search-error" class="search-error"></div>
+        <div id="unified-search-results"></div>
+
+        <!-- Video Archive Management -->
+        <div class="video-archive-section video-archive-styles">
+          <h4>📼 Video Archive Status</h4>
+          <div id="video-archive-status" class="archive-status">
+            <div class="status-loading">Loading archive information...</div>
+          </div>
+          <button id="manage-archives">
+            Manage Archives
+          </button>
+        </div>
       </div>
 
       <!-- Emotional Insights -->
