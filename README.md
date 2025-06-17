@@ -18,7 +18,7 @@
 
 # User assumes all liability.
 
-![alt text](image-2.png)
+![alt text](image-4.png)
 
 ## 🌟 Features
 
@@ -53,6 +53,54 @@
 - **Personalized Recommendations** based on interaction history
 - **Data Export** in multiple formats (JSON, CSV, etc.)
 
+### Data Flow
+
+1. **User Input** → Frontend → FastAPI
+2. **Processing** → Vector DB Search → Context Retrieval
+3. **AI Processing** → Gemini API → Response Generation
+4. **State Updates** → Emotional/Cognitive Analysis → Pattern Storage
+5. **Memory Storage** → Vector DB → Persistent Learning
+6. **External Access** → MCP Server → Tool Integration
+
+## 🎭 Emotional Intelligence System
+
+### Supported Emotions
+- **Basic**: Normal, Happy, Sad, Angry, Excited, Fear, Disgust, Surprise
+- **Complex**: Joy, Love, Peace, Creativity, DeepMeditation
+- **Combined**: Hope (Anticipation + Joy), Optimism, Awe, Remorse
+- **Social**: RomanticLove, PlatonicLove, ParentalLove, Friendliness
+
+### Neurological Correlations
+- **Brainwave Patterns**: Alpha, Beta, Gamma, Theta, Delta
+- **Neurotransmitters**: Dopamine, Serotonin, Oxytocin, GABA, Norepinephrine
+- **NTK Layers**: Neural Tensor Kernel mapping for emotional states
+
+## 🧠 ASEKE Cognitive Framework
+
+### Components
+- **KS** (Knowledge Substrate): Shared conversational context
+- **CE** (Cognitive Energy): Mental effort and focus allocation
+- **IS** (Information Structures): Ideas and concept patterns
+- **KI** (Knowledge Integration): Learning and connection processes
+- **KP** (Knowledge Propagation): Information sharing mechanisms
+- **ESA** (Emotional State Algorithms): Emotional influence on processing
+- **SDA** (Sociobiological Drives): Social dynamics and trust factors
+
+## 📊 Analytics & Insights
+
+### Emotional Analysis
+- **Stability Metrics**: Emotional consistency over time
+- **Dominant Patterns**: Most frequent emotional states
+- **Transition Analysis**: Emotional state changes and triggers
+- **Intensity Tracking**: Emotional intensity distribution
+- **Brainwave Correlation**: Neural activity pattern analysis
+
+### Cognitive Tracking
+- **Focus Patterns**: ASEKE component utilization
+- **Learning Efficiency**: Knowledge integration rates
+- **Context Switching**: Cognitive flexibility metrics
+- **Attention Allocation**: Cognitive energy distribution
+
 ## 🚦 Performance-
 
 # Responses take some time to process depending on tasks, any coder wants to see if they can speed up the processes I would be grateful.
@@ -76,7 +124,7 @@
 
  I am not a coder so hopefully it sets up right if anyone tries it.
 
-## 🚀 Quick Start
+## 🚀 Install and Start back and front ends using 2 terminals
 
 ### Prerequisites
 - Python 3.12+
@@ -304,53 +352,6 @@ Edit your directory path and place in claude desktop config json.
 └─────────────────────────────────────────────────┘
 ```
 
-### Data Flow
-
-1. **User Input** → Frontend → FastAPI
-2. **Processing** → Vector DB Search → Context Retrieval
-3. **AI Processing** → Gemini API → Response Generation
-4. **State Updates** → Emotional/Cognitive Analysis → Pattern Storage
-5. **Memory Storage** → Vector DB → Persistent Learning
-6. **External Access** → MCP Server → Tool Integration
-
-## 🎭 Emotional Intelligence System
-
-### Supported Emotions
-- **Basic**: Normal, Happy, Sad, Angry, Excited, Fear, Disgust, Surprise
-- **Complex**: Joy, Love, Peace, Creativity, DeepMeditation
-- **Combined**: Hope (Anticipation + Joy), Optimism, Awe, Remorse
-- **Social**: RomanticLove, PlatonicLove, ParentalLove, Friendliness
-
-### Neurological Correlations
-- **Brainwave Patterns**: Alpha, Beta, Gamma, Theta, Delta
-- **Neurotransmitters**: Dopamine, Serotonin, Oxytocin, GABA, Norepinephrine
-- **NTK Layers**: Neural Tensor Kernel mapping for emotional states
-
-## 🧠 ASEKE Cognitive Framework
-
-### Components
-- **KS** (Knowledge Substrate): Shared conversational context
-- **CE** (Cognitive Energy): Mental effort and focus allocation
-- **IS** (Information Structures): Ideas and concept patterns
-- **KI** (Knowledge Integration): Learning and connection processes
-- **KP** (Knowledge Propagation): Information sharing mechanisms
-- **ESA** (Emotional State Algorithms): Emotional influence on processing
-- **SDA** (Sociobiological Drives): Social dynamics and trust factors
-
-## 📊 Analytics & Insights
-
-### Emotional Analysis
-- **Stability Metrics**: Emotional consistency over time
-- **Dominant Patterns**: Most frequent emotional states
-- **Transition Analysis**: Emotional state changes and triggers
-- **Intensity Tracking**: Emotional intensity distribution
-- **Brainwave Correlation**: Neural activity pattern analysis
-
-### Cognitive Tracking
-- **Focus Patterns**: ASEKE component utilization
-- **Learning Efficiency**: Knowledge integration rates
-- **Context Switching**: Cognitive flexibility metrics
-- **Attention Allocation**: Cognitive energy distribution
 
 ## 🧪 Testing - probably not working but you can try lol. 8000/health is working
 
