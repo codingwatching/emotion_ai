@@ -33,16 +33,6 @@
         "--config",
         "\"{}\""
       ]
-    },
-    "chroma": {
-      "command": "uvx",
-      "args": [
-        "chroma-mcp",
-        "--client-type",
-        "persistent",
-        "--data-dir",
-        "/home/ty/Repositories/ai_workspace/chroma.sqlite3"
-      ]
     }
   }
 }

@@ -1,578 +1,1617 @@
 /**
- * @license
- * Copyright 2025 Google LLC
- * SPDX-License-Identifier: Apache-2.0
+ * Aura Frontend UI Manager
  */
 
 import { marked } from 'marked';
-import { AuraAPI, type ConversationResponse } from './src/services/auraApi';
+import { AuraAPI, ConversationResponse, EmotionalState, CognitiveState } from './src/services/auraApi';
 
-// Initialize API instance
-const auraAPI = AuraAPI.getInstance();
+// ============================================================================
+// CONFIGURATION & TYPES
+// ============================================================================
 
-// --- Session State ---
-let currentSessionId: string | null = null;
-
-// --- DOM Elements ---
-const messageArea = document.getElementById('message-area') as HTMLElement;
-const messageInput = document.getElementById('message-input') as HTMLInputElement;
-const chatForm = document.getElementById('chat-form') as HTMLFormElement;
-const sendButton = document.getElementById('send-button') as HTMLButtonElement;
-const auraEmotionStatusElement = document.getElementById('aura-emotion-status') as HTMLElement;
-const auraEmotionDetailsElement = document.getElementById('aura-emotion-details') as HTMLElement;
-const auraCognitiveFocusElement = document.getElementById('aura-cognitive-focus') as HTMLElement;
-const auraCognitiveFocusDetailsElement = document.getElementById('aura-cognitive-focus-details') as HTMLElement;
-const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
-
-// --- Chat State ---
-let currentAuraMessageElement: HTMLElement | null = null;
-let typingIndicatorElement: HTMLElement | null = null;
-let userName: string | null = null;
-let awaitingNameInput = false;
-let backendConnected = false;
-let isLoadingHistory = false;
-
-// --- ASEKE Cognitive Architecture Concepts ---
-interface AsekeConcept {
-  fullName: string;
-  description: string;
+interface ChatSession {
+  session_id: string;
+  last_message: string;
+  message_count: number;
+  timestamp: string;
 }
 
-const ASEKE_CONCEPTS: Record<string, AsekeConcept> = {
-  KS: { fullName: "Knowledge Substrate", description: "The shared context, environment, and history of our discussion." },
-  CE: { fullName: "Cognitive Energy", description: "The mental effort, attention, and focus being applied to the conversation." },
-  IS: { fullName: "Information Structures", description: "The ideas, concepts, models, and patterns we are exploring or building." },
-  KI: { fullName: "Knowledge Integration", description: "How new information is being connected with existing understanding and beliefs." },
-  KP: { fullName: "Knowledge Propagation", description: "How ideas and information are being shared or potentially spread." },
-  ESA: { fullName: "Emotional State Algorithms", description: "How feelings and emotions are influencing perception, valuation, and interaction." },
-  SDA: { fullName: "Sociobiological Drives", description: "How social dynamics, trust, or group context might be shaping our interaction." },
-  Learning: { fullName: "General Learning", description: "A general state of absorbing and processing information without a specific ASEKE focus." }
-};
+// ============================================================================
+// GLOBAL STATE MANAGEMENT
+// ============================================================================
 
-// --- Emotional States Data Structure ---
-interface ComponentDetails {
-  [key: string]: string;
-}
+class AuraUIManager {
+  private api: AuraAPI;
+  private currentSessionId: string | null = null;
+  private userName: string | null = null;
+  private backendConnected = false;
+  private typingIndicatorElement: HTMLElement | null = null;
+  private chatSessions: ChatSession[] = [];
 
-interface EmotionalState {
-  Formula: string;
-  Components: ComponentDetails;
-  NTK_Layer: string;
-  Brainwave: string;
-  Neurotransmitter: string;
-  Description?: string;
-  intensity?: string;
-  primaryComponents?: string[];
-}
+  // DOM Elements
+  private messageArea!: HTMLElement;
+  private messageInput!: HTMLInputElement;
+  private chatForm!: HTMLFormElement;
+  private sendButton!: HTMLButtonElement;
+  private emotionStatusElement!: HTMLElement;
+  private emotionDetailsElement!: HTMLElement;
+  private cognitiveFocusElement!: HTMLElement;
+  private cognitiveFocusDetailsElement!: HTMLElement;
+  private chatHistoryList!: HTMLElement;
+  private leftPanel!: HTMLElement;
+  private rightPanel!: HTMLElement;
 
-interface EmotionalStatesData {
-  [emotionName: string]: EmotionalState;
-}
+  // Enhanced header elements
+  private headerElement!: HTMLElement;
+  private userGreetingElement!: HTMLElement;
+  private brainwaveValueElement!: HTMLElement;
+  private ntValueElement!: HTMLElement;
+  private emotionIconElement!: HTMLElement;
+  private emotionIntensityElement!: HTMLElement;
+  private cognitiveIconElement!: HTMLElement;
+  private cognitiveEnergyElement!: HTMLElement;
+  private systemStatusElement!: HTMLElement;
+  private connectionStatusElement!: HTMLElement;
+  private systemDetailsElement!: HTMLElement;
+  private wavePatternElement!: HTMLElement;
+  private chemicalLevelElement!: HTMLElement;
 
-const EMOTIONAL_STATES_DATA: EmotionalStatesData = {
-  Normal: {
-    Formula: "N(x) = R(x) AND C(x)",
-    Components: { R: "Routine activities are being performed.", C: "No significant emotional triggers." },
-    NTK_Layer: "Theta-like_NTK",
-    Brainwave: "Alpha",
-    Neurotransmitter: "Serotonin",
-    Description: "A baseline state of calmness and routine engagement."
-  },
-  Excited: {
-    Formula: "E(x) = A(x) OR S(x)",
-    Components: { A: "Anticipation of a positive event.", S: "Stimulus exceeds a certain threshold." },
-    NTK_Layer: "Gamma-like_NTK",
-    Brainwave: "Beta",
-    Neurotransmitter: "Dopamine",
-    Description: "Feeling enthusiastic or eager, often in anticipation of something positive or due to high stimulation."
-  },
-  // Add other emotions as needed
-};
+  // Simplified user management elements
+  private inlineUsernameInput!: HTMLInputElement;
+  private inlineSaveButton!: HTMLButtonElement;
+  private userStatus!: HTMLElement;
 
-// --- Chat Initialization & Messaging Functions ---
-async function initializeChat(): Promise<void> {
-  console.log("🚀 Initializing Aura Chat System...");
-
-  // Check backend health first
-  try {
-    const healthResponse = await fetch('http://localhost:8000/health');
-    backendConnected = healthResponse.ok;
-    console.log(`🔗 Backend connection: ${backendConnected ? 'Connected' : 'Failed'}`);
-  } catch (error) {
-    console.warn('⚠️ Backend health check failed:', error);
-    backendConnected = false;
+  constructor(apiInstance?: AuraAPI) {
+    this.api = apiInstance ?? AuraAPI.getInstance();
   }
 
-  // Get stored user name
-  userName = localStorage.getItem('aura_user_name');
-  console.log(`👤 User identification: ${userName ? `Found user: ${userName}` : 'No user found'}`);
-
-  // Get current time for greeting
-  const now = new Date();
-  const timeString = now.toLocaleDateString() + ' at ' + now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
-  let initialAuraGreeting = "";
-
-  if (userName) {
-    initialAuraGreeting = `**Welcome back, ${userName}!**
-
-*${timeString}*
-
-I'm Aura, your adaptive reflective companion. I'm ready to continue our journey together. What would you like to explore today?`;
-  } else {
-    awaitingNameInput = true;
-    initialAuraGreeting = `**Hello! I'm Aura 🌟**
-
-*${timeString}*
-
-I'm your adaptive reflective companion, designed to learn and grow with you through meaningful conversations.
-
-Before we begin, what would you like me to call you?`;
+  public async initialize(): Promise<void> {
+    console.log("🚀 Initializing Aura UI Manager...");
+    await this.initializeDOM();
+    await this.checkBackendHealth();
+    await this.loadUserData();
+    this.setupUI();
+    this.initializeEventListeners();
+    await this.startChat();
+    console.log("✅ Aura UI Manager initialized successfully.");
   }
 
-  updateAuraEmotionDisplay({ name: "Normal", intensity: "Medium" });
-  updateAuraCognitiveFocusDisplay("Learning");
+  // ============================================================================
+  // INITIALIZATION
+  // ============================================================================
 
-  await displayMessage(initialAuraGreeting, 'aura', false);
+  private async initializeDOM(): Promise<void> {
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+      await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
+    }
 
-  setFormDisabledState(false);
-  messageInput.focus();
+    // Get essential DOM elements
+    this.messageArea = this.getRequiredElement('message-area');
+    this.messageInput = this.getRequiredElement('message-input') as HTMLInputElement;
+    this.chatForm = this.getRequiredElement('chat-form') as HTMLFormElement;
+    this.sendButton = this.getRequiredElement('send-button') as HTMLButtonElement;
+    this.emotionStatusElement = this.getRequiredElement('aura-emotion-status');
+    this.emotionDetailsElement = this.getRequiredElement('aura-emotion-details');
+    this.cognitiveFocusElement = this.getRequiredElement('aura-cognitive-focus');
+    this.cognitiveFocusDetailsElement = this.getRequiredElement('aura-cognitive-focus-details');
+    this.chatHistoryList = this.getRequiredElement('chat-history-list');
+    this.leftPanel = this.getRequiredElement('left-panel');
+    this.rightPanel = this.getRequiredElement('right-panel');
 
-  console.log("✅ Chat initialization complete");
-}
+    // Enhanced header elements
+    this.headerElement = this.getRequiredElement('aura-header');
+    this.userGreetingElement = this.getRequiredElement('user-greeting');
+    this.brainwaveValueElement = this.getRequiredElement('brainwave-value');
+    this.ntValueElement = this.getRequiredElement('nt-value');
+    this.emotionIconElement = this.getRequiredElement('emotion-icon');
+    this.emotionIntensityElement = this.getRequiredElement('emotion-intensity');
+    this.cognitiveIconElement = this.getRequiredElement('cognitive-icon');
+    this.cognitiveEnergyElement = this.getRequiredElement('cognitive-energy');
+    this.systemStatusElement = this.getRequiredElement('system-status');
+    this.connectionStatusElement = this.getRequiredElement('connection-status');
+    this.systemDetailsElement = this.getRequiredElement('system-details');
+    this.wavePatternElement = this.getRequiredElement('wave-pattern');
+    this.chemicalLevelElement = this.getRequiredElement('chemical-level');
 
-function showTypingIndicator(): void {
-  if (!typingIndicatorElement) {
-    typingIndicatorElement = document.createElement('div');
-    typingIndicatorElement.className = 'typing-indicator';
-    typingIndicatorElement.textContent = 'Aura is thinking...';
-    messageArea.appendChild(typingIndicatorElement);
-    scrollToBottom();
+    // Note: Simplified user management elements will be created dynamically in setupUsernameManagement()
+
+    console.log("✅ Enhanced DOM elements initialized");
   }
-}
 
-function removeTypingIndicator(): void {
-  if (typingIndicatorElement) {
-    typingIndicatorElement.remove();
-    typingIndicatorElement = null;
-  }
-}
-
-async function displayMessage(
-  text: string,
-  sender: 'user' | 'aura' | 'error',
-  isStreaming: boolean = false
-): Promise<void> {
-  if (!isStreaming) {
-    removeTypingIndicator();
+  private getRequiredElement(id: string): HTMLElement {
+    const element = document.getElementById(id);
+    if (!element) {
+      throw new Error(`Required element not found: ${id}`);
+    }
+    return element;
   }
 
-  const messageBubble = document.createElement('div');
-  messageBubble.className = `message-bubble ${sender}`;
-  messageBubble.setAttribute('role', 'log');
-  messageBubble.innerHTML = await marked.parse(text);
+  private async checkBackendHealth(): Promise<void> {
+    try {
+      console.log("🔍 Checking backend health...");
+      this.updateSystemHealth('connecting', 'Checking...', 'Testing backend connection');
 
-  if (sender === 'aura' && isStreaming && currentAuraMessageElement) {
-    currentAuraMessageElement.innerHTML = await marked.parse(text);
-  } else if (sender === 'aura' && !isStreaming && currentAuraMessageElement) {
-    currentAuraMessageElement.innerHTML = await marked.parse(text);
-    currentAuraMessageElement = null;
-  } else {
-    messageArea.appendChild(messageBubble);
-    if (sender === 'aura') {
-      currentAuraMessageElement = messageBubble;
+      const healthData = await this.api.healthCheck();
+      this.backendConnected = true;
+      this.updateSystemHealth('optimal', 'Connected', 'All systems operational');
+      console.log("✅ Backend connected:", healthData);
+
+      // Test if the backend is actually responding to conversation endpoint
+      try {
+        console.log("🧪 Testing backend endpoints...");
+        // We'll test this during the first actual message
+      } catch (testError) {
+        console.warn("⚠️ Backend health check passed but endpoints may not be working:", testError);
+        this.updateSystemHealth('warning', 'Limited', 'Some endpoints may not be responding');
+      }
+
+    } catch (error) {
+      console.warn("⚠️ Backend health check failed:", error);
+      this.backendConnected = false;
+      this.updateSystemHealth('error', 'Disconnected', 'Backend connection failed');
+      this.showConnectionWarning();
     }
   }
 
-  scrollToBottom();
-}
+  private async loadUserData(): Promise<void> {
+    try {
+      const storedName = localStorage.getItem('auraUserName');
 
-function scrollToBottom(): void {
-  if (messageArea) {
-    messageArea.scrollTop = messageArea.scrollHeight;
-  }
-}
+      if (this.isValidUsername(storedName)) {
+        this.userName = storedName!.trim();
+        console.log(`✅ User data loaded: ${this.userName}`);
 
-function setFormDisabledState(disabled: boolean): void {
-  messageInput.disabled = disabled;
-  sendButton.disabled = disabled;
-}
+        // Update all UI elements
+        this.updateAllUsernameDisplays();
+      } else {
+        this.userName = null;
+        console.log("📝 No valid user data found");
 
-async function extractUserNameFromNameInput(userInput: string): Promise<string | null> {
-  const input = userInput.toLowerCase().trim();
+        // Clear invalid stored name
+        if (storedName) {
+          localStorage.removeItem('auraUserName');
+          console.warn(`⚠️ Removed invalid stored username: "${storedName}"`);
+        }
 
-  const namePatterns = [
-    /(?:i'?m|my name is|i am|call me|i'm)\s+([a-zA-Z]+)/i,
-    /^([a-zA-Z]+)(?:\s|$)/i
-  ];
-
-  for (const pattern of namePatterns) {
-    const match = input.match(pattern);
-    if (match && match[1]) {
-      return match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+        this.updateAllUsernameDisplays();
+      }
+    } catch (error) {
+      console.error("❌ Error loading user data:", error);
+      this.userName = null;
+      this.updateAllUsernameDisplays();
     }
   }
 
-  return null;
-}
+  // ============================================================================
+  // UI SETUP
+  // ============================================================================
 
-// Chat form event listener
-chatForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-
-  const userMessage = messageInput.value.trim();
-  if (!userMessage) return;
-
-  await displayMessage(userMessage, 'user');
-  messageInput.value = '';
-  setFormDisabledState(true);
-
-  // Handle name input
-  if (awaitingNameInput) {
-    const extractedName = await extractUserNameFromNameInput(userMessage);
-    if (extractedName) {
-      userName = extractedName;
-      localStorage.setItem('aura_user_name', userName);
-      awaitingNameInput = false;
-
-      const welcomeMessage = `Nice to meet you, ${userName}! I'll remember your name for future conversations. How can I help you today?`;
-      await displayMessage(welcomeMessage, 'aura');
-      setFormDisabledState(false);
-      return;
-    } else {
-      const clarificationMessage = "I'd love to know what to call you! Could you tell me your name more clearly? For example: 'My name is Alex' or just 'Alex'.";
-      await displayMessage(clarificationMessage, 'aura');
-      setFormDisabledState(false);
-      return;
-    }
+  private setupUI(): void {
+    this.setupTheme();
+    this.setupMobileMenu();
+    this.setupMemorySearch();
+    this.setupEmotionalInsights();
+    this.setupChatHistory();
+    this.setupKeyboardShortcuts();
+    this.setupEnhancedHeader();
+    this.setupUsernameManagement();
+    this.updateVideoArchiveStatus();
   }
 
-  if (!userName) {
-    awaitingNameInput = true;
-    const nameRequestMessage = "Before we continue, what would you like me to call you?";
-    await displayMessage(nameRequestMessage, 'aura');
-    setFormDisabledState(false);
-    return;
+  private setupTheme(): void {
+    const themeToggle = document.getElementById('theme-toggle');
+    const savedTheme = localStorage.getItem('aura_theme') || 'dark';
+
+    document.documentElement.setAttribute('data-theme', savedTheme);
+
+    themeToggle?.addEventListener('click', () => {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('aura_theme', newTheme);
+    });
   }
 
-  showTypingIndicator();
+  private setupMobileMenu(): void {
+    const leftMenuBtn = document.getElementById('left-menu-btn');
+    const rightMenuBtn = document.getElementById('right-menu-btn');
 
-  try {
-    const response = await auraAPI.sendMessage({
-      user_id: userName,
-      message: userMessage,
-      session_id: currentSessionId || undefined
+    leftMenuBtn?.addEventListener('click', () => {
+      this.leftPanel.classList.toggle('collapsed');
     });
 
-    if (!currentSessionId && response.session_id) {
-      currentSessionId = response.session_id;
-    }
-
-    updateAuraEmotionDisplay({
-      name: response.emotional_state.name,
-      intensity: response.emotional_state.intensity
+    rightMenuBtn?.addEventListener('click', () => {
+      this.rightPanel.classList.toggle('collapsed');
     });
 
-    updateAuraCognitiveFocusDisplay(response.cognitive_state.focus);
-
-    await displayMessage(response.response, 'aura');
-
-  } catch (error) {
-    console.error('Error in chat:', error);
-    const errorMessage = backendConnected
-      ? "I'm having trouble processing that right now. Could you try rephrasing your message?"
-      : "I'm having trouble connecting to my backend. Please check if the server is running.";
-
-    await displayMessage(errorMessage, 'error');
-  } finally {
-    setFormDisabledState(false);
+    // Close panels when clicking outside on mobile
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (window.innerWidth <= 1024) {
+        if (!this.leftPanel.contains(target) && !leftMenuBtn?.contains(target)) {
+          this.leftPanel.classList.add('collapsed');
+        }
+        if (!this.rightPanel.contains(target) && !rightMenuBtn?.contains(target)) {
+          this.rightPanel.classList.add('collapsed');
+        }
+      }
+    });
   }
-});
 
-// --- Emotion Detection and Display ---
-function updateAuraEmotionDisplay(emotionResult: { name: string; intensity?: string } | null): void {
-  if (!auraEmotionStatusElement || !auraEmotionDetailsElement) return;
+  private setupChatHistory(): void {
+    const newChatBtn = document.getElementById('new-chat-btn');
+    newChatBtn?.addEventListener('click', () => this.createNewChat());
 
-  const currentEmotionName = emotionResult?.name || "Normal";
-  const emotionIntensity = emotionResult?.intensity;
-
-  const emotionData = EMOTIONAL_STATES_DATA[currentEmotionName];
-  if (emotionData) {
-    auraEmotionStatusElement.textContent = currentEmotionName;
-    auraEmotionDetailsElement.textContent = `Brainwave: ${emotionData.Brainwave} | NT: ${emotionData.Neurotransmitter}`;
-  } else {
-    auraEmotionStatusElement.textContent = currentEmotionName;
-    auraEmotionDetailsElement.textContent = `Intensity: ${emotionIntensity || 'Unknown'}`;
+    // Load chat history initially
+    this.loadChatHistory();
+    // Chat history will now be refreshed only when a chat is created or selected.
   }
-}
 
-function updateAuraCognitiveFocusDisplay(focusCode: string | null): void {
-  if (!auraCognitiveFocusElement || !auraCognitiveFocusDetailsElement) return;
+  private setupMemorySearch(): void {
+    const searchInput = document.getElementById('unified-search-input') as HTMLInputElement | null;
+    const searchButton = document.getElementById('unified-search-button') as HTMLButtonElement | null;
+    const searchResultsArea = document.getElementById('unified-search-results');
+    const searchErrorElement = document.getElementById('unified-search-error'); // Element from your screenshot
 
-  const currentFocusCode = focusCode || "Learning";
-  const focusData = ASEKE_CONCEPTS[currentFocusCode];
+    if (!searchInput || !searchButton || !searchResultsArea || !searchErrorElement) {
+      console.error('Memory search UI elements not found. Search functionality will be disabled.');
+      if (searchErrorElement) searchErrorElement.textContent = 'Search UI failed to load.';
+      return;
+    }
 
-  if (focusData) {
-    auraCognitiveFocusElement.textContent = focusData.fullName;
-    auraCognitiveFocusDetailsElement.textContent = focusData.description;
-  } else if (currentFocusCode === "Learning") {
-    auraCognitiveFocusElement.textContent = "Learning";
-    auraCognitiveFocusDetailsElement.textContent = "Processing information and expanding understanding";
-  } else {
-    auraCognitiveFocusElement.textContent = currentFocusCode;
-    auraCognitiveFocusDetailsElement.textContent = "Exploring new cognitive territories";
-  }
-}
+    // Initially disable search button if user is not known
+    searchButton.disabled = !this.userName;
 
-// --- Enhanced UI Features ---
-function setupMemorySearchPanel(): void {
-  console.log("🔧 [MEMORY_SYSTEM] Initializing unified memory search system...");
+    searchButton.addEventListener('click', () => {
+      const query = searchInput.value.trim();
+      searchErrorElement.textContent = ''; // Clear previous errors
+      searchResultsArea.innerHTML = '';   // Clear previous results
 
-  const searchButton = document.getElementById('search-memories') as HTMLButtonElement;
-  const memoryQuery = document.getElementById('memory-query') as HTMLInputElement;
-  const memoryResults = document.getElementById('memory-results') as HTMLElement;
-  const activeMemoryCheckbox = document.getElementById('search-active-memory') as HTMLInputElement;
-  const videoArchivesCheckbox = document.getElementById('search-video-archives') as HTMLInputElement;
-
-  if (searchButton && memoryQuery && memoryResults) {
-    searchButton.addEventListener('click', async () => {
-      const query = memoryQuery.value.trim();
-
-      if (!userName || !backendConnected) {
-        memoryResults.innerHTML = '<div class="memory-result error">Please ensure backend connection and user authentication.</div>';
+      if (!this.userName) {
+        searchErrorElement.textContent = 'Error: User not identified. Please tell Aura your name in the chat.';
+        console.warn('Memory search attempted without user identification.');
         return;
       }
 
       if (!query) {
-        memoryResults.innerHTML = '<div class="memory-result">Please enter a search query to proceed.</div>';
+        searchErrorElement.textContent = 'Please enter a search query.';
         return;
       }
 
-      try {
-        searchButton.textContent = 'Searching...';
-        searchButton.disabled = true;
+      searchResultsArea.innerHTML = '<p>Searching memories...</p>';
 
-        const response = await auraAPI.searchMemories(userName, query, 10);
+      (async () => {
+        try {
+          console.log(`Searching memories for user "${this.userName}" with query "${query}"`);
+          const response = await this.api.searchMemories(this.userName!, query);
 
-        if (response.results && response.results.length > 0) {
-          memoryResults.innerHTML = response.results.map((r, index) => {
-            const displayContent = r.content.replace(/[*#]/g, '').trim();
-            const similarity = (r.similarity * 100).toFixed(1);
-
-            return `
-              <div class="memory-result" data-source="active">
-                <div class="memory-content">${displayContent}</div>
-                <div class="memory-meta">
-                  Relevance: ${similarity}% | Source: Active Memory
-                </div>
-              </div>
-            `;
-          }).join('');
-
-          memoryResults.innerHTML += `
-            <div class="search-summary">
-              <strong>Search Results:</strong> ${response.results.length} found
-            </div>
-          `;
-        } else {
-          memoryResults.innerHTML = `
-            <div class="memory-result">
-              <div class="memory-content">No results found for "${query}"</div>
-              <div class="memory-meta">
-                Try using different keywords or check your search terms.
-              </div>
-            </div>
-          `;
+          this.displaySearchResults(response, searchResultsArea);
+        } catch (error: any) {
+          console.error('Error during memory search:', error);
+          searchErrorElement.textContent = `Search failed: ${error.message || 'Unknown error'}`;
+          searchResultsArea.innerHTML = '<p>An error occurred during the search.</p>';
         }
-
-      } catch (error) {
-        console.error('Memory search error:', error);
-
-        memoryResults.innerHTML = `
-          <div class="memory-result error">
-            <div class="memory-content">Memory search failed: ${(error as Error).message || 'Unknown error'}</div>
-            <div class="memory-meta">
-              Backend Status: ${backendConnected ? 'Connected' : 'Disconnected'}
-            </div>
-          </div>
-        `;
-      } finally {
-        searchButton.textContent = 'Search';
-        searchButton.disabled = false;
-      }
+      })();
     });
-
-    memoryQuery.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && !searchButton.disabled) {
-        e.preventDefault();
-        searchButton.click();
-      }
-    });
-
-    memoryQuery.addEventListener('input', (e) => {
-      if ((e.target as HTMLInputElement).value.trim() === '') {
-        memoryResults.innerHTML = '';
-      }
-    });
-  } else {
-    console.warn('⚠️ Memory search elements not found in DOM');
-  }
-}
-
-function setupChatHistoryPanel(): void {
-  console.log("🔧 [CHAT_HISTORY] Initializing chat history management system...");
-
-  const newChatBtn = document.getElementById('new-chat-btn');
-
-  if (newChatBtn) {
-    newChatBtn.addEventListener('click', async () => {
-      console.log("🔄 [NEW_CHAT] Initiating new chat session creation...");
-
-      try {
-        await performCompleteSystemReset();
-
-        const newSessionId = crypto.randomUUID();
-        currentSessionId = newSessionId;
-        console.log(`📝 [NEW_CHAT] Session ID generated: ${newSessionId}`);
-
-        await initializeNewChatSession();
-
-        console.log("✅ [NEW_CHAT] New chat session successfully created");
-      } catch (error) {
-        console.error("❌ [NEW_CHAT] Failed to create new chat session:", error);
-        await displayMessage("Error creating new chat. Please refresh the page.", 'error');
-      }
-    });
-  }
-}
-
-async function performCompleteSystemReset(): Promise<void> {
-  console.log("🧹 [SYSTEM_RESET] Performing complete chat state reset...");
-
-  const messageArea = document.getElementById('message-area');
-  if (messageArea) {
-    messageArea.innerHTML = '';
+    console.log("✅ Unified Memory Search UI setup complete.");
   }
 
-  currentAuraMessageElement = null;
-  typingIndicatorElement = null;
+  private setupEmotionalInsights(): void {
+    const showInsightsBtn = document.getElementById('show-insights');
+    const insightsPeriod = document.getElementById('insights-period') as HTMLSelectElement;
+    const insightsContent = document.getElementById('insights-content');
 
-  removeTypingIndicator();
+    if (!showInsightsBtn || !insightsPeriod || !insightsContent) return;
 
-  document.querySelectorAll('.chat-session-item').forEach(item => {
-    item.classList.remove('active');
-  });
-
-  setFormDisabledState(false);
-
-  console.log("✅ [SYSTEM_RESET] Chat state reset completed");
-}
-
-async function initializeNewChatSession(): Promise<void> {
-  console.log("🚀 [SESSION_INIT] Initializing new chat session interface...");
-
-  const now = new Date();
-  const timeString = now.toLocaleDateString() + ' at ' + now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
-  const welcomeMessage = `**Welcome back, ${userName || 'there'}!**
-
-*${timeString}*
-
-I'm ready to help you with your projects. What would you like to work on today?`;
-
-  await displayMessage(welcomeMessage, 'aura');
-
-  if (messageInput) {
-    messageInput.focus();
-  }
-
-  console.log("✅ [SESSION_INIT] New session interface initialized");
-}
-
-function setupEmotionalInsightsPanel(): void {
-  console.log("🔧 [INSIGHTS] Initializing emotional insights panel...");
-
-  const showInsightsBtn = document.getElementById('show-insights') as HTMLButtonElement;
-  const insightsPeriod = document.getElementById('insights-period') as HTMLSelectElement;
-  const insightsContent = document.getElementById('insights-content') as HTMLElement;
-
-  if (showInsightsBtn && insightsPeriod && insightsContent) {
     showInsightsBtn.addEventListener('click', async () => {
-      if (!userName || !backendConnected) {
-        insightsContent.innerHTML = '<div class="insights-data">Please ensure backend connection and user authentication.</div>';
+      console.log(`📊 Emotional insights requested:`, { userName: this.userName, backendConnected: this.backendConnected });
+
+      if (!this.userName || !this.backendConnected) {
+        const errorMsg = !this.userName ? 'User not identified' : 'Backend not connected';
+        insightsContent.innerHTML = `<div class="insights-data error">Error: ${errorMsg}</div>`;
+        console.warn('⚠️ Emotional insights failed:', { userName: this.userName, backendConnected: this.backendConnected });
         return;
       }
 
       try {
         showInsightsBtn.textContent = 'Analyzing...';
-        showInsightsBtn.disabled = true;
+        (showInsightsBtn as HTMLButtonElement).disabled = true;
+        insightsContent.innerHTML = '<div class="insights-data">Analyzing emotional patterns...</div>';
 
-        // For now, show a placeholder message
-        insightsContent.innerHTML = `
-          <div class="insights-data">
-            <p><strong>Emotional Analysis:</strong> Coming soon!</p>
-            <p>This feature will provide insights into your emotional patterns over the selected time period.</p>
-          </div>
-        `;
+        const period = insightsPeriod.value;
+        console.log(`📤 Requesting emotional analysis for user: ${this.userName}, period: ${period}`);
+
+        const analysis = await this.api.getEmotionalAnalysis(this.userName, period);
+        console.log(`📥 Emotional analysis response:`, analysis);
+
+        this.displayEmotionalInsights(analysis, insightsContent);
 
       } catch (error) {
-        console.error('Insights error:', error);
-        insightsContent.innerHTML = `
-          <div class="insights-data error">
-            Failed to load insights: ${(error as Error).message || 'Unknown error'}
-          </div>
-        `;
+        console.error('❌ Insights error:', error);
+        insightsContent.innerHTML = `<div class="insights-data error">Failed to load insights: ${(error as Error).message}</div>`;
       } finally {
         showInsightsBtn.textContent = 'View Analysis';
-        showInsightsBtn.disabled = false;
+        (showInsightsBtn as HTMLButtonElement).disabled = false;
       }
     });
   }
+
+  private setupKeyboardShortcuts(): void {
+    document.addEventListener('keydown', (e) => {
+      // Ctrl/Cmd + Enter to send message
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        this.chatForm.dispatchEvent(new Event('submit'));
+      }
+
+      // Escape to close mobile panels
+      if (e.key === 'Escape') {
+        this.leftPanel.classList.add('collapsed');
+        this.rightPanel.classList.add('collapsed');
+      }
+    });
+
+    // Fixed message input handling - properly trigger form submission
+    this.messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        // Trigger form submission event instead of calling handler directly
+        this.chatForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+  }
+
+  private setupEnhancedHeader(): void {
+    // Initialize header with default state
+    this.updateSystemHealth('optimal', 'Connected', 'All systems operational');
+    this.updateBrainwaveDisplay('Alpha', 'Default');
+    this.updateNeurotransmitterDisplay('Serotonin', 70);
+
+    // Set initial greeting
+    this.updateUserGreeting();
+
+    console.log("✅ Enhanced header initialized");
+  }
+
+  private setupUsernameManagement(): void {
+    // Create the simplified user interface
+    this.createSimplifiedUserInterface();
+
+    // Load and display existing username
+    this.loadAndDisplayStoredUsername();
+
+    // Set up event listeners for simplified interface
+    this.setupSimplifiedEventListeners();
+
+    console.log("✅ Simplified username management setup complete");
+  }
+
+  private createSimplifiedUserInterface(): void {
+    // Find the user controls container
+    const userControlsContainer = document.getElementById('user-controls') ||
+                                 document.querySelector('.user-controls');
+
+    if (!userControlsContainer) {
+      console.error("❌ User controls container not found");
+      return;
+    }
+
+    // Replace dropdown with simplified inline interface
+    userControlsContainer.innerHTML = `
+      <div class="simplified-user-section">
+        <span class="user-label">I'm</span>
+        <input
+          type="text"
+          class="inline-username-input"
+          id="inline-username-input"
+          placeholder="Enter your name"
+          maxlength="30"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button class="inline-save-btn" id="inline-save-btn" disabled>Save</button>
+        <div class="user-status hidden" id="user-status"></div>
+      </div>
+    `;
+
+    // Store references to new elements
+    this.inlineUsernameInput = document.getElementById('inline-username-input') as HTMLInputElement;
+    this.inlineSaveButton = document.getElementById('inline-save-btn') as HTMLButtonElement;
+    this.userStatus = document.getElementById('user-status') as HTMLElement;
+
+    console.log("✅ Simplified user interface created");
+  }
+
+  private loadAndDisplayStoredUsername(): void {
+    // This method is called after the simplified UI elements are created
+    // Username is already loaded by loadUserData() in initialization
+    // Just update the display elements
+    this.updateAllUsernameDisplays();
+    console.log("✅ Stored username displayed in simplified interface.");
+  }
+
+  private setupSimplifiedEventListeners(): void {
+    if (!this.inlineUsernameInput || !this.inlineSaveButton) {
+      console.error("❌ Simplified UI elements not found");
+      return;
+    }
+
+    // Input validation with real-time feedback
+    this.inlineUsernameInput.addEventListener('input', () => {
+      this.handleUsernameInput();
+    });
+
+    // Save on Enter key
+    this.inlineUsernameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.handleUsernameSave();
+      }
+    });
+
+    // Save button click
+    this.inlineSaveButton.addEventListener('click', () => {
+      this.handleUsernameSave();
+    });
+
+    // Focus handling
+    this.inlineUsernameInput.addEventListener('focus', () => {
+      this.hideUserStatus();
+    });
+
+    console.log("✅ Simplified event listeners setup");
+  }
+
+  private handleUsernameInput(): void {
+    const currentInput = this.inlineUsernameInput.value.trim();
+
+    // Real-time validation with immediate feedback
+    if (currentInput.length === 0) {
+      this.inlineSaveButton.disabled = true;
+      this.hideUserStatus();
+    } else if (currentInput.length < 2) {
+      this.inlineSaveButton.disabled = true;
+      this.showUserStatus('Too short (min 2 chars)', 'warning');
+    } else if (currentInput.length > 30) {
+      this.inlineSaveButton.disabled = true;
+      this.showUserStatus('Too long (max 30 chars)', 'warning');
+    } else if (!this.isValidUsernameCharacters(currentInput)) {
+      this.inlineSaveButton.disabled = true;
+      this.showUserStatus('Invalid characters', 'warning');
+    } else {
+      this.inlineSaveButton.disabled = false;
+      this.hideUserStatus();
+    }
+  }
+
+  private async handleUsernameSave(): Promise<void> {
+    const newUsername = this.inlineUsernameInput.value.trim();
+
+    // Comprehensive validation
+    if (!this.isValidUsername(newUsername)) {
+      this.showUserStatus('Invalid username', 'error', 3000);
+      return;
+    }
+
+    // Prevent duplicate saves
+    if (newUsername === this.userName) {
+      this.showUserStatus('No changes to save', 'warning', 2000);
+      return;
+    }
+
+    try {
+      // Disable UI during save
+      this.inlineSaveButton.disabled = true;
+      this.inlineUsernameInput.disabled = true;
+      this.showUserStatus('Saving...', 'warning');
+
+      const oldName = this.userName;
+
+      // Atomic update: localStorage first, then state, then UI, then backend
+      localStorage.setItem('auraUserName', newUsername);
+      this.userName = newUsername;
+      this.updateAllUsernameDisplays();
+
+      // Notify backend with retry logic
+      await this.notifyBackendWithRetry(oldName, newUsername);
+
+      this.showUserStatus('Saved successfully!', 'success', 3000);
+      console.log(`✅ Username updated: "${oldName}" → "${newUsername}"`);
+
+    } catch (error) {
+      console.error("❌ Failed to save username:", error);
+
+      // Rollback on failure
+      if (this.userName !== newUsername) {
+        const previousName = this.userName;
+        if (previousName) {
+          localStorage.setItem('auraUserName', previousName);
+          this.inlineUsernameInput.value = previousName;
+        } else {
+          localStorage.removeItem('auraUserName');
+          this.inlineUsernameInput.value = '';
+        }
+        this.updateAllUsernameDisplays();
+      }
+
+      this.showUserStatus('Save failed - restored previous', 'error', 4000);
+    } finally {
+      // Re-enable UI
+      this.inlineUsernameInput.disabled = false;
+      this.inlineSaveButton.disabled = false;
+      this.handleUsernameInput(); // Refresh validation state
+    }
+  }
+
+  private async notifyBackendWithRetry(oldName: string | null, newName: string): Promise<void> {
+    const maxRetries = 3;
+    const retryDelay = 1000; // ms
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (!this.backendConnected) {
+          console.warn("⚠️ Backend not connected - skipping notification");
+          return;
+        }
+
+        const nameChangeRequest = {
+          user_id: newName,
+          message: `[SYSTEM] User name updated from "${oldName || 'unknown'}" to "${newName}". Please use existing data for "${newName}" if available.`,
+          session_id: this.currentSessionId || undefined
+        };
+
+        // Send with timeout
+        const response = await Promise.race([
+          this.api.sendMessage(nameChangeRequest),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Backend notification timeout')), 5000)
+          )
+        ]) as any;
+
+        console.log(`✅ Backend notified of name change (attempt ${attempt})`);
+
+        // Update session ID if provided
+        if (response?.session_id && !this.currentSessionId) {
+          this.currentSessionId = response.session_id;
+        }
+
+        return; // Success - exit retry loop
+
+      } catch (error) {
+        console.warn(`⚠️ Backend notification attempt ${attempt} failed:`, error);
+
+        if (attempt < maxRetries) {
+          // Wait before retry with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+        } else {
+          // Final attempt failed - log but don't throw (allow UI update to succeed)
+          console.error("❌ All backend notification attempts failed");
+        }
+      }
+    }
+  }
+
+  private isValidUsername(username: string | null): boolean {
+    if (!username || typeof username !== 'string') {
+      return false;
+    }
+
+    const trimmed = username.trim();
+
+    // Length validation
+    if (trimmed.length < 2 || trimmed.length > 30) {
+      return false;
+    }
+
+    // Character validation
+    if (!this.isValidUsernameCharacters(trimmed)) {
+      return false;
+    }
+
+    // Additional safety checks
+    if (trimmed.toLowerCase().includes('system') ||
+        trimmed.toLowerCase().includes('admin') ||
+        trimmed.toLowerCase().includes('null') ||
+        trimmed.toLowerCase().includes('undefined')) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private isValidUsernameCharacters(username: string): boolean {
+    // Allow: letters, numbers, spaces, hyphens, underscores, apostrophes, periods
+    const validPattern = /^[a-zA-Z0-9\s\-_'.]+$/;
+    return validPattern.test(username);
+  }
+
+  private updateAllUsernameDisplays(): void {
+    try {
+      // Update greeting
+      this.updateUserGreeting();
+
+      // Update input field
+      if (this.inlineUsernameInput) {
+        this.inlineUsernameInput.value = this.userName || '';
+      }
+
+      // Update any other username displays in your UI
+      this.updateUserSpecificUI();
+
+      console.log(`🔄 All username displays updated for: ${this.userName || 'Anonymous'}`);
+    } catch (error) {
+      console.error("❌ Error updating username displays:", error);
+    }
+  }
+
+  private showUserStatus(message: string, type: 'success' | 'error' | 'warning', duration?: number): void {
+    if (!this.userStatus) return;
+
+    this.userStatus.textContent = message;
+    this.userStatus.className = `user-status ${type}`;
+
+    if (duration) {
+      setTimeout(() => this.hideUserStatus(), duration);
+    }
+  }
+
+  private hideUserStatus(): void {
+    if (this.userStatus) {
+      this.userStatus.className = 'user-status hidden';
+    }
+  }
+
+  private updateUserGreeting(): void {
+    try {
+      if (this.userName) {
+        this.userGreetingElement.textContent = `Hello, ${this.userName}!`;
+        console.log(`👋 Greeting updated for: ${this.userName}`);
+      } else {
+        this.userGreetingElement.textContent = 'Your AI Companion';
+        console.log("👋 Generic greeting set");
+      }
+    } catch (error) {
+      console.error("❌ Error updating user greeting:", error);
+      // Fallback
+      if (this.userGreetingElement) {
+        this.userGreetingElement.textContent = 'Your AI Companion';
+      }
+    }
+  }
+
+  // ============================================================================
+  // CHAT FUNCTIONALITY
+  // ============================================================================
+
+  private async startChat(): Promise<void> {
+    try {
+      const now = new Date();
+      const timeString = `${now.toLocaleDateString()} at ${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+      let initialGreeting: string;
+
+      if (this.userName) {
+        initialGreeting = `**Welcome back, ${this.userName}!** 🌟\n\n*${timeString}*\n\nI'm ready to continue our conversation. What would you like to explore today?`;
+      } else {
+        initialGreeting = `**Hello! I'm Aura** 🌟\n\n*${timeString}*\n\nI'm your adaptive reflective companion. You can set your name using the user settings button (👤) in the header, or we can begin our conversation right away. How can I help you today?`;
+      }
+
+      // Initialize with default states
+      this.updateEmotionalState({
+        name: "Normal",
+        intensity: "Medium",
+        brainwave: "Alpha",
+        neurotransmitter: "Serotonin",
+        description: "Balanced and ready for interaction"
+      });
+
+      this.updateCognitiveState({
+        focus: "Learning",
+        description: "Ready to assist and learn together"
+      });
+
+      await this.displayMessage(initialGreeting, 'aura');
+      this.setFormState(false);
+      this.messageInput.focus();
+
+    } catch (error) {
+      console.error("❌ Failed to start chat:", error);
+      this.updateSystemHealth('error', 'Failed', 'Chat initialization failed');
+      await this.displayMessage("I'm having trouble starting up. Please refresh the page if the issue persists.", 'error');
+    }
+  }
+
+  private initializeEventListeners(): void {
+    if (!this.chatForm) {
+      console.error("❌ Chat form not found during event listener initialization.");
+      // Optionally, throw an error or show a critical UI error
+      this.showCriticalError("Chat input form failed to initialize. Please refresh.");
+      return;
+    }
+
+    // Directly attach the submit listener to the class's chatForm property
+    this.chatForm.addEventListener('submit', (event) => this.handleFormSubmit(event));
+    console.log("✅ Chat form submit listener attached.");
+
+    // You can add other global or essential listeners here if needed,
+    // ensuring their respective DOM elements are also checked like this.chatForm.
+  }
+
+  private async handleFormSubmit(event: Event): Promise<void> {
+    event.preventDefault();
+
+    const userMessage = this.messageInput.value.trim();
+    if (!userMessage) return;
+
+    await this.displayMessage(userMessage, 'user');
+    this.messageInput.value = '';
+    this.setFormState(true);
+
+    // Check for special commands
+    if (await this.handleSpecialCommands(userMessage)) {
+      return;
+    }
+
+    // Process message regardless of username - user can set name via UI
+    await this.processMessage(userMessage);
+  }
+
+  // ============================================================================
+  // SPECIAL COMMAND HANDLING
+  // ============================================================================
+
+  private async handleSpecialCommands(message: string): Promise<boolean> {
+    const lowerMessage = message.toLowerCase().trim();
+
+    // Command to change name - works with UI system
+    if (lowerMessage.startsWith('/name ') || lowerMessage.startsWith('/setname ')) {
+      const newName = message.substring(message.indexOf(' ') + 1).trim();
+      if (newName && newName.length >= 2 && newName.length <= 30) {
+        const oldName = this.userName;
+        this.userName = newName;
+        localStorage.setItem('auraUserName', this.userName);
+
+        // Update UI elements
+        if (this.inlineUsernameInput) {
+          this.inlineUsernameInput.value = this.userName;
+        }
+        this.updateCurrentUserDisplay();
+        this.updateUserGreeting();
+        this.updateUserSpecificUI();
+
+        await this.displayMessage(`✅ Name updated to **${this.userName}**! You can also change it anytime using the user settings (👤) in the header.`, 'aura');
+
+        // Notify the backend about the name change
+        if (oldName !== this.userName) {
+          try {
+            console.log(`🔄 Notifying backend of name change: "${oldName}" → "${this.userName}"`);
+
+            const nameChangeRequest = {
+              user_id: this.userName,
+              message: `[SYSTEM] User name updated from "${oldName || 'unknown'}" to "${this.userName}". Please use existing data for "${this.userName}" if available.`,
+              session_id: this.currentSessionId || undefined
+            };
+
+            const response = await this.api.sendMessage(nameChangeRequest);
+            console.log(`✅ Backend notified of name change, response: ${response.response}`);
+
+            if (response.session_id && !this.currentSessionId) {
+              this.currentSessionId = response.session_id;
+            }
+
+          } catch (error) {
+            console.warn(`⚠️ Failed to notify backend of name change: ${error}`);
+            await this.displayMessage("Name updated locally, but there may be an issue syncing with your chat history.", 'aura');
+          }
+        }
+
+        this.setFormState(false);
+        return true;
+      } else {
+        await this.displayMessage("Please provide a valid name (2-30 characters). Example: `/name Ty`", 'aura');
+        this.setFormState(false);
+        return true;
+      }
+    }
+
+    // Command to reset name - clears UI and storage
+    if (lowerMessage === '/resetname' || lowerMessage === '/changename') {
+      this.userName = null;
+      localStorage.removeItem('auraUserName');
+      if (this.inlineUsernameInput) {
+        this.inlineUsernameInput.value = '';
+      }
+      this.updateCurrentUserDisplay();
+      this.updateUserGreeting();
+      this.updateUserSpecificUI();
+
+      await this.displayMessage("✅ Name cleared! You can set a new name using the user settings (👤) in the header.", 'aura');
+      this.setFormState(false);
+      return true;
+    }
+
+    return false; // Not a special command
+  }
+  private updateCurrentUserDisplay(): void {
+    // This method is now handled by updateAllUsernameDisplays()
+    // Legacy compatibility wrapper
+    console.log("🔄 Legacy updateCurrentUserDisplay called - redirecting to updateAllUsernameDisplays");
+    this.updateAllUsernameDisplays();
+  }
+
+
+
+  private updateUserSpecificUI(): void {
+    // Enable/disable search button based on userName
+    const searchButton = document.getElementById('unified-search-button') as HTMLButtonElement | null;
+    if (searchButton) {
+      searchButton.disabled = !this.userName;
+    }
+
+    // Update username input field (simplified interface)
+    if (this.inlineUsernameInput && this.userName) {
+      this.inlineUsernameInput.value = this.userName;
+    }
+
+    // Update current user display
+    this.updateCurrentUserDisplay();
+    this.updateUserGreeting();
+
+    // Handle search UI based on username status
+    if (!this.userName) {
+      const searchInput = document.getElementById('unified-search-input') as HTMLInputElement | null;
+      if (searchInput) searchInput.value = '';
+
+      const searchResultsArea = document.getElementById('unified-search-results');
+      if (searchResultsArea) searchResultsArea.innerHTML = '';
+
+      const searchErrorElement = document.getElementById('unified-search-error');
+      if (searchErrorElement) {
+        searchErrorElement.textContent = 'Please set your name using the user settings (👤) to enable memory search.';
+      }
+    } else {
+      // Clear any error messages when username is set
+      const searchErrorElement = document.getElementById('unified-search-error');
+      if (searchErrorElement) {
+        searchErrorElement.textContent = '';
+      }
+    }
+
+    console.log(`🔄 UI updated for user: ${this.userName || 'Anonymous'}`);
+  }
+
+  private async processMessage(userMessage: string): Promise<void> {
+    this.showTypingIndicator();
+
+    try {
+      console.log(`🤖 Sending message to backend:`, {
+        userName: this.userName,
+        userMessage,
+        sessionId: this.currentSessionId,
+        backendConnected: this.backendConnected
+      });
+
+      if (!this.backendConnected) {
+        this.updateSystemHealth('error', 'Disconnected', 'Backend connection not available');
+        throw new Error('Backend connection not available');
+      }
+
+      // Use "Anonymous" if no username is set, but still allow conversation
+      const effectiveUserId = this.userName || 'Anonymous';
+
+      const requestData = {
+        user_id: effectiveUserId,
+        message: userMessage,
+        session_id: this.currentSessionId || undefined
+      };
+
+      console.log(`📤 Request data:`, requestData);
+
+      const response: ConversationResponse = await this.api.sendMessage(requestData);
+
+      console.log(`✅ Received response:`, response);
+
+      // Validate response
+      if (!response) {
+        throw new Error('No response received from backend');
+      }
+
+      if (!response.response) {
+        throw new Error('Invalid response: missing response text');
+      }
+
+      // Update session ID if new
+      if (!this.currentSessionId && response.session_id) {
+        this.currentSessionId = response.session_id;
+        console.log(`📝 Session ID set to: ${this.currentSessionId}`);
+
+        // Refresh chat history to show new session
+        setTimeout(() => this.loadChatHistory(), 1000);
+      }
+
+      // Update UI states with validation
+      if (response.emotional_state) {
+        this.updateEmotionalState(response.emotional_state);
+      } else {
+        console.warn('⚠️ No emotional state in response');
+      }
+
+      if (response.cognitive_state) {
+        this.updateCognitiveState(response.cognitive_state);
+      } else {
+        console.warn('⚠️ No cognitive state in response');
+      }
+
+      // Update system health to show successful communication
+      this.updateSystemHealth('optimal', 'Connected', 'Communication successful');
+
+      await this.displayMessage(response.response, 'aura');
+
+    } catch (error) {
+      console.error('❌ Chat error details:', {
+        error,
+        message: (error as Error).message,
+        stack: (error as Error).stack,
+        userName: this.userName,
+        backendConnected: this.backendConnected
+      });
+
+      let errorMessage: string;
+      const errorStr = (error as Error).message;
+
+      // Handle specific database errors
+      if (errorStr.includes('disk I/O error') || errorStr.includes('database')) {
+        this.updateSystemHealth('error', 'Database Error', 'I/O conflict detected');
+        errorMessage = "🚨 Database connection issue detected. The conversation system is experiencing technical difficulties. Please try restarting the application.";
+      } else if (errorStr.includes('ChromaDB') || errorStr.includes('instance')) {
+        this.updateSystemHealth('error', 'DB Conflict', 'Multiple instances running');
+        errorMessage = "⚙️ Database configuration conflict detected. Multiple instances may be running. Please restart the application.";
+      } else if (!this.backendConnected) {
+        this.updateSystemHealth('error', 'Disconnected', 'Backend unavailable');
+        errorMessage = "🔌 Backend connection lost. Please check if the server is running and refresh the page.";
+      } else {
+        this.updateSystemHealth('warning', 'Error', 'Processing failed');
+        errorMessage = `💥 Processing error: ${errorStr}`;
+      }
+
+      await this.displayMessage(errorMessage, 'error');
+
+      // If it's a database error, also show a recovery suggestion
+      if (errorStr.includes('disk I/O error') || errorStr.includes('ChromaDB')) {
+        setTimeout(async () => {
+          await this.displayMessage(
+            "💡 **Recovery Suggestion**: This appears to be a database issue. Try:\n\n" +
+            "1. Restart the entire application (backend + frontend)\n" +
+            "2. Check if multiple ChromaDB instances are running\n" +
+            "3. Ensure sufficient disk space\n" +
+            "4. Check file permissions on the database directory",
+            'aura'
+          );
+        }, 1000);
+      }
+    } finally {
+      this.setFormState(false);
+    }
+  }
+
+  // ============================================================================
+  // UI UPDATES
+  // ============================================================================
+
+  private showTypingIndicator(): void {
+    if (this.typingIndicatorElement) return;
+
+    this.typingIndicatorElement = document.createElement('div');
+    this.typingIndicatorElement.className = 'typing-indicator';
+    this.typingIndicatorElement.innerHTML = `
+      <div class="thinking-phases">
+        <div class="phase-indicator active" data-phase="thinking">🤔 Thinking...</div>
+        <div class="phase-indicator" data-phase="processing">⚡ Processing...</div>
+        <div class="phase-indicator" data-phase="responding">💭 Responding...</div>
+      </div>
+    `;
+
+    this.messageArea.appendChild(this.typingIndicatorElement);
+    this.scrollToBottom();
+
+    // Animate through phases
+    setTimeout(() => this.updateThinkingPhase('processing'), 1000);
+    setTimeout(() => this.updateThinkingPhase('responding'), 2000);
+  }
+
+  private updateThinkingPhase(phase: 'thinking' | 'processing' | 'responding'): void {
+    if (!this.typingIndicatorElement) return;
+
+    const indicators = this.typingIndicatorElement.querySelectorAll('.phase-indicator');
+    indicators.forEach(indicator => {
+      indicator.classList.remove('active');
+      if (indicator.getAttribute('data-phase') === phase) {
+        indicator.classList.add('active');
+      }
+    });
+  }
+
+  private removeTypingIndicator(): void {
+    if (this.typingIndicatorElement) {
+      this.typingIndicatorElement.remove();
+      this.typingIndicatorElement = null;
+    }
+  }
+
+  private async displayMessage(text: string, sender: 'user' | 'aura' | 'error'): Promise<void> {
+    this.removeTypingIndicator();
+
+    const messageBubble = document.createElement('div');
+    messageBubble.className = `message-bubble ${sender}`;
+    messageBubble.setAttribute('role', 'log');
+    messageBubble.setAttribute('data-timestamp', Date.now().toString());
+
+    try {
+      messageBubble.innerHTML = await marked.parse(text);
+    } catch (error) {
+      console.warn('Markdown parsing failed, using plain text:', error);
+      messageBubble.textContent = text;
+    }
+
+    // Always append new messages to ensure proper chronological order
+    this.messageArea.appendChild(messageBubble);
+
+
+    this.scrollToBottom();
+  }
+
+  private scrollToBottom(): void {
+    // Scroll to bottom for normal layout with smooth behavior
+    if (this.messageArea) {
+      setTimeout(() => {
+        this.messageArea.scrollTo({
+          top: this.messageArea.scrollHeight,
+          behavior: 'smooth'
+        });
+      }, 50); // Small delay to ensure content is rendered
+    }
+  }
+
+  private setFormState(disabled: boolean): void {
+    this.messageInput.disabled = disabled;
+    this.sendButton.disabled = disabled;
+
+    if (!disabled) {
+      this.messageInput.focus();
+    }
+  }
+
+  private updateEmotionalState(emotionalState: EmotionalState): void {
+    try {
+      // Update basic emotion display
+      this.emotionStatusElement.textContent = emotionalState.name;
+      this.emotionDetailsElement.textContent = emotionalState.description || 'Emotional processing active';
+
+      // Update intensity
+      if (this.emotionIntensityElement) {
+        this.emotionIntensityElement.textContent = emotionalState.intensity || 'Medium';
+      }
+
+      // Update emotion icon based on emotion
+      if (this.emotionIconElement) {
+        this.emotionIconElement.textContent = this.getEmotionIcon(emotionalState.name);
+      }
+
+      // Update header background class for dynamic coloring
+      this.updateHeaderEmotionalState(emotionalState.name);
+
+      // Update neural activity displays
+      if (emotionalState.brainwave) {
+        this.updateBrainwaveDisplay(emotionalState.brainwave, emotionalState.name);
+      }
+
+      if (emotionalState.neurotransmitter) {
+        this.updateNeurotransmitterDisplay(emotionalState.neurotransmitter, this.getNeurotransmitterLevel(emotionalState.intensity));
+      }
+
+      console.log(`🎭 Enhanced emotion update: ${emotionalState.name} (${emotionalState.intensity})`);
+    } catch (error) {
+      console.warn('Failed to update emotional state display:', error);
+    }
+  }
+
+  private updateCognitiveState(cognitiveState: CognitiveState): void {
+    try {
+      // Update basic cognitive display
+      this.cognitiveFocusElement.textContent = cognitiveState.focus;
+      this.cognitiveFocusDetailsElement.textContent = cognitiveState.description;
+
+      // Update cognitive icon
+      if (this.cognitiveIconElement) {
+        this.cognitiveIconElement.textContent = this.getCognitiveIcon(cognitiveState.focus);
+      }
+
+      // Update cognitive energy level
+      if (this.cognitiveEnergyElement) {
+        this.cognitiveEnergyElement.textContent = this.getCognitiveEnergyLevel(cognitiveState.focus);
+      }
+
+      console.log(`🧠 Enhanced cognitive update: ${cognitiveState.focus}`);
+    } catch (error) {
+      console.warn('Failed to update cognitive state display:', error);
+    }
+  }
+
+  private updateBrainwaveDisplay(brainwave: string, emotionalContext: string): void {
+    try {
+      this.brainwaveValueElement.textContent = brainwave;
+
+      // Update wave pattern animation based on brainwave type
+      const wavePatternClass = `wave-${brainwave.toLowerCase()}`;
+      this.wavePatternElement.className = `wave-pattern ${wavePatternClass}`;
+
+      console.log(`🧠 Brainwave updated: ${brainwave} (context: ${emotionalContext})`);
+    } catch (error) {
+      console.warn('Failed to update brainwave display:', error);
+    }
+  }
+
+  private updateNeurotransmitterDisplay(neurotransmitter: string, level: number): void {
+    try {
+      this.ntValueElement.textContent = neurotransmitter;
+
+      // Update chemical level indicator
+      this.chemicalLevelElement.style.setProperty('--chemical-intensity', `${level}%`);
+
+      console.log(`⚡ Neurotransmitter updated: ${neurotransmitter} (${level}%)`);
+    } catch (error) {
+      console.warn('Failed to update neurotransmitter display:', error);
+    }
+  }
+
+  private updateSystemHealth(status: string, connection: string, details: string): void {
+    try {
+      this.systemStatusElement.textContent = status;
+      this.connectionStatusElement.textContent = connection;
+      this.systemDetailsElement.textContent = details;
+
+      // Update system health class
+      const healthContainer = this.systemStatusElement.closest('.system-health');
+      if (healthContainer) {
+        healthContainer.className = `status-container system-health ${status.toLowerCase()}`;
+      }
+
+      console.log(`💚 System health updated: ${status} - ${connection}`);
+    } catch (error) {
+      console.warn('Failed to update system health display:', error);
+    }
+  }
+
+  private updateHeaderEmotionalState(emotionName: string): void {
+    try {
+      // Remove existing emotion classes
+      const emotionClasses = ['emotion-normal', 'emotion-happy', 'emotion-sad', 'emotion-angry',
+                             'emotion-excited', 'emotion-love', 'emotion-curious', 'emotion-creative',
+                             'emotion-peaceful', 'emotion-fear'];
+
+      emotionClasses.forEach(cls => this.headerElement.classList.remove(cls));
+
+      // Add new emotion class
+      const emotionClass = `emotion-${emotionName.toLowerCase()}`;
+      this.headerElement.classList.add(emotionClass);
+
+      // Update emotional state container class
+      const emotionalContainer = this.emotionStatusElement.closest('.emotional-state');
+      if (emotionalContainer) {
+        emotionClasses.forEach(cls => emotionalContainer.classList.remove(cls.replace('emotion-', '')));
+        emotionalContainer.classList.add(emotionName.toLowerCase());
+      }
+
+    } catch (error) {
+      console.warn('Failed to update header emotional state:', error);
+    }
+  }
+
+  private getEmotionIcon(emotion: string): string {
+    const iconMap: Record<string, string> = {
+      'Happy': '😊', 'Sad': '😢', 'Angry': '😠', 'Excited': '🤩',
+      'Fear': '😰', 'Love': '💖', 'Curious': '🤔', 'Creative': '🎨',
+      'Peaceful': '😌', 'Normal': '😊', 'Joy': '😄', 'Surprise': '😲',
+      'Disgust': '🤢', 'Awe': '😮', 'Hope': '🌟', 'Optimism': '☀️'
+    };
+    return iconMap[emotion] || '😊';
+  }
+
+  private getCognitiveIcon(focus: string): string {
+    const iconMap: Record<string, string> = {
+      'Learning': '🎯', 'Creative': '💡', 'Analytical': '🔍',
+      'Social': '🤝', 'Focused': '🧩', 'KS': '📚', 'CE': '⚡',
+      'IS': '🔗', 'KI': '🧠', 'KP': '📡', 'ESA': '🎭', 'SDA': '👥'
+    };
+    return iconMap[focus] || '🎯';
+  }
+
+  private getCognitiveEnergyLevel(focus: string): string {
+    const energyMap: Record<string, string> = {
+      'Learning': 'High', 'Creative': 'Very High', 'Analytical': 'High',
+      'Social': 'Medium', 'Focused': 'Very High', 'CE': 'High'
+    };
+    return energyMap[focus] || 'Medium';
+  }
+
+  private getNeurotransmitterLevel(intensity: string): number {
+    const levelMap: Record<string, number> = {
+      'Low': 40, 'Medium': 70, 'High': 95
+    };
+    return levelMap[intensity] || 70;
+  }
+
+  // ============================================================================
+  // CHAT HISTORY MANAGEMENT
+  // ============================================================================
+
+  private async loadChatHistory(): Promise<void> {
+    if (!this.userName || !this.backendConnected) return;
+
+    try {
+      console.log("📚 Loading chat history...");
+      const historyData = await this.api.getChatHistory(this.userName, 20);
+
+      console.log("📊 Chat history response:", historyData);
+
+      if (historyData && historyData.sessions && historyData.sessions.length > 0) {
+        this.chatSessions = historyData.sessions;
+        this.renderChatHistory();
+        console.log(`✅ Loaded ${this.chatSessions.length} chat sessions`);
+      } else if (historyData && (historyData as any).error) {
+        console.error("🚨 Database error in chat history:", (historyData as any).error);
+        this.renderDatabaseError();
+      } else {
+        console.log("📭 No chat history found");
+        this.renderNoChatHistory();
+      }
+    } catch (error) {
+      console.error("❌ Failed to load chat history:", error);
+      this.renderChatHistoryError();
+    }
+  }
+
+  private renderChatHistory(): void {
+    this.chatHistoryList.innerHTML = this.chatSessions.map(session => {
+      const isActive = session.session_id === this.currentSessionId;
+      const timestamp = this.formatTimestamp(session.timestamp);
+      const preview = session.last_message ?
+        session.last_message.substring(0, 50) + '...' :
+        'New conversation';
+
+      return `
+        <div class="chat-session-item ${isActive ? 'active' : ''}"
+             data-session-id="${session.session_id}"
+             role="button"
+             tabindex="0">
+          <div class="session-title">${this.escapeHtml(preview)}</div>
+          <div class="session-meta">${timestamp} • ${session.message_count || 0} messages</div>
+        </div>
+      `;
+    }).join('');
+
+    // Add click handlers
+    this.chatHistoryList.querySelectorAll('.chat-session-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const sessionId = item.getAttribute('data-session-id');
+        if (sessionId && sessionId !== this.currentSessionId) {
+          this.loadChatSession(sessionId);
+        }
+      });
+
+      // Keyboard accessibility
+      item.addEventListener('keydown', (e: Event) => {
+        const keyboardEvent = e as KeyboardEvent;
+        if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+          e.preventDefault();
+          (item as HTMLElement).click();
+        }
+      });
+    });
+  }
+
+  private renderNoChatHistory(): void {
+    this.chatHistoryList.innerHTML = '<div class="no-history">No conversation history yet. Start a new chat!</div>';
+  }
+
+  private renderChatHistoryError(): void {
+    this.chatHistoryList.innerHTML = '<div class="error-message">Failed to load chat history</div>';
+  }
+
+  private renderDatabaseError(): void {
+    this.chatHistoryList.innerHTML = `
+      <div class="database-error">
+        <div class="error-icon">🚨</div>
+        <div class="error-title">Database Connection Issue</div>
+        <div class="error-message">
+          The database is experiencing I/O errors. This is usually due to:
+          <ul>
+            <li>Multiple ChromaDB instances running</li>
+            <li>Disk space or permission issues</li>
+            <li>Corrupted database files</li>
+          </ul>
+        </div>
+        <button onclick="window.location.reload()" class="retry-button">
+          Restart Application
+        </button>
+      </div>
+    `;
+  }
+
+  private async loadChatSession(sessionId: string): Promise<void> {
+    try {
+      console.log(`📖 Loading session: ${sessionId}`);
+
+      // Update current session
+      this.currentSessionId = sessionId;
+
+      // Update active session UI
+      this.updateActiveSession(sessionId);
+
+      // Load and display all messages for the selected session
+      const sessionMessages = await this.api.getSessionMessages(this.userName!, sessionId);
+
+      // Clear current chat area
+      this.clearChat();
+
+      if (sessionMessages && Array.isArray(sessionMessages) && sessionMessages.length > 0) {
+        // Display each message in order
+        for (const msg of sessionMessages) {
+          // Assume msg has { sender: 'user' | 'aura', content: string }
+          // Fallback to 'aura' if sender is missing
+          await this.displayMessage(msg.content, msg.sender === 'user' ? 'user' : 'aura');
+        }
+      } else {
+        await this.displayMessage('No messages found for this session.', 'aura');
+      }
+
+      // Find selected session data for display
+      const selectedSessionData = this.chatSessions.find(session => session.session_id === sessionId);
+      if (selectedSessionData) {
+        await this.displayMessage(
+          `Session: ${sessionId}\nTotal Messages: ${selectedSessionData.message_count}\nLast message: "${selectedSessionData.last_message}"\n(To view the full conversation, this section needs to be updated to fetch and display all ${selectedSessionData.message_count} messages.)`,
+          'aura'
+        );
+      }
+
+      console.log(`✅ Loaded session: ${sessionId}`);
+
+    } catch (error) {
+      console.error(`❌ Failed to load session ${sessionId}:`, error);
+      await this.displayMessage("Failed to load this conversation. Please try again.", 'error');
+    }
+  }
+
+  private async createNewChat(): Promise<void> {
+    try {
+      console.log("🔄 Creating new chat session...");
+
+      // Generate new session ID
+      this.currentSessionId = this.generateSessionId();
+
+      // Clear current chat
+      this.clearChat();
+
+      // Start fresh conversation
+      await this.startChat();
+
+      // Refresh chat history when a new chat is created
+      await this.loadChatHistory();
+
+      console.log(`✅ New chat session created: ${this.currentSessionId}`);
+
+    } catch (error) {
+      console.error("❌ Failed to create new chat:", error);
+      await this.displayMessage("Error creating new chat. Please refresh the page.", 'error');
+    }
+  }
+
+  private clearChat(): void {
+    this.messageArea.innerHTML = '';
+    this.removeTypingIndicator();
+  }
+
+  private updateActiveSession(sessionId: string): void {
+    this.chatHistoryList.querySelectorAll('.chat-session-item').forEach(item => {
+      item.classList.toggle('active', item.getAttribute('data-session-id') === sessionId);
+    });
+  }
+
+  private generateSessionId(): string {
+    // Use crypto.randomUUID if available (modern browsers), fallback to a manual UUID v4 generator
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `session_${crypto.randomUUID()}`;
+    }
+    // Fallback: manual UUID v4 generator
+    const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+    return `session_${uuid}`;
+  }
+
+  // ============================================================================
+  // MEMORY & INSIGHTS
+  // ============================================================================
+
+  private displaySearchResults(response: any, resultsElement: HTMLElement): void {
+    if (response.results && response.results.length > 0) {
+      resultsElement.innerHTML = response.results.map((result: any) => {
+        const content = result.content.replace(/[*#]/g, '').trim();
+        const similarity = (result.similarity * 100).toFixed(1);
+        const source = response.includes_video_archives ? 'unified' : 'active';
+
+        return `
+          <div class="memory-result" data-source="${source}">
+            <div class="memory-content">${this.escapeHtml(content)}</div>
+            <div class="memory-meta">
+              Relevance: ${similarity}% | Source: ${response.search_type || 'Memory'}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      resultsElement.innerHTML += `
+        <div class="search-summary">
+          <strong>Search Results:</strong> ${response.results.length} found
+          ${response.includes_video_archives ? ' (includes video archives)' : ''}
+        </div>
+      `;
+    } else {
+      resultsElement.innerHTML = `
+        <div class="memory-result">
+          <div class="memory-content">No results found</div>
+          <div class="memory-meta">Try different keywords or check your search terms</div>
+        </div>
+      `;
+    }
+  }
+
+  private displayEmotionalInsights(analysis: any, insightsElement: HTMLElement): void {
+    if (analysis.dominant_emotions && analysis.dominant_emotions.length > 0) {
+      const stability = (analysis.emotional_stability * 100).toFixed(1);
+      const dominantEmotion = analysis.dominant_emotions[0][0];
+
+      insightsElement.innerHTML = `
+        <div class="insights-data">
+          <p><strong>🎭 Dominant Emotion:</strong> ${dominantEmotion}</p>
+          <p><strong>📊 Emotional Stability:</strong> ${stability}%</p>
+          <p><strong>📈 Total Entries:</strong> ${analysis.total_entries}</p>
+
+          <div class="emotional-breakdown">
+            <h4>Emotional Distribution:</h4>
+            ${analysis.dominant_emotions.slice(0, 5).map(([emotion, count]: [string, number]) => `
+              <div class="emotion-stat">
+                <span>${emotion}:</span>
+                <span>${count} occurrences</span>
+              </div>
+            `).join('')}
+          </div>
+
+          ${analysis.recommendations && analysis.recommendations.length > 0 ? `
+            <div class="recommendations">
+              <h4>💡 Insights:</h4>
+              ${analysis.recommendations.map((rec: string) => `<p>• ${this.escapeHtml(rec)}</p>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    } else {
+      insightsElement.innerHTML = `
+        <div class="insights-data">
+          <p>No emotional data available for the selected period.</p>
+          <p>Keep chatting with Aura to build up your emotional profile!</p>
+        </div>
+      `;
+    }
+  }
+
+  private async updateVideoArchiveStatus(): Promise<void> {
+    const statusElement = document.getElementById('video-archive-status');
+    if (!statusElement) return;
+
+    try {
+      const response = await fetch('http://localhost:8000/memvid/status');
+      const data = await response.json();
+
+      if (data.status === 'operational') {
+        statusElement.innerHTML = `
+          <div class="archive-info">
+            <div><strong>📦 Total Archives:</strong> ${data.archives_count}</div>
+            <div><strong>🎥 Status:</strong> Operational</div>
+            ${data.archives_count > 0 ? `
+              <div><strong>📊 Recent Archives:</strong></div>
+              <ul style="margin: 4px 0; padding-left: 20px; font-size: 0.8rem;">
+                ${data.archives.slice(0, 3).map((archive: any) =>
+                  `<li>${typeof archive === 'string' ? archive : archive.name || 'Unnamed Archive'}</li>`
+                ).join('')}
+              </ul>
+            ` : '<div style="color: var(--text-secondary); font-style: italic;">No archives yet</div>'}
+          </div>
+        `;
+      } else {
+        statusElement.innerHTML = '<div class="archive-error">⚠️ Memvid service not available</div>';
+      }
+    } catch (error) {
+      console.error('Failed to fetch video archive status:', error);
+      statusElement.innerHTML = '<div class="archive-error">❌ Error loading archive status</div>';
+    }
+  }
+
+  // ============================================================================
+  // UTILITY METHODS
+  // ============================================================================
+
+  private formatTimestamp(timestamp: string): string {
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return 'Unknown time';
+
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffHours = diffMs / (1000 * 60 * 60);
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+      if (diffHours < 1) return 'Just now';
+      if (diffHours < 24) return `${Math.floor(diffHours)}h ago`;
+      if (diffDays < 7) return `${Math.floor(diffDays)}d ago`;
+
+      return date.toLocaleDateString();
+    } catch {
+      return 'Unknown time';
+    }
+  }
+
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  private showConnectionWarning(): void {
+    const warningElement = document.createElement('div');
+    warningElement.className = 'connection-warning';
+    warningElement.innerHTML = `
+      <div style="background: var(--accent-warning); color: white; padding: 8px 16px; text-align: center; font-size: 0.9rem;">
+        ⚠️ Backend connection failed. Some features may not work properly.
+      </div>
+    `;
+    document.body.insertAdjacentElement('afterbegin', warningElement);
+  }
+
+  private showCriticalError(message: string): void {
+    const errorElement = document.createElement('div');
+    errorElement.className = 'critical-error';
+    errorElement.innerHTML = `
+      <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--accent-error); color: white; padding: 20px; border-radius: 8px; text-align: center; z-index: 1000; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+        <h3 style="margin: 0 0 12px 0;">Critical Error</h3>
+        <p style="margin: 0 0 16px 0;">${this.escapeHtml(message)}</p>
+        <button onclick="window.location.reload()" style="background: white; color: var(--accent-error); border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500;">
+          Refresh Page
+        </button>
+      </div>
+    `;
+    document.body.appendChild(errorElement);
+  }
 }
 
-// --- Theme Toggle ---
-themeToggle?.addEventListener('click', () => {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
 
-  document.documentElement.setAttribute('data-theme', newTheme);
-  localStorage.setItem('aura_theme', newTheme);
-});
+// Global instance
+let auraUI: AuraUIManager;
 
-// Load saved theme
-const savedTheme = localStorage.getItem('aura_theme');
-if (savedTheme) {
-  document.documentElement.setAttribute('data-theme', savedTheme);
-} else {
-  document.documentElement.setAttribute('data-theme', 'dark');
-}
-
-// --- Accessibility ---
-messageInput?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    chatForm.dispatchEvent(new Event('submit'));
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    auraUI = new AuraUIManager();
+    await auraUI.initialize();
+  } catch (error) {
+    console.error('Critical initialization error:', error);
   }
 });
 
-// --- Initialize Everything ---
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('🎯 DOM Content Loaded - Starting Aura initialization');
-
-  initializeChat();
-  setupMemorySearchPanel();
-  setupChatHistoryPanel();
-  setupEmotionalInsightsPanel();
-
-  console.log('✅ All systems initialized');
-});
-
-// --- Export for testing ---
-export {
-  initializeChat,
-  displayMessage,
-  updateAuraEmotionDisplay,
-  updateAuraCognitiveFocusDisplay,
-  EMOTIONAL_STATES_DATA,
-  ASEKE_CONCEPTS
-};
+// Export for testing and debugging
+export { AuraUIManager };

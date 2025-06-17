@@ -7,41 +7,74 @@
 
 > **Sophisticated AI Companion with Vector Database, Emotional Intelligence, and Model Context Protocol Integration**
 
+# Two WARNINGS and a disclaimer
+
+- AI generated code
+
+- Aura could be dangerous despite my attempted safeguards in a number of ways including but not limited to
+ PC damage
+ User mental health and attachment
+ Emotional agentic activity
+
+# User assumes all liability.
+
 ![alt text](image-2.png)
 
 ## 🌟 Features
 
 ### 🧠 Advanced Cognitive Architecture
+
 - **ASEKE Framework**: Adaptive Socio-Emotional Knowledge Ecosystem
 - **Real-time Emotional State Detection** with neurological correlations
 - **Cognitive Focus Tracking** across different mental frameworks
 - **Adaptive Self-Reflection** for continuous improvement
 
 ### 🗄️ Intelligent Memory System
+
 - **Vector Database Integration** with ChromaDB for semantic search
 - **Persistent Conversation Memory** with embedding-based retrieval
 - **Emotional Pattern Analysis** over time
 - **Cognitive State Tracking** and trend analysis
+- **MemVid AI QR code mp4 memory** Infinite MP4 based memory
+- **Internal AI guided Memory Organization tools** Move information from short to long term memory systems to avoid bottlenecks and categorize chats
 
 ### 🔗 MCP Integration
+
+- **Model Context Client** Utilizes the same MCP config JSON format as Claude Desktop- Use ANY tools!
 - **Model Context Protocol Server** for external tool integration
 - **Standardized AI Agent Communication** following MCP specifications
 - **Tool Ecosystem Compatibility** with other MCP-enabled systems
 - **Bidirectional Data Exchange** with external AI agents
 
 ### 📊 Advanced Analytics
+
 - **Emotional Trend Analysis** with stability metrics
 - **Cognitive Pattern Recognition** and optimization
 - **Personalized Recommendations** based on interaction history
 - **Data Export** in multiple formats (JSON, CSV, etc.)
 
-### MCP Client now fully functional!!! Next add bells and whistles to UI and get chat history working. Memvid integration attempted- still testing.
+## 🚦 Performance-
 
-![alt text](image-1.png)
+# Responses take some time to process depending on tasks, any coder wants to see if they can speed up the processes I would be grateful.
+
+### Optimization
+
+- Vector database indexing for fast searches
+- Async processing for concurrent requests
+- Cost and Memory-efficient local all-minilm vector embedding generation
+- Autonomous sub-model background Focus gating and task processing for state updates and tool use
+- Tool learning adapter
+- [MemVid](https://github.com/Olow304/memvid) infinite QR code video long term memory!
+
+### Monitoring
+- Health check endpoint
+- Performance metrics collection
+- Error tracking and reporting
+- Resource usage monitoring
+
+### MCP Client now fully functional!!! Memvid integration attempted- still testing.
 
  I am not a coder so hopefully it sets up right if anyone tries it.
-
-![alt text](image-4.png)
 
 ## 🚀 Quick Start
 
@@ -58,35 +91,94 @@
    cd /emotion_ai/aura_backend
    ```
 
-I want this script changed to uv- I already made the pyproject.toml and created a .venv with python 3.12 --seed in the backend
+ Uses uv- pyproject.toml and creates a .venv with python 3.12 --seed in the backend
 2. **Run Setup Script**:
    ```bash
    ./setup.sh
    ```
 
 3. **Configure Environment**:
-   ```bash
-   nano .env
-   # Add your Google API key:
-   GOOGLE_API_KEY=your_actual_api_key_here
-   ```
 
-4. **Test Installation**:
-   ```bash
-   ./test_setup.py
-   ```
+# Copy the env example in the backend to .env
+ I will try to streamline all of this into an OS agnostic app soon.
 
-5. **Start Services**:
-   ```bash
-   ./start.sh
-   ```
+# It will pick up from your OS environment if the API key is configured. It should work if your OS key is set as GEMINI_API_KEY too
 
-   cd /emotion_ai
+```bash
+# Edit the .env file to use your existing key, sort of unneeded now I think.
+echo "GOOGLE_API_KEY=$GOOGLE_API_KEY" > .env
+  ```
 
-   ```bash
-   # Edit the .env file to use your existing key
-   echo "GOOGLE_API_KEY=$GOOGLE_API_KEY" > .env.local
-   ```
+# Current backend .env settings:
+
+```bash
+# Aura Backend Configuration
+# ==========================
+
+# Google API Configuration
+GOOGLE_API_KEY=your-google-api-key-here
+
+# Database Configuration
+CHROMA_PERSIST_DIRECTORY=./aura_chroma_db
+AURA_DATA_DIRECTORY=./aura_data
+
+# Server Configuration
+HOST=0.0.0.0
+PORT=8000
+DEBUG=false
+
+# Logging Configuration
+LOG_LEVEL=INFO
+
+# MCP Server Configuration
+MCP_SERVER_NAME=aura-companion
+MCP_SERVER_VERSION=1.0.0
+
+# Security Configuration
+CORS_ORIGINS=["http://localhost:5173", "http://localhost:3000"]
+
+# Features Configuration
+ENABLE_EMOTIONAL_ANALYSIS=true
+ENABLE_COGNITIVE_TRACKING=true
+ENABLE_VECTOR_SEARCH=true
+ENABLE_FILE_EXPORTS=true
+
+# AI Response Configuration
+# gemini-2.5-flash-preview-05-20
+AURA_MODEL=gemini-2.5-flash-preview-05-20
+AURA_MAX_OUTPUT_TOKENS=1000000
+
+# Autonomic System Configuration
+# gemini-2.0-flash-lite
+AURA_AUTONOMIC_MODEL=gemini-2.0-flash-lite
+AURA_AUTONOMIC_MAX_OUTPUT_TOKENS=100000
+AUTONOMIC_ENABLED=true
+AUTONOMIC_TASK_THRESHOLD=medium  # low, medium, high
+
+# Rate Limiting Configuration
+AUTONOMIC_MAX_CONCURRENT_TASKS=12  # Optimal concurrency for 30 rpm limit
+AUTONOMIC_RATE_LIMIT_RPM=25        # Requests per minute (safety margin below 30)
+AUTONOMIC_RATE_LIMIT_RPD=1200      # Requests per day (safety margin below 1400)
+AUTONOMIC_TIMEOUT_SECONDS=60       # Increased for higher concurrency
+
+# Main Model Rate Limiting (user-configurable based on plan)
+MAIN_MODEL_RATE_LIMIT_RPM=10       # Conservative default, increase based on user plan
+MAIN_MODEL_RATE_LIMIT_RPD=500     # Daily limit for main model
+
+# Queue Management
+AUTONOMIC_QUEUE_MAX_SIZE=100       # Maximum queued tasks
+AUTONOMIC_QUEUE_PRIORITY_ENABLED=true  # Enable priority-based processing
+
+```
+
+**Start Services**: This will start the backend, it runs in dev mode so hot restarts on saved code changes.
+ I will try and design an internal copy that the Aura system can use to add to itself safely with a revert to the original system on failures feature. Sounds fun huh?
+
+```bash
+./start.sh
+```
+
+### Frontend activation
 
 **Prerequisites:**  Node.js
 
@@ -97,7 +189,7 @@ I want this script changed to uv- I already made the pyproject.toml and created 
 npm install
 ```
 
-2. Run the app:
+2. Run the app, also in dev mode so it also hot restarts on code changes:
 
 ```bash
 npm run dev
@@ -260,33 +352,7 @@ Edit your directory path and place in claude desktop config json.
 - **Context Switching**: Cognitive flexibility metrics
 - **Attention Allocation**: Cognitive energy distribution
 
-## 🔧 Configuration
-
-### Environment Variables
-```bash
-# API Configuration
-GOOGLE_API_KEY=your_api_key
-HOST=0.0.0.0
-PORT=8000
-
-# Database Configuration
-CHROMA_PERSIST_DIRECTORY=./aura_chroma_db
-AURA_DATA_DIRECTORY=./aura_data
-
-# Features
-ENABLE_EMOTIONAL_ANALYSIS=true
-ENABLE_COGNITIVE_TRACKING=true
-ENABLE_VECTOR_SEARCH=true
-
-AURA_MODEL=gemini-2.5-flash-preview-05-20
-AURA_MAX_OUTPUT_TOKENS=8192
-
-```
-
-### Advanced Configuration
-Set `.env` file for complete configuration options.
-
-## 🧪 Testing
+## 🧪 Testing - probably not working but you can try lol. 8000/health is working
 
 ### Unit Tests
 ```bash
@@ -304,39 +370,8 @@ pytest tests/
 wrk -t12 -c400 -d30s http://localhost:8000/health
 ```
 
-## 🚀 Deployment
-
 ### Local Development
-```bash
-./start.sh
-```
-
-   cd /emotion_ai
-
-   ```bash
-   # Edit the .env file to use your existing key
-   echo "GOOGLE_API_KEY=$GOOGLE_API_KEY" > .env.local
-   ```
-
-**Front End UI Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-
-```bash
-npm install
-```
-
-2. Run the app:
-
-```bash
-npm run dev
-```
-
-Go to-
-Local:   http://localhost:5173/
-
-Network: use --host to expose
+ I apologize for the mess, I do not know if any of this works below but feel free to try if you are brave or know what you are doing.
 
 ### Production (Docker)
 ```bash
@@ -446,7 +481,7 @@ Check logs in:
 - System logs: `journalctl -u aura-backend` (if using systemd)
 - Application logs: `./aura_data/logs/`
 
-## 🔒 Security
+## 🔒 Security- WARNING! AI Generated so I have 0 trust in these features
 
 ### Data Protection
 - All user data stored locally
@@ -460,19 +495,6 @@ Check logs in:
 - CORS configuration
 - Input validation and sanitization
 
-## 🚦 Performance
-
-### Optimization
-- Vector database indexing for fast searches
-- Async processing for concurrent requests
-- Memory-efficient embedding generation
-- Background task processing for state updates
-
-### Monitoring
-- Health check endpoint
-- Performance metrics collection
-- Error tracking and reporting
-- Resource usage monitoring
 
 ## 🛣️ Roadmap
 
@@ -494,7 +516,8 @@ Check logs in:
 
 ## 📄 License
 
-This project is part of the Aura AI Companion system. See the main project for licensing information.
+My stuff is MIT I suppose but there is other software like google-genai and memvid so it is a mixed bag I think
+ ie don't steal my ideas and try to make money, without me. lol but I am super poor.
 
 ## 🤝 Contributing
 
@@ -510,4 +533,4 @@ For issues and support:
 
 ---
 
-**Aura Backend** - *Powering the future of AI companionship through advanced emotional intelligence and sophisticated memory systems.*
+**Aura Emotion AI** - *Powering the future of AI companionship and assistance through advanced emotional intelligence and sophisticated memory systems.*
