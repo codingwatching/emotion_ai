@@ -24,7 +24,6 @@ class AuraUIManager {
   private api: AuraAPI;
   private currentSessionId: string | null = null;
   private userName: string | null = null;
-  private awaitingNameInput = false;
   private backendConnected = false;
   private typingIndicatorElement: HTMLElement | null = null;
   private chatSessions: ChatSession[] = [];
@@ -41,7 +40,7 @@ class AuraUIManager {
   private chatHistoryList!: HTMLElement;
   private leftPanel!: HTMLElement;
   private rightPanel!: HTMLElement;
-  
+
   // Enhanced header elements
   private headerElement!: HTMLElement;
   private userGreetingElement!: HTMLElement;
@@ -54,12 +53,13 @@ class AuraUIManager {
   private systemStatusElement!: HTMLElement;
   private connectionStatusElement!: HTMLElement;
   private systemDetailsElement!: HTMLElement;
-  private usernameInputElement!: HTMLInputElement;
-  private currentUserElement!: HTMLElement;
-  private saveUsernameButton!: HTMLButtonElement;
-  private userSettingsButton!: HTMLButtonElement;
   private wavePatternElement!: HTMLElement;
   private chemicalLevelElement!: HTMLElement;
+
+  // Simplified user management elements
+  private inlineUsernameInput!: HTMLInputElement;
+  private inlineSaveButton!: HTMLButtonElement;
+  private userStatus!: HTMLElement;
 
   constructor(apiInstance?: AuraAPI) {
     this.api = apiInstance ?? AuraAPI.getInstance();
@@ -111,12 +111,10 @@ class AuraUIManager {
     this.systemStatusElement = this.getRequiredElement('system-status');
     this.connectionStatusElement = this.getRequiredElement('connection-status');
     this.systemDetailsElement = this.getRequiredElement('system-details');
-    this.usernameInputElement = this.getRequiredElement('username-input') as HTMLInputElement;
-    this.currentUserElement = this.getRequiredElement('current-user');
-    this.saveUsernameButton = this.getRequiredElement('save-username') as HTMLButtonElement;
-    this.userSettingsButton = this.getRequiredElement('user-settings-btn') as HTMLButtonElement;
     this.wavePatternElement = this.getRequiredElement('wave-pattern');
     this.chemicalLevelElement = this.getRequiredElement('chemical-level');
+
+    // Note: Simplified user management elements will be created dynamically in setupUsernameManagement()
 
     console.log("✅ Enhanced DOM elements initialized");
   }
@@ -133,7 +131,7 @@ class AuraUIManager {
     try {
       console.log("🔍 Checking backend health...");
       this.updateSystemHealth('connecting', 'Checking...', 'Testing backend connection');
-      
+
       const healthData = await this.api.healthCheck();
       this.backendConnected = true;
       this.updateSystemHealth('optimal', 'Connected', 'All systems operational');
@@ -157,24 +155,31 @@ class AuraUIManager {
   }
 
   private async loadUserData(): Promise<void> {
-    const storedName = localStorage.getItem('auraUserName');
-    if (storedName && storedName.trim().length >= 2) {
-      this.userName = storedName.trim();
-      this.awaitingNameInput = false;
-      console.log(`✅ User data loaded: ${this.userName}`);
-      
-      // Update UI elements immediately
-      this.updateCurrentUserDisplay();
-      this.updateUserGreeting();
-    } else {
-      this.userName = null;
-      this.awaitingNameInput = false; // Let user set name via UI instead of chat
-      console.log("📝 No valid user data found. User can set name via settings.");
-      
-      // Clear any invalid stored name
-      if (storedName) {
-        localStorage.removeItem('auraUserName');
+    try {
+      const storedName = localStorage.getItem('auraUserName');
+
+      if (this.isValidUsername(storedName)) {
+        this.userName = storedName!.trim();
+        console.log(`✅ User data loaded: ${this.userName}`);
+
+        // Update all UI elements
+        this.updateAllUsernameDisplays();
+      } else {
+        this.userName = null;
+        console.log("📝 No valid user data found");
+
+        // Clear invalid stored name
+        if (storedName) {
+          localStorage.removeItem('auraUserName');
+          console.warn(`⚠️ Removed invalid stored username: "${storedName}"`);
+        }
+
+        this.updateAllUsernameDisplays();
       }
+    } catch (error) {
+      console.error("❌ Error loading user data:", error);
+      this.userName = null;
+      this.updateAllUsernameDisplays();
     }
   }
 
@@ -362,7 +367,7 @@ class AuraUIManager {
     this.updateSystemHealth('optimal', 'Connected', 'All systems operational');
     this.updateBrainwaveDisplay('Alpha', 'Default');
     this.updateNeurotransmitterDisplay('Serotonin', 70);
-    
+
     // Set initial greeting
     this.updateUserGreeting();
 
@@ -370,111 +375,309 @@ class AuraUIManager {
   }
 
   private setupUsernameManagement(): void {
-    // Load existing username into input
-    if (this.userName) {
-      this.usernameInputElement.value = this.userName;
-      this.updateCurrentUserDisplay();
+    // Create the simplified user interface
+    this.createSimplifiedUserInterface();
+
+    // Load and display existing username
+    this.loadAndDisplayStoredUsername();
+
+    // Set up event listeners for simplified interface
+    this.setupSimplifiedEventListeners();
+
+    console.log("✅ Simplified username management setup complete");
+  }
+
+  private createSimplifiedUserInterface(): void {
+    // Find the user controls container
+    const userControlsContainer = document.getElementById('user-controls') ||
+                                 document.querySelector('.user-controls');
+
+    if (!userControlsContainer) {
+      console.error("❌ User controls container not found");
+      return;
     }
 
-    // Save username button handler
-    this.saveUsernameButton.addEventListener('click', () => {
-      this.handleUsernameSave();
+    // Replace dropdown with simplified inline interface
+    userControlsContainer.innerHTML = `
+      <div class="simplified-user-section">
+        <span class="user-label">I'm</span>
+        <input
+          type="text"
+          class="inline-username-input"
+          id="inline-username-input"
+          placeholder="Enter your name"
+          maxlength="30"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button class="inline-save-btn" id="inline-save-btn" disabled>Save</button>
+        <div class="user-status hidden" id="user-status"></div>
+      </div>
+    `;
+
+    // Store references to new elements
+    this.inlineUsernameInput = document.getElementById('inline-username-input') as HTMLInputElement;
+    this.inlineSaveButton = document.getElementById('inline-save-btn') as HTMLButtonElement;
+    this.userStatus = document.getElementById('user-status') as HTMLElement;
+
+    console.log("✅ Simplified user interface created");
+  }
+
+  private loadAndDisplayStoredUsername(): void {
+    // This method is called after the simplified UI elements are created
+    // Username is already loaded by loadUserData() in initialization
+    // Just update the display elements
+    this.updateAllUsernameDisplays();
+    console.log("✅ Stored username displayed in simplified interface.");
+  }
+
+  private setupSimplifiedEventListeners(): void {
+    if (!this.inlineUsernameInput || !this.inlineSaveButton) {
+      console.error("❌ Simplified UI elements not found");
+      return;
+    }
+
+    // Input validation with real-time feedback
+    this.inlineUsernameInput.addEventListener('input', () => {
+      this.handleUsernameInput();
     });
 
-    // Enter key in username input
-    this.usernameInputElement.addEventListener('keydown', (e) => {
+    // Save on Enter key
+    this.inlineUsernameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         this.handleUsernameSave();
       }
     });
 
-    console.log("✅ Username management setup complete");
+    // Save button click
+    this.inlineSaveButton.addEventListener('click', () => {
+      this.handleUsernameSave();
+    });
+
+    // Focus handling
+    this.inlineUsernameInput.addEventListener('focus', () => {
+      this.hideUserStatus();
+    });
+
+    console.log("✅ Simplified event listeners setup");
+  }
+
+  private handleUsernameInput(): void {
+    const currentInput = this.inlineUsernameInput.value.trim();
+
+    // Real-time validation with immediate feedback
+    if (currentInput.length === 0) {
+      this.inlineSaveButton.disabled = true;
+      this.hideUserStatus();
+    } else if (currentInput.length < 2) {
+      this.inlineSaveButton.disabled = true;
+      this.showUserStatus('Too short (min 2 chars)', 'warning');
+    } else if (currentInput.length > 30) {
+      this.inlineSaveButton.disabled = true;
+      this.showUserStatus('Too long (max 30 chars)', 'warning');
+    } else if (!this.isValidUsernameCharacters(currentInput)) {
+      this.inlineSaveButton.disabled = true;
+      this.showUserStatus('Invalid characters', 'warning');
+    } else {
+      this.inlineSaveButton.disabled = false;
+      this.hideUserStatus();
+    }
   }
 
   private async handleUsernameSave(): Promise<void> {
-    const newUsername = this.usernameInputElement.value.trim();
-    
-    if (!newUsername) {
-      this.showUsernameError('Please enter a valid name');
+    const newUsername = this.inlineUsernameInput.value.trim();
+
+    // Comprehensive validation
+    if (!this.isValidUsername(newUsername)) {
+      this.showUserStatus('Invalid username', 'error', 3000);
       return;
     }
 
-    if (newUsername.length < 2) {
-      this.showUsernameError('Name must be at least 2 characters');
-      return;
-    }
-
-    if (newUsername.length > 30) {
-      this.showUsernameError('Name must be less than 30 characters');
+    // Prevent duplicate saves
+    if (newUsername === this.userName) {
+      this.showUserStatus('No changes to save', 'warning', 2000);
       return;
     }
 
     try {
-      const oldName = this.userName;
-      this.userName = newUsername;
-      localStorage.setItem('auraUserName', this.userName);
-      
-      this.updateCurrentUserDisplay();
-      this.updateUserGreeting();
-      this.updateUserSpecificUI();
+      // Disable UI during save
+      this.inlineSaveButton.disabled = true;
+      this.inlineUsernameInput.disabled = true;
+      this.showUserStatus('Saving...', 'warning');
 
-      // Notify backend about name change
-      if (oldName !== this.userName && this.backendConnected) {
+      const oldName = this.userName;
+
+      // Atomic update: localStorage first, then state, then UI, then backend
+      localStorage.setItem('auraUserName', newUsername);
+      this.userName = newUsername;
+      this.updateAllUsernameDisplays();
+
+      // Notify backend with retry logic
+      await this.notifyBackendWithRetry(oldName, newUsername);
+
+      this.showUserStatus('Saved successfully!', 'success', 3000);
+      console.log(`✅ Username updated: "${oldName}" → "${newUsername}"`);
+
+    } catch (error) {
+      console.error("❌ Failed to save username:", error);
+
+      // Rollback on failure
+      if (this.userName !== newUsername) {
+        const previousName = this.userName;
+        if (previousName) {
+          localStorage.setItem('auraUserName', previousName);
+          this.inlineUsernameInput.value = previousName;
+        } else {
+          localStorage.removeItem('auraUserName');
+          this.inlineUsernameInput.value = '';
+        }
+        this.updateAllUsernameDisplays();
+      }
+
+      this.showUserStatus('Save failed - restored previous', 'error', 4000);
+    } finally {
+      // Re-enable UI
+      this.inlineUsernameInput.disabled = false;
+      this.inlineSaveButton.disabled = false;
+      this.handleUsernameInput(); // Refresh validation state
+    }
+  }
+
+  private async notifyBackendWithRetry(oldName: string | null, newName: string): Promise<void> {
+    const maxRetries = 3;
+    const retryDelay = 1000; // ms
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (!this.backendConnected) {
+          console.warn("⚠️ Backend not connected - skipping notification");
+          return;
+        }
+
         const nameChangeRequest = {
-          user_id: this.userName,
-          message: `[SYSTEM] User name updated from "${oldName || 'unknown'}" to "${this.userName}". Please use existing data for "${this.userName}" if available.`,
+          user_id: newName,
+          message: `[SYSTEM] User name updated from "${oldName || 'unknown'}" to "${newName}". Please use existing data for "${newName}" if available.`,
           session_id: this.currentSessionId || undefined
         };
 
-        try {
-          const response = await this.api.sendMessage(nameChangeRequest);
-          console.log(`✅ Backend notified of name change: ${oldName} → ${this.userName}`);
-          
-          if (response.session_id && !this.currentSessionId) {
-            this.currentSessionId = response.session_id;
-          }
-        } catch (error) {
-          console.warn(`⚠️ Failed to notify backend of name change: ${error}`);
+        // Send with timeout
+        const response = await Promise.race([
+          this.api.sendMessage(nameChangeRequest),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Backend notification timeout')), 5000)
+          )
+        ]) as any;
+
+        console.log(`✅ Backend notified of name change (attempt ${attempt})`);
+
+        // Update session ID if provided
+        if (response?.session_id && !this.currentSessionId) {
+          this.currentSessionId = response.session_id;
+        }
+
+        return; // Success - exit retry loop
+
+      } catch (error) {
+        console.warn(`⚠️ Backend notification attempt ${attempt} failed:`, error);
+
+        if (attempt < maxRetries) {
+          // Wait before retry with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+        } else {
+          // Final attempt failed - log but don't throw (allow UI update to succeed)
+          console.error("❌ All backend notification attempts failed");
         }
       }
-
-      this.showUsernameSuccess('Name saved successfully!');
-
-    } catch (error) {
-      console.error('Failed to save username:', error);
-      this.showUsernameError('Failed to save name');
     }
   }
 
-  private updateCurrentUserDisplay(): void {
-    this.currentUserElement.textContent = this.userName || 'Not set';
+  private isValidUsername(username: string | null): boolean {
+    if (!username || typeof username !== 'string') {
+      return false;
+    }
+
+    const trimmed = username.trim();
+
+    // Length validation
+    if (trimmed.length < 2 || trimmed.length > 30) {
+      return false;
+    }
+
+    // Character validation
+    if (!this.isValidUsernameCharacters(trimmed)) {
+      return false;
+    }
+
+    // Additional safety checks
+    if (trimmed.toLowerCase().includes('system') ||
+        trimmed.toLowerCase().includes('admin') ||
+        trimmed.toLowerCase().includes('null') ||
+        trimmed.toLowerCase().includes('undefined')) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private isValidUsernameCharacters(username: string): boolean {
+    // Allow: letters, numbers, spaces, hyphens, underscores, apostrophes, periods
+    const validPattern = /^[a-zA-Z0-9\s\-_'.]+$/;
+    return validPattern.test(username);
+  }
+
+  private updateAllUsernameDisplays(): void {
+    try {
+      // Update greeting
+      this.updateUserGreeting();
+
+      // Update input field
+      if (this.inlineUsernameInput) {
+        this.inlineUsernameInput.value = this.userName || '';
+      }
+
+      // Update any other username displays in your UI
+      this.updateUserSpecificUI();
+
+      console.log(`🔄 All username displays updated for: ${this.userName || 'Anonymous'}`);
+    } catch (error) {
+      console.error("❌ Error updating username displays:", error);
+    }
+  }
+
+  private showUserStatus(message: string, type: 'success' | 'error' | 'warning', duration?: number): void {
+    if (!this.userStatus) return;
+
+    this.userStatus.textContent = message;
+    this.userStatus.className = `user-status ${type}`;
+
+    if (duration) {
+      setTimeout(() => this.hideUserStatus(), duration);
+    }
+  }
+
+  private hideUserStatus(): void {
+    if (this.userStatus) {
+      this.userStatus.className = 'user-status hidden';
+    }
   }
 
   private updateUserGreeting(): void {
-    if (this.userName) {
-      this.userGreetingElement.textContent = `Hello, ${this.userName}!`;
-    } else {
-      this.userGreetingElement.textContent = 'Your AI Companion';
+    try {
+      if (this.userName) {
+        this.userGreetingElement.textContent = `Hello, ${this.userName}!`;
+        console.log(`👋 Greeting updated for: ${this.userName}`);
+      } else {
+        this.userGreetingElement.textContent = 'Your AI Companion';
+        console.log("👋 Generic greeting set");
+      }
+    } catch (error) {
+      console.error("❌ Error updating user greeting:", error);
+      // Fallback
+      if (this.userGreetingElement) {
+        this.userGreetingElement.textContent = 'Your AI Companion';
+      }
     }
-  }
-
-  private showUsernameError(message: string): void {
-    this.currentUserElement.textContent = `Error: ${message}`;
-    this.currentUserElement.style.color = 'var(--accent-error)';
-    setTimeout(() => {
-      this.updateCurrentUserDisplay();
-      this.currentUserElement.style.color = '';
-    }, 3000);
-  }
-
-  private showUsernameSuccess(message: string): void {
-    this.currentUserElement.textContent = message;
-    this.currentUserElement.style.color = 'var(--accent-success)';
-    setTimeout(() => {
-      this.updateCurrentUserDisplay();
-      this.currentUserElement.style.color = '';
-    }, 2000);
   }
 
   // ============================================================================
@@ -495,16 +698,16 @@ class AuraUIManager {
       }
 
       // Initialize with default states
-      this.updateEmotionalState({ 
-        name: "Normal", 
-        intensity: "Medium", 
-        brainwave: "Alpha", 
+      this.updateEmotionalState({
+        name: "Normal",
+        intensity: "Medium",
+        brainwave: "Alpha",
         neurotransmitter: "Serotonin",
         description: "Balanced and ready for interaction"
       });
-      
-      this.updateCognitiveState({ 
-        focus: "Learning", 
+
+      this.updateCognitiveState({
+        focus: "Learning",
         description: "Ready to assist and learn together"
       });
 
@@ -570,7 +773,9 @@ class AuraUIManager {
         localStorage.setItem('auraUserName', this.userName);
 
         // Update UI elements
-        this.usernameInputElement.value = this.userName;
+        if (this.inlineUsernameInput) {
+          this.inlineUsernameInput.value = this.userName;
+        }
         this.updateCurrentUserDisplay();
         this.updateUserGreeting();
         this.updateUserSpecificUI();
@@ -614,17 +819,25 @@ class AuraUIManager {
     if (lowerMessage === '/resetname' || lowerMessage === '/changename') {
       this.userName = null;
       localStorage.removeItem('auraUserName');
-      this.usernameInputElement.value = '';
+      if (this.inlineUsernameInput) {
+        this.inlineUsernameInput.value = '';
+      }
       this.updateCurrentUserDisplay();
       this.updateUserGreeting();
       this.updateUserSpecificUI();
-      
+
       await this.displayMessage("✅ Name cleared! You can set a new name using the user settings (👤) in the header.", 'aura');
       this.setFormState(false);
       return true;
     }
 
     return false; // Not a special command
+  }
+  private updateCurrentUserDisplay(): void {
+    // This method is now handled by updateAllUsernameDisplays()
+    // Legacy compatibility wrapper
+    console.log("🔄 Legacy updateCurrentUserDisplay called - redirecting to updateAllUsernameDisplays");
+    this.updateAllUsernameDisplays();
   }
 
 
@@ -636,9 +849,9 @@ class AuraUIManager {
       searchButton.disabled = !this.userName;
     }
 
-    // Update username input field
-    if (this.usernameInputElement && this.userName) {
-      this.usernameInputElement.value = this.userName;
+    // Update username input field (simplified interface)
+    if (this.inlineUsernameInput && this.userName) {
+      this.inlineUsernameInput.value = this.userName;
     }
 
     // Update current user display
@@ -686,7 +899,7 @@ class AuraUIManager {
 
       // Use "Anonymous" if no username is set, but still allow conversation
       const effectiveUserId = this.userName || 'Anonymous';
-      
+
       const requestData = {
         user_id: effectiveUserId,
         message: userMessage,
@@ -874,7 +1087,7 @@ class AuraUIManager {
       // Update basic emotion display
       this.emotionStatusElement.textContent = emotionalState.name;
       this.emotionDetailsElement.textContent = emotionalState.description || 'Emotional processing active';
-      
+
       // Update intensity
       if (this.emotionIntensityElement) {
         this.emotionIntensityElement.textContent = emotionalState.intensity || 'Medium';
@@ -892,7 +1105,7 @@ class AuraUIManager {
       if (emotionalState.brainwave) {
         this.updateBrainwaveDisplay(emotionalState.brainwave, emotionalState.name);
       }
-      
+
       if (emotionalState.neurotransmitter) {
         this.updateNeurotransmitterDisplay(emotionalState.neurotransmitter, this.getNeurotransmitterLevel(emotionalState.intensity));
       }
@@ -928,11 +1141,11 @@ class AuraUIManager {
   private updateBrainwaveDisplay(brainwave: string, emotionalContext: string): void {
     try {
       this.brainwaveValueElement.textContent = brainwave;
-      
+
       // Update wave pattern animation based on brainwave type
       const wavePatternClass = `wave-${brainwave.toLowerCase()}`;
       this.wavePatternElement.className = `wave-pattern ${wavePatternClass}`;
-      
+
       console.log(`🧠 Brainwave updated: ${brainwave} (context: ${emotionalContext})`);
     } catch (error) {
       console.warn('Failed to update brainwave display:', error);
@@ -942,10 +1155,10 @@ class AuraUIManager {
   private updateNeurotransmitterDisplay(neurotransmitter: string, level: number): void {
     try {
       this.ntValueElement.textContent = neurotransmitter;
-      
+
       // Update chemical level indicator
       this.chemicalLevelElement.style.setProperty('--chemical-intensity', `${level}%`);
-      
+
       console.log(`⚡ Neurotransmitter updated: ${neurotransmitter} (${level}%)`);
     } catch (error) {
       console.warn('Failed to update neurotransmitter display:', error);
@@ -973,23 +1186,23 @@ class AuraUIManager {
   private updateHeaderEmotionalState(emotionName: string): void {
     try {
       // Remove existing emotion classes
-      const emotionClasses = ['emotion-normal', 'emotion-happy', 'emotion-sad', 'emotion-angry', 
-                             'emotion-excited', 'emotion-love', 'emotion-curious', 'emotion-creative', 
+      const emotionClasses = ['emotion-normal', 'emotion-happy', 'emotion-sad', 'emotion-angry',
+                             'emotion-excited', 'emotion-love', 'emotion-curious', 'emotion-creative',
                              'emotion-peaceful', 'emotion-fear'];
-      
+
       emotionClasses.forEach(cls => this.headerElement.classList.remove(cls));
-      
+
       // Add new emotion class
       const emotionClass = `emotion-${emotionName.toLowerCase()}`;
       this.headerElement.classList.add(emotionClass);
-      
+
       // Update emotional state container class
       const emotionalContainer = this.emotionStatusElement.closest('.emotional-state');
       if (emotionalContainer) {
         emotionClasses.forEach(cls => emotionalContainer.classList.remove(cls.replace('emotion-', '')));
         emotionalContainer.classList.add(emotionName.toLowerCase());
       }
-      
+
     } catch (error) {
       console.warn('Failed to update header emotional state:', error);
     }

@@ -18,6 +18,7 @@ export interface EmotionalState {
   intensity: string;
   brainwave: string;
   neurotransmitter: string;
+  description?: string;
 }
 
 export interface CognitiveState {

@@ -160,6 +160,7 @@ body {
   background: rgba(255, 255, 255, 0.15);
   padding: 8px 12px;
   border-radius: 20px;
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
@@ -176,9 +177,9 @@ body {
 .wave-pattern {
   width: 40px;
   height: 16px;
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    rgba(255,255,255,0.6) 50%, 
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.6) 50%,
     transparent 100%);
   border-radius: 8px;
   animation: brainwave-pulse 2s ease-in-out infinite;
@@ -210,97 +211,118 @@ body {
   50% { opacity: 1; transform: scaleX(1.2); }
 }
 
-/* User Controls */
+/* Simplified User Controls - Replace dropdown with inline editing */
 .user-controls {
   position: relative;
-}
-
-.user-settings-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  padding: 8px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: all 0.3s ease;
+  padding: 10px 16px;
+  border-radius: 12px;
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
 }
 
-.user-settings-btn:hover {
+.user-controls:hover {
   background: rgba(255, 255, 255, 0.25);
   transform: translateY(-1px);
 }
 
+/* Hide old dropdown elements */
+.user-settings-btn,
 .user-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 16px;
-  min-width: 280px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-  backdrop-filter: blur(20px);
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-10px);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 1000;
-  margin-top: 8px;
+  display: none !important;
 }
 
-.user-controls:hover .user-dropdown {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
+/* New simplified inline user interface */
+.simplified-user-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.username-section {
-  margin-bottom: 12px;
-}
-
-.username-section label {
-  display: block;
-  font-size: 0.9rem;
-  margin-bottom: 6px;
-  color: var(--text-secondary);
-}
-
-.username-section input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  margin-bottom: 8px;
-}
-
-.username-section button {
-  background: var(--accent-primary);
+.user-label {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  white-space: nowrap;
   color: white;
-  border: none;
-  padding: 8px 16px;
+}
+
+.inline-username-input {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  min-width: 100px;
+  max-width: 150px;
+  transition: all 0.3s ease;
+}
+
+.inline-username-input:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.inline-username-input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.8rem;
+}
+
+.inline-save-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: white;
+  padding: 6px 12px;
   border-radius: 6px;
+  font-size: 0.8rem;
   cursor: pointer;
-  font-size: 0.85rem;
-  transition: background 0.3s ease;
+  transition: all 0.3s ease;
+  white-space: nowrap;
 }
 
-.username-section button:hover {
-  background: var(--accent-secondary);
+.inline-save-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
 }
 
-.current-user {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  padding: 8px;
-  background: var(--bg-tertiary);
-  border-radius: 6px;
-  text-align: center;
+.inline-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.user-status {
+  font-size: 0.7rem;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.user-status.success {
+  background: var(--accent-success);
+  color: white;
+}
+
+.user-status.error {
+  background: var(--accent-error);
+  color: white;
+}
+
+.user-status.warning {
+  background: var(--accent-warning);
+  color: white;
+}
+
+.user-status.hidden {
+  display: none;
 }
 
 #header-controls {
@@ -372,16 +394,17 @@ body {
   display: flex;
   gap: 16px;
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.95);
-}
-
 .status-container {
   position: relative;
   background: rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(15px);
   backdrop-filter: blur(15px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 12px;
   padding: 12px;
+  min-width: 140px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
   min-width: 140px;
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -591,16 +614,23 @@ body {
     padding: 8px;
   }
 
-  .user-dropdown {
-    right: auto;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 90vw;
-    max-width: 320px;
+  .user-controls {
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
   }
 
-  .user-controls:hover .user-dropdown {
-    transform: translateX(-50%) translateY(0);
+  .simplified-user-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .inline-username-input {
+    min-width: auto;
+    max-width: none;
+    width: 100%;
   }
 }
 
