@@ -497,7 +497,7 @@ class MCPGeminiBridge:
 
             # Execute the MCP tool with progress tracking
             result = await self._execute_tool_with_progress(
-                function_name, server, mcp_tool_name, formatted_arguments
+                function_name, server, mcp_tool_name, formatted_arguments, original_tool
             )
 
             execution_time = (datetime.now() - start_time).total_seconds()
@@ -796,7 +796,7 @@ class MCPGeminiBridge:
         }
 
     async def _execute_tool_with_progress(self, tool_name: str, server: str, mcp_tool_name: str,
-                                         formatted_arguments: Dict[str, Any]) -> Any:
+                                         formatted_arguments: Dict[str, Any], original_tool: Dict[str, Any]) -> Any:
         """
         Execute a tool with progress tracking and enhanced error handling.
 
@@ -832,10 +832,17 @@ class MCPGeminiBridge:
                 logger.debug(f"🌐 Executing external MCP tool: {mcp_tool_name}")
 
                 if hasattr(self.mcp_client_manager, 'call_tool'):
-                    # Add timeout hints for external tools
-                    if 'timeout' not in formatted_arguments and TOOL_CALL_TIMEOUT > 30:
-                        # For long timeouts, suggest a reasonable timeout to the tool
+                    # Only add timeout hints for tools that explicitly support timeout parameters
+                    tool_parameters = original_tool.get('parameters', {})
+                    tool_properties = tool_parameters.get('properties', {})
+
+                    # Check if tool explicitly declares timeout parameter support
+                    if ('timeout' in tool_properties and
+                        'timeout' not in formatted_arguments and
+                        TOOL_CALL_TIMEOUT > 30):
+                        # Only add timeout for tools that explicitly declare timeout parameter support
                         formatted_arguments['timeout'] = min(TOOL_CALL_TIMEOUT - 5, 300)  # Max 5 minutes
+                        logger.debug(f"🕐 Added timeout parameter for {mcp_tool_name} (tool supports it)")
 
                     result = await self.mcp_client_manager.call_tool(mcp_tool_name, formatted_arguments)
                 else:

@@ -716,8 +716,36 @@ body {
   background-color: var(--accent-secondary);
 }
 
+.chat-history-container {
+  height: calc(100vh - 180px); /* Account for header, new chat button, and padding */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-history-list {
   padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: thin;
+}
+
+.chat-history-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-history-list::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: 3px;
+}
+
+.chat-history-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.chat-history-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .chat-session-item {
@@ -727,6 +755,13 @@ body {
   border-radius: 8px;
   cursor: pointer;
   transition: background-color var(--transition-speed);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-session-item:hover .session-delete-btn {
+  opacity: 1;
 }
 
 .chat-session-item:hover {
@@ -746,10 +781,117 @@ body {
 .session-meta {
   font-size: 0.8rem;
   color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .chat-session-item.active .session-meta {
   color: rgba(255, 255, 255, 0.8);
+}
+
+/* Delete button styling */
+.session-delete-btn {
+  opacity: 0;
+  background: var(--accent-error);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all var(--transition-speed);
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.session-delete-btn:hover {
+  background: #d32f2f;
+  transform: scale(1.05);
+}
+
+.chat-session-item.active .session-delete-btn {
+  opacity: 0.8;
+}
+
+.chat-session-item:hover .session-delete-btn {
+  opacity: 1;
+}
+
+/* Delete confirmation modal */
+.delete-confirmation-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.delete-confirmation-content {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  box-shadow: 0 8px 32px var(--shadow-color);
+  text-align: center;
+}
+
+.delete-confirmation-content h3 {
+  color: var(--accent-error);
+  margin: 0 0 12px 0;
+  font-size: 1.1rem;
+}
+
+.delete-confirmation-content p {
+  color: var(--text-secondary);
+  margin: 0 0 20px 0;
+  line-height: 1.4;
+}
+
+.delete-confirmation-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.delete-confirm-btn, .delete-cancel-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all var(--transition-speed);
+}
+
+.delete-confirm-btn {
+  background: var(--accent-error);
+  color: white;
+}
+
+.delete-confirm-btn:hover {
+  background: #d32f2f;
+}
+
+.delete-cancel-btn {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.delete-cancel-btn:hover {
+  background: var(--panel-bg);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .no-history {
@@ -1397,6 +1539,17 @@ body {
 
   .mobile-menu-btn {
     display: block !important;
+  }
+
+  /* Adjust chat history container for mobile */
+  .chat-history-container {
+    height: calc(100vh - 140px); /* Account for mobile header size */
+  }
+
+  /* Ensure delete confirmations work on mobile */
+  .delete-confirmation-content {
+    margin: 16px;
+    max-width: calc(100vw - 32px);
   }
 }
 

@@ -168,5 +168,20 @@
     "auto_update": false,
     "retention_days": null,
     "tags": []
+  },
+  "Origin_of_Aura_AGI_Systems": {
+    "name": "Origin_of_Aura_AGI_Systems",
+    "archive_type": "knowledge",
+    "description": "The foundational conversation outlining the integration of NARS, inhibitory gating, and the advanced cognitive cycle for Aura's AGI development.",
+    "content_criteria": {
+      "query": "NARS OR NARS-GPT OR 'inhibitory gating' OR 'cognitive cycle'",
+      "content_type": "conversation",
+      "time_range": "all",
+      "max_results": 50
+    },
+    "priority": "critical",
+    "auto_update": false,
+    "retention_days": null,
+    "tags": []
   }
 }

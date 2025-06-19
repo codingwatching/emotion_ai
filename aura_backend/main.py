@@ -183,14 +183,14 @@ class ConversationMemory:
 class AuraFileSystem:
     """
     Enhanced file system operations for Aura's data persistence and management.
-    
+
     Provides comprehensive file system abstractions for managing user profiles,
     conversation exports, session data, and backup operations. Implements
     asynchronous I/O for optimal performance and thread-safe operations.
-    
+
     Attributes:
         base_path: Root directory for all Aura data storage
-        
+
     Directory Structure:
         - users/: User profile data (JSON format)
         - sessions/: Session-specific temporary data
@@ -201,13 +201,13 @@ class AuraFileSystem:
     def __init__(self, base_path: str = "./aura_data") -> None:
         """
         Initialize the Aura file system with specified base directory.
-        
+
         Creates the necessary directory structure if it doesn't exist,
         ensuring proper organization of data storage components.
-        
+
         Args:
             base_path: Root directory path for data storage (default: "./aura_data")
-            
+
         Raises:
             OSError: If directory creation fails due to permissions or disk space
         """
@@ -223,23 +223,23 @@ class AuraFileSystem:
     async def save_user_profile(self, user_id: str, profile_data: Dict[str, Any]) -> str:
         """
         Save user profile data with enhanced metadata and validation.
-        
+
         Persists user profile information to disk with automatic metadata
         enrichment including timestamps and user ID validation. Supports
         atomic write operations for data integrity.
-        
+
         Args:
             user_id: Unique identifier for the user
             profile_data: Dictionary containing user profile information
-            
+
         Returns:
             Absolute path to the saved profile file
-            
+
         Raises:
             ValueError: If user_id is invalid or profile_data is malformed
             OSError: If file write operations fail
             json.JSONDecodeError: If profile_data cannot be serialized
-            
+
         Example:
             >>> fs = AuraFileSystem()
             >>> profile = {"name": "Alice", "preferences": {"theme": "dark"}}
@@ -268,13 +268,13 @@ class AuraFileSystem:
     async def load_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
         Load user profile data from persistent storage.
-        
+
         Retrieves and deserializes user profile information from the file system.
         Implements graceful error handling for missing files and corrupted data.
-        
+
         Args:
             user_id: Unique identifier for the user whose profile to load
-            
+
         Returns:
             Dictionary containing user profile data if found, None if profile
             doesn't exist or cannot be loaded. Profile structure typically includes:
@@ -282,11 +282,11 @@ class AuraFileSystem:
             - name: User display name
             - preferences: User-specific settings
             - last_updated: ISO timestamp of last profile update
-            
+
         Raises:
             json.JSONDecodeError: If profile file contains invalid JSON
             OSError: If file read operations fail due to permissions
-            
+
         Example:
             >>> fs = AuraFileSystem()
             >>> profile = await fs.load_user_profile("user123")
@@ -310,19 +310,19 @@ class AuraFileSystem:
     async def export_conversation_history(self, user_id: str, format: str = "json") -> str:
         """
         Export conversation history in various formats for data portability.
-        
+
         Generates comprehensive data exports including conversation transcripts,
         emotional patterns, and cognitive analysis data. Supports multiple
         output formats for different use cases and integrations.
-        
+
         Args:
             user_id: Unique identifier for the user whose data to export
             format: Output format specification (default: "json")
                    Supported formats: "json", "csv", "xml", "yaml"
-                   
+
         Returns:
             Absolute path to the generated export file
-            
+
         Export Structure:
             - user_id: User identifier
             - export_timestamp: ISO timestamp of export generation
@@ -330,12 +330,12 @@ class AuraFileSystem:
             - conversations: Complete conversation history
             - emotional_patterns: Temporal emotional analysis data
             - cognitive_patterns: ASEKE cognitive focus patterns
-            
+
         Raises:
             ValueError: If format is not supported
             OSError: If file write operations fail
             json.JSONEncodeError: If data serialization fails
-            
+
         Example:
             >>> fs = AuraFileSystem()
             >>> export_path = await fs.export_conversation_history("user123", "json")
@@ -370,16 +370,16 @@ class AuraFileSystem:
 class AuraStateManager:
     """
     Advanced state management with automated database operations and pattern analysis.
-    
+
     Orchestrates emotional and cognitive state transitions, implements automated
     responses to state changes, and maintains comprehensive state history for
     pattern analysis and predictive modeling.
-    
+
     Attributes:
         vector_db: Vector database instance for persistent storage
         aura_file_system: File system manager for data operations
         active_sessions: Dictionary tracking active user sessions
-        
+
     Responsibilities:
         - Emotional state transition management
         - Cognitive focus change detection and response
@@ -391,11 +391,11 @@ class AuraStateManager:
     def __init__(self, vector_db: AuraVectorDB, aura_file_system: AuraFileSystem) -> None:
         """
         Initialize the state manager with required dependencies.
-        
+
         Args:
             vector_db: Vector database instance for semantic storage and retrieval
             aura_file_system: File system manager for persistent data operations
-            
+
         Raises:
             TypeError: If required dependencies are not provided or invalid
         """
@@ -411,33 +411,33 @@ class AuraStateManager:
     ) -> None:
         """
         Execute automated actions in response to emotional state transitions.
-        
+
         Implements comprehensive emotional state management including pattern storage,
         transition analysis, intervention recommendations, and profile updates.
         This method serves as the central orchestrator for emotional intelligence
         responses throughout the system.
-        
+
         Args:
             user_id: Unique identifier for the user experiencing state change
             old_state: Previous emotional state (None for initial state)
             new_state: Current emotional state after transition
-            
+
         Automated Actions:
             - Store emotional pattern in vector database
             - Analyze transition significance and patterns
             - Generate intervention recommendations for concerning transitions
             - Update user profile with latest emotional state
             - Log emotional transitions for research and analysis
-            
+
         Concerning Transitions Monitored:
             - Happy → Sad: Potential mood decline
             - Joy → Angry: Emotional volatility indicator
             - Peace → Angry: Stress or conflict emergence
             - Normal → Sad: Baseline disruption
-            
+
         Raises:
             Exception: If database operations or profile updates fail
-            
+
         Note:
             This method implements non-blocking error handling to ensure
             system stability even if individual operations fail.
@@ -498,23 +498,23 @@ class AuraStateManager:
     ) -> None:
         """
         Execute automated actions in response to cognitive focus transitions.
-        
+
         Manages cognitive state changes within the ASEKE framework, enabling
         adaptive resource allocation and cognitive pattern analysis. This method
         ensures proper tracking and storage of cognitive focus evolution.
-        
+
         Args:
             user_id: Unique identifier for the user experiencing focus change
             old_focus: Previous cognitive focus state (None for initial state)
             new_focus: Current cognitive focus after transition
-            
+
         Automated Operations:
             - Generate semantic embedding for cognitive focus description
             - Store cognitive pattern in vector database with metadata
             - Create unique document ID with temporal and user information
             - Log cognitive focus changes for pattern analysis
             - Update cognitive tracking metrics
-            
+
         ASEKE Component Tracking:
             - KS: Knowledge Substrate engagement
             - CE: Cognitive Energy allocation patterns
@@ -523,10 +523,10 @@ class AuraStateManager:
             - KP: Knowledge Propagation behaviors
             - ESA: Emotional State Algorithm influence
             - SDA: Sociobiological Drive activation
-            
+
         Raises:
             Exception: If vector database operations or embedding generation fails
-            
+
         Note:
             Cognitive focus changes provide insights into learning patterns,
             attention allocation, and cognitive resource optimization.
@@ -605,22 +605,22 @@ global_tool_version = 0
 # ============================================================================
 
 def get_aura_system_instruction(
-    user_name: Optional[str] = None, 
-    memory_context: str = "", 
+    user_name: Optional[str] = None,
+    memory_context: str = "",
     available_tools: Optional[List[Dict[str, Any]]] = None
 ) -> str:
     """
     Generate comprehensive system instruction for Aura with dynamic tool inclusion.
-    
+
     Creates a detailed system prompt that defines Aura's personality, capabilities,
     ethical framework, and available tools. This instruction forms the foundation
     of Aura's conversational behavior and decision-making processes.
-    
+
     Args:
         user_name: Optional user name for personalization
         memory_context: Relevant conversation history and context
         available_tools: List of available MCP tools with metadata
-        
+
     Returns:
         Comprehensive system instruction string containing:
         - Core personality and ethical directives
@@ -628,7 +628,7 @@ def get_aura_system_instruction(
         - Available internal and external tools
         - Memory integration capabilities
         - Conversation guidelines
-        
+
     Example:
         >>> instruction = get_aura_system_instruction(
         ...     user_name="Alice",
@@ -754,15 +754,15 @@ You have access to advanced video-based memory compression technology:
 async def detect_user_emotion(user_message: str, user_id: str) -> Optional[EmotionalStateData]:
     """
     Detect user's emotional state from their message using AI analysis.
-    
+
     Analyzes the user's message content, tone, and word choice to identify
     the most prominent emotional state. Uses the Gemini model to perform
     sentiment analysis and maps results to predefined emotional categories.
-    
+
     Args:
         user_message: The user's input message to analyze
         user_id: Unique identifier for the user (for logging/context)
-        
+
     Returns:
         EmotionalStateData object containing:
         - Emotional state name (e.g., "Happy", "Anxious", "Curious")
@@ -770,12 +770,12 @@ async def detect_user_emotion(user_message: str, user_id: str) -> Optional[Emoti
         - Associated brainwave pattern
         - Neurotransmitter correlation
         - Descriptive information
-        
+
         Returns None if emotion detection fails.
-        
+
     Raises:
         Exception: If API call fails or response parsing encounters errors
-        
+
     Example:
         >>> emotion = await detect_user_emotion("I'm so excited about this!", "user123")
         >>> assert emotion.name == "Excited"
@@ -861,27 +861,27 @@ If neutral, output "Normal (Medium)"."""
 async def detect_aura_emotion(conversation_snippet: str, user_id: str) -> Optional[EmotionalStateData]:
     """
     Detect Aura's emotional state from conversation context using AI analysis.
-    
+
     Analyzes the conversational exchange to determine Aura's emotional response
     and engagement level. This helps maintain emotional consistency and enables
     adaptive emotional modeling throughout conversations.
-    
+
     Args:
         conversation_snippet: The conversation context including user and Aura messages
         user_id: Unique identifier for the user (for logging/context)
-        
+
     Returns:
         EmotionalStateData object representing Aura's emotional state:
         - Emotional state name (e.g., "Curious", "Supportive", "Analytical")
         - Intensity level indicating engagement depth
         - Neurological correlations for consistency
         - Contextual description of emotional state
-        
+
         Returns None if emotion detection fails.
-        
+
     Raises:
         Exception: If AI model call fails or response parsing errors occur
-        
+
     Note:
         This function helps Aura maintain emotional continuity and provides
         insights into AI emotional modeling for research and development.
@@ -963,24 +963,24 @@ If neutral, output "Normal (Medium)"."""
 async def detect_aura_cognitive_focus(conversation_snippet: str, user_id: str) -> Optional[CognitiveState]:
     """
     Detect Aura's cognitive focus using the ASEKE (Adaptive Socio-Emotional Knowledge Ecosystem) framework.
-    
+
     Analyzes conversation content to determine which ASEKE cognitive component
     is most active during the interaction. This enables adaptive cognitive
     resource allocation and provides insights into Aura's thinking patterns.
-    
+
     Args:
         conversation_snippet: The conversation context for cognitive analysis
         user_id: Unique identifier for the user (for logging/context)
-        
+
     Returns:
         CognitiveState object containing:
         - Primary ASEKE component focus (KS, CE, IS, KI, KP, ESA, SDA, Learning)
         - Descriptive explanation of the cognitive focus
         - Contextual information about the analysis
         - Timestamp for temporal tracking
-        
+
         Returns None if cognitive focus detection fails.
-        
+
     ASEKE Components:
         - KS: Knowledge Substrate (shared context)
         - CE: Cognitive Energy (focus and effort)
@@ -989,7 +989,7 @@ async def detect_aura_cognitive_focus(conversation_snippet: str, user_id: str) -
         - KP: Knowledge Propagation (information sharing)
         - ESA: Emotional State Algorithms (emotional influence)
         - SDA: Sociobiological Drives (social dynamics)
-        
+
     Raises:
         Exception: If AI model analysis fails or component classification errors occur
     """
@@ -1191,42 +1191,42 @@ app.include_router(mcp_router)
 async def root() -> Dict[str, Any]:
     """
     Provide comprehensive system information and capability overview for the Aura Backend.
-    
+
     Serves as the primary API discovery endpoint, offering systematic documentation
     of system capabilities, architectural features, and operational status for
     clients and monitoring systems.
-    
+
     Returns:
         Dictionary containing system overview:
         - message: System identification and purpose statement
         - status: Current operational status indicator
         - features: Comprehensive list of available system capabilities
-        
+
     Conceptual Framework:
-        
+
         1. System Identity Declaration:
            - Clear identification as "Aura Backend - Advanced AI Companion"
            - Operational status communication for monitoring systems
            - Capability advertisement for client discovery
-           
+
         2. Feature Architecture Overview:
            - Vector Database Integration: Semantic memory and retrieval
            - MCP Server Support: Model Context Protocol tool ecosystem
            - Advanced State Management: Emotional and cognitive modeling
            - Emotional Pattern Analysis: Longitudinal intelligence assessment
            - Cognitive Focus Tracking: ASEKE framework implementation
-        
+
     Architectural Significance:
         This endpoint represents the conceptual entry point to the Aura ecosystem,
         providing essential system identification and capability discovery for
         both human developers and automated systems integration.
-        
+
     Use Cases:
         - API discovery and documentation
         - System health verification at the application level
         - Feature capability assessment for client applications
         - Integration testing and validation
-        
+
     Note:
         This endpoint serves as the foundational system identifier,
         establishing the conceptual framework for all subsequent
@@ -1249,14 +1249,14 @@ async def root() -> Dict[str, Any]:
 async def health_check(background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """
     Perform comprehensive system health assessment with multi-component status evaluation.
-    
+
     Implements systematic health monitoring across critical system components,
     providing operational status insights essential for production monitoring,
     debugging, and performance optimization.
-    
+
     Args:
         background_tasks: FastAPI background task manager for non-blocking operations
-        
+
     Returns:
         Dictionary containing comprehensive health status:
         - status: Overall system health ("healthy", "unhealthy", "degraded")
@@ -1264,52 +1264,52 @@ async def health_check(background_tasks: BackgroundTasks) -> Dict[str, Any]:
         - vector_db: Vector database connectivity and operational status
         - aura_file_system: File system accessibility and functionality status
         - error: Error description if health check fails (optional)
-        
+
     Conceptual Framework for Health Assessment:
-        
+
         1. System Component Architecture:
            - Vector Database: Core semantic storage and retrieval system
            - File System: Persistent data storage and backup infrastructure
            - Background Tasks: Asynchronous processing capability
-           
+
         2. Health Check Methodology:
            - Non-intrusive assessment to prevent performance impact
            - Component isolation to identify specific failure points
            - Graceful degradation recognition for partial functionality
-           
+
         3. Status Classification Framework:
            healthy: All components operational and accessible
            degraded: Some components operational with limited functionality
            unhealthy: Critical components unavailable or malfunctioning
-           
+
         4. Operational Integrity Verification:
            - Database connectivity without heavy operations
            - File system accessibility verification
            - Component initialization status assessment
-        
+
     Component-Specific Health Indicators:
-        
+
         Vector Database Status:
         - connected: Database client initialized and accessible
         - disconnected: Database unavailable or uninitialized
         - error: Database connectivity or operational issues
-        
+
         File System Status:
         - operational: File system accessible and functional
         - degraded: Limited accessibility or performance issues
         - error: File system unavailable or permission issues
-        
+
     Error Handling Strategy:
         - Graceful failure modes with informative error messages
         - Component-level error isolation
         - Non-blocking error responses for partial functionality
-        
+
     Use Cases:
         - Production monitoring and alerting systems
         - Load balancer health check integration
         - Debugging and troubleshooting system issues
         - Performance monitoring and optimization
-        
+
     Note:
         This endpoint serves as the primary system health indicator for
         monitoring infrastructure and automated deployment systems.
@@ -1346,23 +1346,23 @@ async def health_check(background_tasks: BackgroundTasks) -> Dict[str, Any]:
 async def process_conversation(request: ConversationRequest, background_tasks: BackgroundTasks) -> ConversationResponse:
     """
     Process conversation with enhanced MCP function calling and robust error handling.
-    
+
     Core conversation processing endpoint that orchestrates the complete interaction
     pipeline including context retrieval, AI response generation, emotional analysis,
     autonomic task processing, and persistent storage. Implements comprehensive
     error handling and recovery mechanisms for production stability.
-    
+
     Args:
         request: ConversationRequest containing user message, user ID, and optional session ID
         background_tasks: FastAPI background tasks for non-blocking operations
-        
+
     Returns:
         ConversationResponse containing:
         - Generated AI response text
         - Detected emotional state information
         - Cognitive focus analysis results
         - Session identifier for continuity
-        
+
     Processing Pipeline:
         1. Session Management: Create/retrieve chat session with tool integration
         2. Context Retrieval: Search relevant memories and build context
@@ -1373,23 +1373,23 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         7. Memory Creation: Build conversation memory objects
         8. Persistent Storage: Save conversation with immediate/background persistence
         9. Response Formation: Format and return structured response
-        
+
     Error Handling Features:
         - Session recovery for corrupted chat states
         - Retry mechanisms for transient failures
         - Fallback responses for critical errors
         - Emergency persistence with multiple retry attempts
         - Graceful degradation when components fail
-        
+
     Gemini 2.5 Stability Fixes:
         - Response cutoff detection and recovery
         - Function call failure handling
         - Session corruption recovery
         - Tool execution timeout management
-        
+
     Raises:
         HTTPException: If conversation processing fails after all recovery attempts
-        
+
     Note:
         This endpoint represents the core of Aura's conversational intelligence,
         integrating emotional analysis, cognitive modeling, memory management,
@@ -1668,45 +1668,45 @@ async def _get_or_create_chat_session(
 ) -> Tuple[Any, bool]:
     """
     Get existing chat session or create new one with enhanced error handling.
-    
+
     Manages persistent chat sessions with automatic tool integration and version
     control. Implements session recovery mechanisms and tool synchronization
     to ensure optimal conversation continuity and feature availability.
-    
+
     Args:
         session_key: Unique identifier for the chat session
         user_id: User identifier for logging and context
         system_instruction: Complete system prompt for AI personality/behavior
         session_recovery_enabled: Whether to enable automatic session recovery
-        
+
     Returns:
         Tuple containing:
         - chat_session: Google Gemini chat instance with tools and configuration
         - was_newly_created: Boolean indicating if session was created (True) or retrieved (False)
-        
+
     Session Management Features:
         - Tool version tracking and automatic updates
         - MCP tool integration with dynamic loading
         - Session state validation and corruption detection
         - Automatic session recreation for outdated tool versions
         - Error recovery with cleanup on failure
-        
+
     Tool Integration:
         - Dynamic MCP tool loading from bridge
         - Tool function conversion to Gemini format
         - Version-based session invalidation
         - Comprehensive tool availability logging
-        
+
     Configuration Applied:
         - Model: Configured AURA_MODEL (default: gemini-2.5-flash-preview-05-20)
         - Temperature: 0.7 for balanced creativity/consistency
         - Max Output Tokens: Configurable (default: 1,000,000)
         - Tools: All available MCP tools if bridge is active
         - System Instruction: Complete personality and capability definition
-        
+
     Raises:
         Exception: If session creation fails or tool integration encounters errors
-        
+
     Note:
         Session management is critical for maintaining conversation context,
         tool availability, and optimal AI performance across interactions.
@@ -1769,49 +1769,49 @@ async def _process_conversation_with_retry(
 ) -> str:
     """
     Process conversation with enhanced error handling for Gemini 2.5 stability issues.
-    
+
     Implements a comprehensive retry and recovery framework specifically designed
     to address known stability issues with Gemini 2.5 model interactions,
     particularly around function calling and response generation consistency.
-    
+
     Args:
         chat: Google Gemini chat session instance
         message: User's input message to process
         user_id: User identifier for logging and context
         session_key: Session identifier for recovery operations
         session_recovery_enabled: Whether session recovery mechanisms are active
-        
+
     Returns:
         Generated AI response text after processing and function execution
-        
+
     Stability Issues Addressed:
         - Response cutoffs during tool execution
         - Random tool call failures and timeouts
         - Empty or malformed responses from model
         - Function result processing errors
         - Session corruption and state inconsistency
-        
+
     Recovery Mechanisms:
         - Multi-attempt conversation processing with exponential backoff
         - Session recreation for corrupted states
         - Fallback response generation for critical failures
         - Function call error propagation and handling
         - Response validation and completeness checking
-        
+
     Function Call Processing:
         - Sequential function execution with error isolation
         - Result serialization with NumPy compatibility
         - Follow-up message handling for function results
         - Partial response recovery for incomplete executions
-        
+
     Error Classification:
         - Recoverable: Empty responses, tool timeouts, temporary failures
         - Non-recoverable: Authentication errors, quota exhaustion, model errors
         - Session-level: Corruption requiring session recreation
-        
+
     Raises:
         ValueError: If message processing fails after all recovery attempts
-        
+
     Note:
         This function represents a critical stability layer that enables
         reliable AI interactions despite underlying model inconsistencies.
@@ -1953,56 +1953,56 @@ async def _analyze_conversation_for_autonomic_tasks(
 ) -> List[Tuple[str, Dict[str, Any]]]:
     """
     Analyze conversation for potential autonomic tasks that could enhance future interactions.
-    
+
     Applies systematic task identification methodology to determine background
     processing opportunities that can improve user experience, optimize system
     performance, and enable proactive intelligence augmentation.
-    
+
     Args:
         user_message: User's input message for analysis
         aura_response: Generated AI response for context analysis
         user_id: User identifier for task personalization
         session_id: Session identifier for task tracking
-        
+
     Returns:
         List of tuples containing:
         - task_description: Human-readable description of the autonomic task
         - task_payload: Dictionary with task parameters and context data
-        
+
     Task Identification Criteria:
-        
+
         Memory Consolidation Tasks:
         - Conversation length > 10 words (user) or > 20 words (AI)
         - Triggers: Complex discussions requiring pattern analysis
         - Purpose: Optimize memory structure and enhance retrieval
-        
+
         Emotional Pattern Analysis Tasks:
         - Presence of emotional keywords (feel, mood, happy, sad, etc.)
         - Triggers: Emotional expression or state discussion
         - Purpose: Deep emotional pattern tracking and intervention preparation
-        
+
         Learning Optimization Tasks:
         - Educational keywords (learn, understand, explain, teach, etc.)
         - Triggers: Knowledge acquisition and conceptual exploration
         - Purpose: Enhance knowledge structure and learning pathway optimization
-        
+
         Proactive Memory Search Tasks:
         - Memory-related keywords (remember, recall)
         - Triggers: Explicit or implicit memory references
         - Purpose: Background context preparation for enhanced responses
-        
+
         Relationship Mapping Tasks:
         - Default task for substantial conversations (> 5 words)
         - Triggers: General conversation context building needs
         - Purpose: Contextual relationship analysis and pattern mapping
-        
+
     Task Categorization:
         - memory_consolidation: Pattern analysis and memory optimization
         - emotional_analysis: Deep emotional state tracking
         - learning_optimization: Knowledge structure enhancement
         - proactive_memory_search: Background context preparation
         - context_building: Relationship and pattern mapping
-        
+
     Note:
         Task identification follows a systematic analytical framework that
         balances computational efficiency with intelligence augmentation
@@ -2093,15 +2093,15 @@ async def _analyze_conversation_for_autonomic_tasks(
 async def search_memories(request: SearchRequest) -> Dict[str, Any]:
     """
     Search through conversation memories using Aura's comprehensive memory system.
-    
+
     Implements a hierarchical search strategy that leverages both active memory
     and compressed video archives to provide comprehensive memory retrieval
     across the entire conversational history. Applies systematic fallback
     mechanisms to ensure reliable search functionality.
-    
+
     Args:
         request: SearchRequest containing query parameters and user identification
-        
+
     Returns:
         Dictionary containing:
         - results: List of matching memories with content and metadata
@@ -2109,48 +2109,48 @@ async def search_memories(request: SearchRequest) -> Dict[str, Any]:
         - total_found: Number of matching memories discovered
         - search_type: Method used for search execution
         - includes_video_archives: Boolean indicating archive inclusion
-        
+
     Search Hierarchy and Methodological Framework:
-        
+
         1. Advanced Unified Search (Primary Method):
            - Utilizes search_all_memories tool for comprehensive coverage
            - Searches both active memory and compressed video archives
            - Provides maximum context retrieval capability
            - Falls back on failure to maintain search continuity
-           
+
         2. Basic Active Search (Secondary Method):
            - Employs search_memories tool for active memory only
            - Faster execution for recent conversation retrieval
            - Excludes video archives for performance optimization
            - Serves as reliable fallback for primary search failures
-           
+
         3. Direct Persistence Search (Tertiary Method):
            - Bypasses MCP tools for direct database access
            - Emergency fallback for system tool failures
            - Ensures search functionality under all conditions
            - Maintains basic search capability as last resort
-        
+
     Memory Architecture Integration:
         - Active Memory: Recent conversations with immediate availability
         - Video Archives: Compressed historical data with semantic indexing
         - Unified Search: Seamless integration across memory systems
         - Semantic Matching: Context-aware relevance scoring
-        
+
     Error Handling and Resilience:
         - Progressive fallback through search hierarchy
         - Graceful degradation on component failures
         - Comprehensive error logging for system monitoring
         - Consistent response format across all search methods
-        
+
     Response Format Standardization:
         - Unified result structure regardless of search method
         - Metadata preservation for context analysis
         - Similarity scoring for relevance assessment
         - Search method identification for performance analysis
-        
+
     Raises:
         HTTPException: If all search methods fail or request validation errors occur
-        
+
     Note:
         This endpoint represents a critical component of Aura's memory
         infrastructure, enabling comprehensive conversation history retrieval
@@ -2174,7 +2174,7 @@ async def search_memories(request: SearchRequest) -> Dict[str, Any]:
                 logger.info(f"🔧 Advanced search raw result: {advanced_result}")
 
                 if advanced_result and advanced_result.get("status") == "success":
-                    # Check multiple possible result keys in the response  
+                    # Check multiple possible result keys in the response
                     memories = (advanced_result.get("memories", []) or
                               advanced_result.get("results", []) or
                               advanced_result.get("data", []) or
@@ -2273,6 +2273,30 @@ async def search_memories(request: SearchRequest) -> Dict[str, Any]:
         logger.error(f"❌ Failed to search memories: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def _cleanup_session_related_data(user_id: str, session_id: str):
+    """
+    Background task to clean up any additional session-related data.
+
+    This runs asynchronously to avoid blocking the main delete operation.
+    """
+    try:
+        logger.info(f"🧹 Background cleanup for session {session_id}")
+
+        # Clean up any cached session data
+        session_key = f"{user_id}_{session_id}"
+        if session_key in active_chat_sessions:
+            del active_chat_sessions[session_key]
+            logger.debug(f"🧹 Cleared cached session {session_key}")
+
+        if session_key in session_tool_versions:
+            del session_tool_versions[session_key]
+            logger.debug(f"🧹 Cleared session tool version {session_key}")
+
+        # Additional cleanup can be added here if needed
+
+    except Exception as e:
+        logger.error(f"❌ Background cleanup failed for session {session_id}: {e}")
+
 @app.get("/emotional-analysis/{user_id}")
 async def get_emotional_analysis(
     user_id: str,
@@ -2281,11 +2305,11 @@ async def get_emotional_analysis(
 ) -> Dict[str, Any]:
     """
     Generate comprehensive emotional pattern analysis with configurable temporal granularity.
-    
+
     Implements systematic emotional intelligence assessment through longitudinal
     data analysis, enabling detailed insights into emotional stability patterns,
     dominant emotional states, and temporal emotional evolution.
-    
+
     Args:
         user_id: Unique identifier for the user whose patterns to analyze
         period: Temporal analysis scope with predefined options:
@@ -2296,7 +2320,7 @@ async def get_emotional_analysis(
                - "year": Last 365 days of long-term patterns
                - "multi-year": Last 5 years of comprehensive analysis
         custom_days: Optional custom period override (1-1825 days)
-        
+
     Returns:
         Dictionary containing comprehensive emotional analysis:
         - emotional_stability: Stability metrics and consistency indicators
@@ -2307,29 +2331,29 @@ async def get_emotional_analysis(
         - recommendations: AI-generated insights and suggestions
         - period_type: Analysis period specification for reference
         - custom_days: Custom period value if applied
-        
+
     Conceptual Framework for Emotional Analysis:
-        
+
         1. Temporal Emotional Modeling:
            - Longitudinal emotional state tracking
            - Pattern recognition across multiple time scales
            - Stability assessment through variance analysis
-           
+
         2. Dominant Pattern Identification:
            - Frequency analysis of emotional states
            - Intensity-weighted emotional prominence
            - Contextual emotional significance assessment
-           
+
         3. Transition Analysis Framework:
            - Emotional state change pattern recognition
            - Trigger identification and correlation analysis
            - Stability vs. volatility assessment
-           
+
         4. Predictive Intelligence Integration:
            - Trend extrapolation for emotional forecasting
            - Risk assessment for concerning patterns
            - Intervention recommendation generation
-        
+
     Temporal Period Mapping:
         - hour: High-resolution immediate emotional analysis
         - day: Circadian emotional pattern assessment
@@ -2337,19 +2361,19 @@ async def get_emotional_analysis(
         - month: Medium-term emotional trend analysis
         - year: Annual emotional pattern recognition
         - multi-year: Long-term emotional evolution assessment
-        
+
     Analysis Methodologies:
         - Statistical variance calculation for stability metrics
         - Frequency distribution analysis for dominance patterns
         - Markov chain analysis for transition probabilities
         - Time series analysis for temporal trend identification
-        
+
     Raises:
         HTTPException:
         - 500: If vector database is not initialized
         - 400: If period specification is invalid
         - 500: If emotional analysis processing encounters errors
-        
+
     Note:
         This endpoint provides foundational data for emotional intelligence
         features, therapeutic insights, and personalized interaction optimization.
@@ -2399,66 +2423,66 @@ async def export_user_data(user_id: str, format: str = "json"):
 async def get_chat_history(user_id: str, limit: int = 50) -> Dict[str, Any]:
     """
     Retrieve comprehensive chat history for a user with thread-safe database access.
-    
+
     Implements a systematic approach to conversation history retrieval that
     ensures data integrity, optimal performance, and consistent formatting
     across different client interfaces. Applies thread-safe database operations
     to prevent data corruption in concurrent access scenarios.
-    
+
     Args:
         user_id: Unique identifier for the user whose history to retrieve
         limit: Maximum number of sessions to return (default: 50, range: 1-1000)
-        
+
     Returns:
         Dictionary containing:
         - sessions: List of session summaries with metadata
         - total_sessions: Total number of available sessions
         - user_id: User identifier for verification
-        
+
     Session Summary Structure:
         Each session object contains:
         - session_id: Unique session identifier
         - last_message: Preview of the most recent message (truncated to 100 chars)
         - message_count: Total number of messages in the session
         - timestamp: ISO timestamp of the last activity
-        
+
     Methodological Framework:
-        
+
         1. Conceptual Foundation:
            - Thread-safe database access prevents concurrent modification issues
            - Persistent conversation storage enables longitudinal analysis
            - Structured data transformation ensures client compatibility
-           
+
         2. Data Integrity Mechanisms:
            - Safe database operation wrappers prevent corruption
            - Consistent error handling maintains system stability
            - Validation ensures data completeness and accuracy
-           
+
         3. Performance Optimization:
            - Configurable result limiting prevents memory exhaustion
            - Efficient query patterns minimize database load
            - Structured response reduces network overhead
-           
+
         4. Interface Standardization:
            - Frontend-compatible response format
            - Consistent metadata structure across endpoints
            - Error response standardization for client handling
-        
+
     Thread Safety Implementation:
         - Utilizes conversation persistence service's safe methods
         - Prevents race conditions in concurrent user access
         - Maintains data consistency across multiple requests
-        
+
     Error Handling Strategy:
         - Graceful failure modes with informative error messages
         - Logging for system monitoring and debugging
         - Fallback responses for service unavailability
-        
+
     Raises:
-        HTTPException: 
+        HTTPException:
         - 500: If conversation persistence service is not initialized
         - 500: If database access fails or data corruption is detected
-        
+
     Note:
         This endpoint serves as a critical component of the user experience,
         enabling conversation continuity and historical context retrieval
@@ -2501,15 +2525,15 @@ async def get_chat_history(user_id: str, limit: int = 50) -> Dict[str, Any]:
 async def get_session_messages(user_id: str, session_id: str) -> List[Dict[str, Any]]:
     """
     Retrieve all messages for a specific chat session with comprehensive error handling.
-    
+
     Implements a systematic approach to session-specific message retrieval that
     ensures data integrity, proper error handling, and optimal performance for
     detailed conversation analysis and continuity restoration.
-    
+
     Args:
         user_id: Unique identifier for the user who owns the session
         session_id: Unique identifier for the specific conversation session
-        
+
     Returns:
         List of message dictionaries, each containing:
         - message_id: Unique message identifier
@@ -2518,45 +2542,45 @@ async def get_session_messages(user_id: str, session_id: str) -> List[Dict[str, 
         - timestamp: ISO timestamp of message creation
         - emotional_state: Associated emotional analysis data (if available)
         - metadata: Additional context and processing information
-        
+
     Methodological Framework:
-        
+
         1. Conceptual Foundation:
            - Session-based conversation organization enables contextual retrieval
            - Message-level granularity supports detailed analysis and replay
            - Thread-safe operations prevent data corruption during access
-           
+
         2. Data Integrity Assurance:
            - Safe database operation methods prevent concurrent access issues
            - Comprehensive error handling maintains system stability
            - Validation ensures session ownership and data completeness
-           
+
         3. Performance Optimization:
            - Direct session targeting minimizes query overhead
            - Structured response format reduces processing requirements
            - Efficient database indexing enables rapid message retrieval
-           
+
         4. Error Handling Strategy:
            - Graceful handling of non-existent sessions
            - Informative logging for debugging and monitoring
            - Empty list return for missing data rather than error responses
-        
+
     Access Control Considerations:
         - User-session relationship validation
         - Privacy protection through user ID verification
         - Secure data access patterns
-        
+
     Use Cases:
         - Conversation continuity restoration across sessions
         - Detailed conversation analysis and pattern recognition
         - Historical context retrieval for enhanced AI responses
         - User experience optimization through message replay
-        
+
     Raises:
         HTTPException:
         - 500: If conversation persistence service is not initialized
         - 500: If database access fails or data corruption is detected
-        
+
     Note:
         Returns empty list for non-existent sessions rather than error responses
         to support graceful frontend handling and user experience optimization.
@@ -2954,64 +2978,64 @@ async def trigger_emergency_backup():
 async def get_autonomic_status() -> Dict[str, Any]:
     """
     Retrieve comprehensive autonomic nervous system status and operational metrics.
-    
+
     Applies systematic analysis to autonomic system health assessment,
     providing detailed insights into task processing capabilities,
     operational performance, and system configuration status.
-    
+
     Returns:
         Dictionary containing comprehensive status information:
         - status: Operational state ("operational", "stopped", "disabled", "error")
         - system_status: Detailed operational metrics and configuration
         - timestamp: ISO timestamp of status generation
-        
+
     Methodological Framework for Status Assessment:
-        
+
         1. Conceptual Foundation Analysis:
            - Autonomic system represents background intelligence processing
            - Task offloading enables optimized resource allocation
            - Operational status reflects system health and capability
-           
+
         2. Configuration State Evaluation:
            - AUTONOMIC_ENABLED environment variable assessment
            - System initialization status verification
            - Component availability and integration analysis
-           
+
         3. Operational Metrics Collection:
            - Active task processing statistics
            - Completed task performance analysis
            - Resource utilization and efficiency metrics
            - Rate limiting status and availability assessment
-           
+
         4. System Performance Analysis:
            - Task processing throughput evaluation
            - Success/failure ratio assessment
            - Average execution time analysis
            - Queue utilization and capacity metrics
-        
+
     Status Categories and Interpretations:
-        
+
         operational: System active and processing tasks
         - Running background task worker
         - Queue accepting new tasks
         - Rate limiting within acceptable parameters
-        
+
         stopped: System initialized but not actively processing
         - Components available but worker inactive
         - Manual intervention required for activation
-        
+
         disabled: System disabled in configuration
         - AUTONOMIC_ENABLED=false in environment
         - No task processing capability available
-        
+
         not_initialized: System failed initialization
         - Component dependencies unavailable
         - Critical errors during startup
-        
+
         error: Runtime errors detected
         - System instability or component failures
         - Detailed error information in response
-        
+
     Detailed System Status Components:
         - running: Boolean task worker operational status
         - queued_tasks: Number of tasks awaiting processing
@@ -3019,10 +3043,10 @@ async def get_autonomic_status() -> Dict[str, Any]:
         - completed_tasks: Total number of processed tasks
         - rate_limiting: Request rate status and availability
         - processor_stats: Execution performance metrics
-        
+
     Raises:
         Exception: If status collection encounters system errors
-        
+
     Note:
         This endpoint provides critical insights for system monitoring,
         performance optimization, and troubleshooting autonomic processing

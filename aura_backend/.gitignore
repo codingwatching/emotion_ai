@@ -47,7 +47,10 @@ memvid_data/
 memvid_videos/
 chromadb_backups/
 auto_backups/
-
+memvid_data/
+memvid_videos/
+chromadb_backups/
+auto_backups/
 # MCP
 mcp_server.log
 mcp_client.log

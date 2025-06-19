@@ -1286,14 +1286,25 @@ class AuraUIManager {
              role="button"
              tabindex="0">
           <div class="session-title">${this.escapeHtml(preview)}</div>
-          <div class="session-meta">${timestamp} • ${session.message_count || 0} messages</div>
+          <div class="session-meta">
+            <span>${timestamp} • ${session.message_count || 0} messages</span>
+            <button class="session-delete-btn" 
+                    data-session-id="${session.session_id}"
+                    onclick="event.stopPropagation();"
+                    aria-label="Delete chat session">×</button>
+          </div>
         </div>
       `;
     }).join('');
 
-    // Add click handlers
+    // Add click handlers for session selection
     this.chatHistoryList.querySelectorAll('.chat-session-item').forEach(item => {
-      item.addEventListener('click', () => {
+      item.addEventListener('click', (e) => {
+        // Ignore clicks on delete button
+        if ((e.target as HTMLElement).classList.contains('session-delete-btn')) {
+          return;
+        }
+        
         const sessionId = item.getAttribute('data-session-id');
         if (sessionId && sessionId !== this.currentSessionId) {
           this.loadChatSession(sessionId);
@@ -1306,6 +1317,17 @@ class AuraUIManager {
         if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
           e.preventDefault();
           (item as HTMLElement).click();
+        }
+      });
+    });
+
+    // Add delete button handlers
+    this.chatHistoryList.querySelectorAll('.session-delete-btn').forEach(deleteBtn => {
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sessionId = deleteBtn.getAttribute('data-session-id');
+        if (sessionId) {
+          this.showDeleteConfirmation(sessionId);
         }
       });
     });
@@ -1536,6 +1558,130 @@ class AuraUIManager {
     } catch (error) {
       console.error('Failed to fetch video archive status:', error);
       statusElement.innerHTML = '<div class="archive-error">❌ Error loading archive status</div>';
+    }
+  }
+
+  private showDeleteConfirmation(sessionId: string): void {
+    // Find session data for display
+    const session = this.chatSessions.find(s => s.session_id === sessionId);
+    const sessionPreview = session ? 
+      (session.last_message?.substring(0, 100) + '...' || 'New conversation') :
+      'Unknown session';
+
+    // Create modal
+    const modal = document.createElement('div');
+    modal.className = 'delete-confirmation-modal';
+    modal.innerHTML = `
+      <div class="delete-confirmation-content">
+        <h3>🗑️ Delete Chat Session?</h3>
+        <p>Are you sure you want to permanently delete this conversation?</p>
+        <p style="font-style: italic; color: var(--text-muted); font-size: 0.9rem;">
+          "${this.escapeHtml(sessionPreview)}"
+        </p>
+        <div class="delete-confirmation-actions">
+          <button class="delete-cancel-btn">Cancel</button>
+          <button class="delete-confirm-btn">Delete</button>
+        </div>
+      </div>
+    `;
+
+    // Add to DOM
+    document.body.appendChild(modal);
+
+    // Event handlers
+    const cancelBtn = modal.querySelector('.delete-cancel-btn') as HTMLButtonElement;
+    const confirmBtn = modal.querySelector('.delete-confirm-btn') as HTMLButtonElement;
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    cancelBtn.addEventListener('click', closeModal);
+    
+    confirmBtn.addEventListener('click', async () => {
+      try {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Deleting...';
+        
+        await this.deleteChatSession(sessionId);
+        closeModal();
+        
+      } catch (error) {
+        console.error('Failed to delete session:', error);
+        confirmBtn.textContent = 'Delete Failed';
+        confirmBtn.style.background = 'var(--accent-warning)';
+        
+        setTimeout(() => {
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Delete';
+          confirmBtn.style.background = '';
+        }, 2000);
+      }
+    });
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    // Close on Escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+  }
+
+  private async deleteChatSession(sessionId: string): Promise<void> {
+    try {
+      console.log(`🗑️ Deleting chat session: ${sessionId}`);
+
+      // Note: Check if backend has delete endpoint, otherwise handle locally
+      if (this.backendConnected && this.userName) {
+        try {
+          // Attempt to call backend delete endpoint
+          const response = await fetch(`http://localhost:8000/chat/delete/${this.userName}/${sessionId}`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`Delete failed: ${response.status}`);
+          }
+
+          console.log(`✅ Backend deletion successful for session: ${sessionId}`);
+
+        } catch (backendError) {
+          console.warn('Backend deletion failed, handling locally:', backendError);
+          // Continue with local deletion
+        }
+      }
+
+      // Remove from local cache
+      this.chatSessions = this.chatSessions.filter(session => session.session_id !== sessionId);
+
+      // Handle current session deletion
+      if (this.currentSessionId === sessionId) {
+        console.log('Current session deleted, starting new session');
+        this.currentSessionId = null;
+        this.clearChat();
+        await this.startChat();
+      }
+
+      // Refresh chat history display
+      this.renderChatHistory();
+
+      console.log(`✅ Chat session deleted: ${sessionId}`);
+
+    } catch (error) {
+      console.error(`❌ Failed to delete chat session ${sessionId}:`, error);
+      throw error; // Re-throw to be handled by the modal
     }
   }
 

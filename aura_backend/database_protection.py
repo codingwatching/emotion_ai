@@ -104,14 +104,34 @@ class DatabaseProtectionService:
     def _cleanup_old_backups(self):
         """Clean up old backup files"""
         try:
-            backups = sorted(self.backup_dir.glob("*_backup_*"), key=os.path.getctime)
-            if len(backups) > 10:
-                for old_backup in backups[:-10]:
-                    if old_backup.is_dir():
-                        import shutil
-                        shutil.rmtree(old_backup)
-                    else:
-                        old_backup.unlink()
+            # Get all backup directories (not individual files within them)
+            backup_candidates = []
+            for item in self.backup_dir.iterdir():
+                if item.is_dir() and "_backup_" in item.name:
+                    try:
+                        # Only add if we can successfully get creation time
+                        ctime = os.path.getctime(item)
+                        backup_candidates.append((item, ctime))
+                    except (OSError, PermissionError) as e:
+                        logger.warning(f"Skipping backup {item} - cannot access: {e}")
+                        continue
+            
+            # Sort by creation time
+            backups = sorted(backup_candidates, key=lambda x: x[1])
+            backup_paths = [backup[0] for backup in backups]
+            
+            # Keep only the 10 most recent backups
+            if len(backup_paths) > 10:
+                for old_backup in backup_paths[:-10]:
+                    try:
+                        if old_backup.exists() and old_backup.is_dir():
+                            import shutil
+                            logger.info(f"🛡️ Removing old backup: {old_backup.name}")
+                            shutil.rmtree(old_backup, ignore_errors=True)
+                    except (OSError, PermissionError) as e:
+                        logger.warning(f"Could not remove backup {old_backup}: {e}")
+                        continue
+                        
         except Exception as e:
             logger.error(f"Failed to cleanup old backups: {e}")
 
