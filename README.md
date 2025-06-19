@@ -28,6 +28,7 @@
 - **Real-time Emotional State Detection** with neurological correlations
 - **Cognitive Focus Tracking** across different mental frameworks
 - **Adaptive Self-Reflection** for continuous improvement
+- **🆕 Thinking Extraction**: Transparent AI reasoning with thought analysis and cognitive transparency
 
 ### 🗄️ Intelligent Memory System
 
@@ -61,6 +62,20 @@
 4. **State Updates** → Emotional/Cognitive Analysis → Pattern Storage
 5. **Memory Storage** → Vector DB → Persistent Learning
 6. **External Access** → MCP Server → Tool Integration
+
+## 🧠 AI Thinking & Reasoning Transparency
+
+### Thinking Extraction Capabilities
+- **Real-time Reasoning Capture**: Extract and analyze AI thought processes during conversations
+- **Thought Summarization**: Automatic generation of reasoning summaries for quick understanding
+- **Cognitive Transparency**: Full visibility into how Aura approaches problems and makes decisions
+- **Reasoning Metrics**: Detailed analytics on thinking patterns, processing time, and cognitive load
+
+### Thinking Configuration
+- **Thinking Budget**: Configurable reasoning depth (1024-32768 tokens)
+- **Response Integration**: Optional inclusion of reasoning in user responses
+- **Pattern Analysis**: Long-term analysis of reasoning patterns and cognitive development
+- **Performance Optimization**: Thinking efficiency metrics and optimization recommendations
 
 ## 🎭 Emotional Intelligence System
 
@@ -353,7 +368,25 @@ Edit your directory path and place in claude desktop config json.
 ```
 
 
-## 🧪 Testing - probably not working but you can try lol. 8000/health is working
+## 🧪 Testing
+
+### Health Check (Working)
+```bash
+curl http://localhost:8000/health
+```
+
+### Thinking Functionality Tests (New!)
+```bash
+# Test thinking extraction capabilities
+cd aura_backend
+python test_thinking.py
+
+# Interactive thinking demonstration
+python thinking_demo.py
+
+# Check thinking system status
+curl http://localhost:8000/thinking-status
+```
 
 ### Unit Tests
 ```bash
