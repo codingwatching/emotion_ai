@@ -109,6 +109,8 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+thinking_budget = int(os.getenv('THINKING_BUDGET', '8192'))
+
 # Load and configure Gemini API
 api_key = os.getenv('GOOGLE_API_KEY')
 if not api_key:
@@ -1738,7 +1740,10 @@ async def _get_or_create_chat_session(
                     temperature=0.7,
                     max_output_tokens=int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '1000000')),
                     tools=tools if tools else None,
-                    system_instruction=system_instruction
+                    system_instruction=system_instruction,
+                    thinking_config=types.ThinkingConfig(
+                        thinking_budget=thinking_budget
+                    )
                 )
             )
             active_chat_sessions[session_key] = chat

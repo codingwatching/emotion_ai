@@ -561,7 +561,7 @@ class AutonomicProcessor:
         client = genai.Client(api_key=api_key)
 
         # Rate limiting: Wait for availability with timeout
-        rate_limit_acquired = await self.rate_limiter.wait_for_availability(max_wait_seconds=30.0)
+        rate_limit_acquired = await self.rate_limiter.wait_for_availability(max_wait_seconds=60.0)
 
         if not rate_limit_acquired:
             self.execution_stats["tasks_rate_limited"] += 1
@@ -622,12 +622,12 @@ class AutonomicNervousSystem:
     def __init__(
         self,
         autonomic_model: str = "gemini-2.0-flash-lite",
-        max_concurrent_tasks: int = 12,
+        max_concurrent_tasks: int = 29,
         task_threshold: str = "medium",
         max_output_tokens: int = 100000,
-        timeout_seconds: int = 45,
-        rpm_limit: int = 25,
-        rpd_limit: int = 1200,
+        timeout_seconds: int = 60,
+        rpm_limit: int = 30,
+        rpd_limit: int = 1400,
         queue_max_size: int = 100
     ):
         self.classifier = TaskClassifier(threshold=task_threshold)

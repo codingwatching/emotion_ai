@@ -839,7 +839,7 @@ class MCPGeminiBridge:
                     # Check if tool explicitly declares timeout parameter support
                     if ('timeout' in tool_properties and
                         'timeout' not in formatted_arguments and
-                        TOOL_CALL_TIMEOUT > 30):
+                        TOOL_CALL_TIMEOUT > 60):
                         # Only add timeout for tools that explicitly declare timeout parameter support
                         formatted_arguments['timeout'] = min(TOOL_CALL_TIMEOUT - 5, 300)  # Max 5 minutes
                         logger.debug(f"🕐 Added timeout parameter for {mcp_tool_name} (tool supports it)")
