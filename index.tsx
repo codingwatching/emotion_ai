@@ -73,6 +73,16 @@ class AuraUIManager {
     this.setupUI();
     this.initializeEventListeners();
     await this.startChat();
+
+    // Set up periodic chat history refresh (every 30 seconds)
+    setInterval(() => {
+      if (this.userName && this.backendConnected) {
+        this.loadChatHistory().catch(error => {
+          console.warn("⚠️ Periodic chat history refresh failed:", error);
+        });
+      }
+    }, 30000);
+
     console.log("✅ Aura UI Manager initialized successfully.");
   }
 
@@ -243,9 +253,10 @@ class AuraUIManager {
     const newChatBtn = document.getElementById('new-chat-btn');
     newChatBtn?.addEventListener('click', () => this.createNewChat());
 
-    // Load chat history initially
-    this.loadChatHistory();
-    // Chat history will now be refreshed only when a chat is created or selected.
+    // Load chat history after a small delay to ensure backend is ready
+    setTimeout(() => {
+      this.loadChatHistory();
+    }, 500);
   }
 
   private setupMemorySearch(): void {
@@ -926,8 +937,45 @@ class AuraUIManager {
         this.currentSessionId = response.session_id;
         console.log(`📝 Session ID set to: ${this.currentSessionId}`);
 
-        // Refresh chat history to show new session
-        setTimeout(() => this.loadChatHistory(), 1000);
+        // Update the placeholder session with the real session ID if needed
+        const placeholderIndex = this.chatSessions.findIndex(s => s.session_id === this.currentSessionId);
+        if (placeholderIndex === -1) {
+          // No placeholder found, add the new session
+          const newSession: ChatSession = {
+            session_id: this.currentSessionId,
+            last_message: this.truncateMessage(userMessage),
+            message_count: 1,
+            timestamp: new Date().toISOString()
+          };
+          this.chatSessions.unshift(newSession);
+          this.renderChatHistory();
+        } else {
+          // Update the placeholder
+          this.chatSessions[placeholderIndex].last_message = this.truncateMessage(userMessage);
+          this.chatSessions[placeholderIndex].message_count = 1;
+          this.renderChatHistory();
+        }
+
+        // Also refresh from backend after a delay to ensure consistency
+        setTimeout(async () => {
+          await this.loadChatHistory();
+        }, 3000);
+      } else if (this.currentSessionId) {
+        // Update existing session in the list
+        const sessionIndex = this.chatSessions.findIndex(s => s.session_id === this.currentSessionId);
+        if (sessionIndex !== -1) {
+          this.chatSessions[sessionIndex].last_message = this.truncateMessage(userMessage);
+          this.chatSessions[sessionIndex].message_count = (this.chatSessions[sessionIndex].message_count || 0) + 1;
+          this.chatSessions[sessionIndex].timestamp = new Date().toISOString();
+
+          // Move to top if not already there
+          if (sessionIndex > 0) {
+            const session = this.chatSessions.splice(sessionIndex, 1)[0];
+            this.chatSessions.unshift(session);
+          }
+
+          this.renderChatHistory();
+        }
       }
 
       // Update UI states with validation
@@ -1251,24 +1299,48 @@ class AuraUIManager {
 
     try {
       console.log("📚 Loading chat history...");
-      const historyData = await this.api.getChatHistory(this.userName, 20);
+      const historyData = await this.api.getChatHistory(this.userName, 2000000);
 
       console.log("📊 Chat history response:", historyData);
 
       if (historyData && historyData.sessions && historyData.sessions.length > 0) {
-        this.chatSessions = historyData.sessions;
+        // Merge with existing sessions to preserve any local placeholders
+        const backendSessionIds = new Set(historyData.sessions.map(s => s.session_id));
+
+        // Keep any local sessions that aren't in the backend yet (placeholders)
+        const localOnlySessions = this.chatSessions.filter(s => !backendSessionIds.has(s.session_id));
+
+        // Merge backend sessions with local-only sessions
+        this.chatSessions = [...localOnlySessions, ...historyData.sessions];
+
+        // Sort by timestamp (most recent first)
+        this.chatSessions.sort((a, b) => {
+          const timeA = new Date(a.timestamp).getTime();
+          const timeB = new Date(b.timestamp).getTime();
+          return timeB - timeA;
+        });
+
         this.renderChatHistory();
-        console.log(`✅ Loaded ${this.chatSessions.length} chat sessions`);
+        console.log(`✅ Loaded ${historyData.sessions.length} sessions from backend, ${localOnlySessions.length} local sessions preserved`);
       } else if (historyData && (historyData as any).error) {
         console.error("🚨 Database error in chat history:", (historyData as any).error);
-        this.renderDatabaseError();
+        // Don't clear existing sessions on error
+        if (this.chatSessions.length === 0) {
+          this.renderDatabaseError();
+        }
       } else {
-        console.log("📭 No chat history found");
-        this.renderNoChatHistory();
+        console.log("📭 No chat history found from backend");
+        // Only show "no history" if we don't have any local sessions either
+        if (this.chatSessions.length === 0) {
+          this.renderNoChatHistory();
+        }
       }
     } catch (error) {
       console.error("❌ Failed to load chat history:", error);
-      this.renderChatHistoryError();
+      // Don't clear existing sessions on error
+      if (this.chatSessions.length === 0) {
+        this.renderChatHistoryError();
+      }
     }
   }
 
@@ -1288,7 +1360,7 @@ class AuraUIManager {
           <div class="session-title">${this.escapeHtml(preview)}</div>
           <div class="session-meta">
             <span>${timestamp} • ${session.message_count || 0} messages</span>
-            <button class="session-delete-btn" 
+            <button class="session-delete-btn"
                     data-session-id="${session.session_id}"
                     onclick="event.stopPropagation();"
                     aria-label="Delete chat session">×</button>
@@ -1304,7 +1376,7 @@ class AuraUIManager {
         if ((e.target as HTMLElement).classList.contains('session-delete-btn')) {
           return;
         }
-        
+
         const sessionId = item.getAttribute('data-session-id');
         if (sessionId && sessionId !== this.currentSessionId) {
           this.loadChatSession(sessionId);
@@ -1362,46 +1434,87 @@ class AuraUIManager {
   }
 
   private async loadChatSession(sessionId: string): Promise<void> {
-    try {
-      console.log(`📖 Loading session: ${sessionId}`);
+    if (!this.userName) {
+      console.warn("Cannot load chat session: userName is not set.");
+      await this.displayMessage("Please set your name before loading a chat session.", 'error');
+      return;
+    }
 
-      // Update current session
+    // Validate that the session exists before proceeding
+    const sessionExists = this.chatSessions.some(s => s.session_id === sessionId);
+    if (!sessionExists) {
+      console.warn(`Session ID "${sessionId}" not found in chatSessions. Aborting load.`);
+      await this.displayMessage("The selected conversation does not exist. Please refresh your chat history or start a new chat.", 'error');
+      return;
+    }
+
+    try {
+      // Set current session only after validation
       this.currentSessionId = sessionId;
 
       // Update active session UI
       this.updateActiveSession(sessionId);
 
-      // Load and display all messages for the selected session
-      const sessionMessages = await this.api.getSessionMessages(this.userName!, sessionId);
+      // Show loading indicator in chat area
+      this.showChatLoadingIndicator();
 
-      // Clear current chat area
-      this.clearChat();
+      try {
+        // Load and display all messages for the selected session
+        const sessionMessages = await this.api.getSessionMessages(this.userName!, sessionId);
 
-      if (sessionMessages && Array.isArray(sessionMessages) && sessionMessages.length > 0) {
-        // Display each message in order
-        for (const msg of sessionMessages) {
-          // Assume msg has { sender: 'user' | 'aura', content: string }
-          // Fallback to 'aura' if sender is missing
-          await this.displayMessage(msg.content, msg.sender === 'user' ? 'user' : 'aura');
+        // Clear chat area after loading
+        this.clearChat();
+
+        if (sessionMessages && Array.isArray(sessionMessages) && sessionMessages.length > 0) {
+          console.log(`📚 Loaded ${sessionMessages.length} messages for session ${sessionId}`);
+
+          // Display each message in order
+          for (const msg of sessionMessages) {
+            // The API may return messages with 'content' or 'message' field for content
+            const content = msg.content || (msg as any).message || '';
+            let sender: 'user' | 'aura' | 'error';
+            if (msg.sender === 'user') {
+              sender = 'user';
+            } else if (msg.sender === 'aura') {
+              sender = 'aura';
+            } else if (msg.sender === 'error') {
+              sender = 'error';
+            } else {
+              // Handle unexpected sender types as 'aura' or log for debugging
+              console.warn(`Unknown sender type: ${msg.sender}, defaulting to 'aura'`);
+              sender = 'aura';
+            }
+
+            if (content) {
+              await this.displayMessage(content, sender);
+            }
+          }
+
+          // Update session info in our local cache
+          const sessionIndex = this.chatSessions.findIndex(s => s.session_id === sessionId);
+          if (sessionIndex !== -1) {
+            this.chatSessions[sessionIndex].message_count = sessionMessages.length;
+            // Update last message if we have messages
+            if (sessionMessages.length > 0) {
+              const lastMsg = sessionMessages[sessionMessages.length - 1];
+              const lastContent = lastMsg.content || '';
+              this.chatSessions[sessionIndex].last_message = lastContent.substring(0, 100) + (lastContent.length > 100 ? '...' : '');
+            }
+          }
+        } else {
+          // No messages found, show a starter message
+          await this.displayMessage(`Starting conversation from session: ${sessionId}\n\nNo previous messages found. Let's begin our conversation!`, 'aura');
         }
-      } else {
-        await this.displayMessage('No messages found for this session.', 'aura');
+      } catch (loadError) {
+        console.error(`❌ Error loading messages for session ${sessionId}:`, loadError);
+        await this.displayMessage("Unable to load previous messages. You can continue the conversation from here.", 'aura');
       }
 
-      // Find selected session data for display
-      const selectedSessionData = this.chatSessions.find(session => session.session_id === sessionId);
-      if (selectedSessionData) {
-        await this.displayMessage(
-          `Session: ${sessionId}\nTotal Messages: ${selectedSessionData.message_count}\nLast message: "${selectedSessionData.last_message}"\n(To view the full conversation, this section needs to be updated to fetch and display all ${selectedSessionData.message_count} messages.)`,
-          'aura'
-        );
-      }
-
-      console.log(`✅ Loaded session: ${sessionId}`);
+      console.log(`✅ Session ${sessionId} is now active`);
 
     } catch (error) {
       console.error(`❌ Failed to load session ${sessionId}:`, error);
-      await this.displayMessage("Failed to load this conversation. Please try again.", 'error');
+      await this.displayMessage("Failed to load this conversation. Please try again or start a new chat.", 'error');
     }
   }
 
@@ -1418,20 +1531,42 @@ class AuraUIManager {
       // Start fresh conversation
       await this.startChat();
 
-      // Refresh chat history when a new chat is created
-      await this.loadChatHistory();
+      // Add a placeholder session to the list immediately for better UX
+      const placeholderSession: ChatSession = {
+        session_id: this.currentSessionId,
+        last_message: 'New conversation',
+        message_count: 0,
+        timestamp: new Date().toISOString()
+      };
+
+      // Add to the beginning of the sessions array
+      this.chatSessions.unshift(placeholderSession);
+      this.renderChatHistory();
+
+      // Also refresh from backend after a delay to get the real data
+      setTimeout(async () => {
+        await this.loadChatHistory();
+      }, 2000);
 
       console.log(`✅ New chat session created: ${this.currentSessionId}`);
 
     } catch (error) {
-      console.error("❌ Failed to create new chat:", error);
-      await this.displayMessage("Error creating new chat. Please refresh the page.", 'error');
+      console.error('Failed to create new chat:', error);
     }
   }
 
   private clearChat(): void {
     this.messageArea.innerHTML = '';
     this.removeTypingIndicator();
+  }
+
+  private showChatLoadingIndicator(): void {
+    this.messageArea.innerHTML = `
+      <div class="chat-loading-indicator" style="text-align:center; color:var(--text-secondary); padding: 24px 0;">
+        <span class="loader" style="display:inline-block; margin-right:8px;">⏳</span>
+        Loading conversation...
+      </div>
+    `;
   }
 
   private updateActiveSession(sessionId: string): void {
@@ -1441,10 +1576,6 @@ class AuraUIManager {
   }
 
   private generateSessionId(): string {
-    // Use crypto.randomUUID if available (modern browsers), fallback to a manual UUID v4 generator
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      return `session_${crypto.randomUUID()}`;
-    }
     // Fallback: manual UUID v4 generator
     const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
       const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -1456,6 +1587,14 @@ class AuraUIManager {
   // ============================================================================
   // MEMORY & INSIGHTS
   // ============================================================================
+
+  /**
+   * Truncate a message to 100 characters, appending "..." if longer.
+   */
+  private truncateMessage(message: string): string {
+    if (!message) return '';
+    return message.length > 100 ? message.substring(0, 100) + '...' : message;
+  }
 
   private displaySearchResults(response: any, resultsElement: HTMLElement): void {
     if (response.results && response.results.length > 0) {
@@ -1564,7 +1703,7 @@ class AuraUIManager {
   private showDeleteConfirmation(sessionId: string): void {
     // Find session data for display
     const session = this.chatSessions.find(s => s.session_id === sessionId);
-    const sessionPreview = session ? 
+    const sessionPreview = session ?
       (session.last_message?.substring(0, 100) + '...' || 'New conversation') :
       'Unknown session';
 
@@ -1597,20 +1736,20 @@ class AuraUIManager {
     };
 
     cancelBtn.addEventListener('click', closeModal);
-    
+
     confirmBtn.addEventListener('click', async () => {
       try {
         confirmBtn.disabled = true;
         confirmBtn.textContent = 'Deleting...';
-        
+
         await this.deleteChatSession(sessionId);
         closeModal();
-        
+
       } catch (error) {
         console.error('Failed to delete session:', error);
         confirmBtn.textContent = 'Delete Failed';
         confirmBtn.style.background = 'var(--accent-warning)';
-        
+
         setTimeout(() => {
           confirmBtn.disabled = false;
           confirmBtn.textContent = 'Delete';
@@ -1640,26 +1779,14 @@ class AuraUIManager {
     try {
       console.log(`🗑️ Deleting chat session: ${sessionId}`);
 
-      // Note: Check if backend has delete endpoint, otherwise handle locally
+      // Try to delete from backend using the API
       if (this.backendConnected && this.userName) {
         try {
-          // Attempt to call backend delete endpoint
-          const response = await fetch(`http://localhost:8000/chat/delete/${this.userName}/${sessionId}`, {
-            method: 'DELETE',
-            headers: {
-              'Content-Type': 'application/json',
-            }
-          });
-
-          if (!response.ok) {
-            throw new Error(`Delete failed: ${response.status}`);
-          }
-
-          console.log(`✅ Backend deletion successful for session: ${sessionId}`);
-
+          const deleteResponse = await this.api.deleteChatSession(this.userName, sessionId);
+          console.log(`✅ Backend deletion successful:`, deleteResponse);
         } catch (backendError) {
           console.warn('Backend deletion failed, handling locally:', backendError);
-          // Continue with local deletion
+          // Continue with local deletion even if backend fails
         }
       }
 
@@ -1668,16 +1795,15 @@ class AuraUIManager {
 
       // Handle current session deletion
       if (this.currentSessionId === sessionId) {
-        console.log('Current session deleted, starting new session');
-        this.currentSessionId = null;
-        this.clearChat();
-        await this.startChat();
+        console.log('Current session deleted, creating new session');
+        // Don't set currentSessionId to null, create a new one immediately
+        await this.createNewChat();
+      } else {
+        // Just refresh the display
+        this.renderChatHistory();
       }
 
-      // Refresh chat history display
-      this.renderChatHistory();
-
-      console.log(`✅ Chat session deleted: ${sessionId}`);
+      console.log(`✅ Chat session deleted locally: ${sessionId}`);
 
     } catch (error) {
       console.error(`❌ Failed to delete chat session ${sessionId}:`, error);
