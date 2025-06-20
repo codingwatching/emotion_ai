@@ -567,25 +567,102 @@ class AuraStateManager:
 
 # API Models
 class ConversationRequest(BaseModel):
+    """
+    Request model for initiating a conversation.
+
+    Fields:
+        user_id: Unique identifier for the user.
+        message: The user's input message.
+        session_id: Optional session identifier for conversation continuity.
+    """
     user_id: str
     message: str
     session_id: Optional[str] = None
 
 class ConversationResponse(BaseModel):
+    """
+    Response model for processed conversations.
+
+    Fields:
+        response: The generated AI response text.
+        emotional_state: Dictionary with detected emotional state information.
+        cognitive_state: Dictionary with cognitive focus analysis results.
+        session_id: Identifier for the conversation session.
+    """
     response: str
     emotional_state: Dict[str, Any]
     cognitive_state: Dict[str, Any]
     session_id: str
 
 class SearchRequest(BaseModel):
+    """
+    Request model for searching conversation memories.
+
+    Fields:
+        user_id: Unique identifier for the user whose memories to search.
+        query: Search query string.
+        n_results: Number of results to return (default: 25).
+    """
     user_id: str
     query: str
-    n_results: int = 5
+    n_results: int = 25
 
 class ExecuteToolRequest(BaseModel):
+    """
+    Request model for executing an MCP tool.
+
+    Fields:
+        tool_name: Name of the tool to execute.
+        arguments: Dictionary of arguments to pass to the tool.
+        user_id: Unique identifier for the user requesting execution.
+        timeout: Optional timeout in seconds for tool execution (default: 30).
+        metadata: Optional metadata for the tool execution.
+        validate_args: Whether to validate arguments before execution (default: True).
+    """
     tool_name: str
-    arguments: Dict[str, Any]
+    arguments: Dict[str, Any] = {}
     user_id: str
+    timeout: Optional[int] = 30
+    metadata: Optional[Dict[str, Any]] = None
+    validate_args: bool = True
+
+    def model_post_init(self, __context):
+        """Post-initialization validation"""
+        # Ensure tool_name is not empty and follows basic naming conventions
+        if not self.tool_name or not self.tool_name.strip():
+            raise ValueError("Tool name cannot be empty")
+
+        # Clean up tool name
+        self.tool_name = self.tool_name.strip()
+
+        # Ensure arguments is a dictionary
+        if self.arguments is None:
+            self.arguments = {}
+
+        # Validate timeout
+        if self.timeout is not None and (self.timeout < 1 or self.timeout > 300):
+            raise ValueError("Timeout must be between 1 and 300 seconds")
+
+class ExecuteToolResponse(BaseModel):
+    """
+    Response model for tool execution results.
+
+    Fields:
+        status: Execution status ('success', 'error', 'timeout').
+        tool_name: Name of the executed tool.
+        result: Tool execution result (None if error).
+        error: Error message (None if success).
+        execution_time: Time taken to execute in seconds.
+        timestamp: ISO timestamp of execution.
+        metadata: Optional response metadata.
+    """
+    status: str
+    tool_name: str
+    result: Optional[Any] = None
+    error: Optional[str] = None
+    execution_time: Optional[float] = None
+    timestamp: str
+    metadata: Optional[Dict[str, Any]] = None
 
 # Global variables (initialized in lifespan)
 vector_db: Optional[AuraVectorDB] = None
@@ -1965,6 +2042,8 @@ async def _process_conversation_with_retry(
 
             if mcp_gemini_bridge and thinking_processor:
                 # Process with both function calls and thinking
+                # I am not sure, this was maybe, maybe! confused, the thinking was supposed to display in the ui in a collapsed area
+                # and the aura_autonomic_system.py is supposed to handle most function calls.
                 thinking_result = await thinking_processor.process_with_function_calls_and_thinking(
                     chat=chat,
                     message=message,
@@ -2455,9 +2534,9 @@ async def get_thinking_status() -> Dict[str, Any]:
     try:
         thinking_config = {
             "thinking_enabled": thinking_processor is not None,
-            "thinking_budget": int(os.getenv('THINKING_BUDGET', '8192')),
-            "include_thinking_in_response": os.getenv('INCLUDE_THINKING_IN_RESPONSE', 'false').lower() == 'true',
-            "model": os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
+            "thinking_budget": int(os.getenv('THINKING_BUDGET', '-1')),
+            "include_thinking_in_response": os.getenv('INCLUDE_THINKING_IN_RESPONSE', 'true').lower() == 'false',
+            "model": os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
             "supports_thinking": True,  # Gemini models support thinking
         }
 
@@ -2611,7 +2690,7 @@ async def export_user_data(user_id: str, format: str = "json"):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/chat-history/{user_id}")
-async def get_chat_history(user_id: str, limit: int = 50) -> Dict[str, Any]:
+async def get_chat_history(user_id: str, limit: int = 50000) -> Dict[str, Any]:
     """
     Retrieve comprehensive chat history for a user with thread-safe database access.
 
@@ -2801,52 +2880,389 @@ async def delete_chat_session(user_id: str, session_id: str):
         if not vector_db or not vector_db.conversations:
             raise HTTPException(status_code=500, detail="Vector database not properly initialized")
 
-        # Use safe operation wrapper for database access
-        async with vector_db._safe_operation("delete_chat_session"):
-            # Get all messages for this session
-            results = vector_db.conversations.get(
-                where={
-                    "$and": [
-                        {"user_id": {"$eq": user_id}},
-                        {"session_id": {"$eq": session_id}}
-                    ]
-                },
-                include=["documents", "metadatas"]
+        # Get all messages for this session (no longer need nested _safe_operation since delete_messages handles it)
+        results = vector_db.conversations.get(
+            where={
+                "$and": [
+                    {"user_id": {"$eq": user_id}},
+                    {"session_id": {"$eq": session_id}}
+                ]
+            },
+            include=["documents", "metadatas"]
+        )
+
+        if results and results.get('ids'):
+            # Delete all messages in this session using the robust delete method
+            delete_result = await vector_db.delete_messages(
+                ids=results['ids'],
+                collection_name="conversations"
             )
 
-            if results and results.get('ids'):
-                # Delete all messages in this session
-                vector_db.conversations.delete(ids=results['ids'])
+            if not delete_result["success"]:
+                logger.error(f"❌ Database deletion failed for session {session_id}: {delete_result['errors']}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to delete session from database: {'; '.join(delete_result['errors'])}"
+                )
 
-                # Also remove from active sessions if present
-                session_key = f"{user_id}_{session_id}"
-                if session_key in active_chat_sessions:
-                    del active_chat_sessions[session_key]
-                if session_key in session_tool_versions:
-                    del session_tool_versions[session_key]
+            # Also remove from active sessions if present
+            session_key = f"{user_id}_{session_id}"
+            if session_key in active_chat_sessions:
+                del active_chat_sessions[session_key]
+            if session_key in session_tool_versions:
+                del session_tool_versions[session_key]
 
-                return {"message": f"Deleted session {session_id}", "deleted_count": len(results['ids'])}
-            else:
-                return {"message": "Session not found", "deleted_count": 0}
+            logger.info(f"✅ Successfully deleted session {session_id} for user {user_id} ({delete_result['deleted_count']} messages)")
+            return {"message": f"Deleted session {session_id}", "deleted_count": delete_result['deleted_count']}
+        else:
+            return {"message": "Session not found", "deleted_count": 0}
 
     except Exception as e:
         logger.error(f"❌ Failed to delete chat session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/mcp/execute-tool")
+@app.post("/mcp/execute-tool", response_model=ExecuteToolResponse)
 async def mcp_execute_tool(request: ExecuteToolRequest):
-    """Execute an MCP tool directly"""
+    """
+    Execute an MCP tool with enhanced error handling and validation.
+
+    This endpoint provides a robust interface for executing MCP tools with:
+    - Input validation and sanitization
+    - Timeout handling
+    - Detailed error reporting
+    - Execution timing
+    - Comprehensive response formatting
+    """
+    start_time = asyncio.get_event_loop().time()
+
     try:
-        result = await execute_mcp_tool(
+        logger.info(f"🔧 Executing tool '{request.tool_name}' for user {request.user_id}")
+
+        # Validate tool execution capability
+        if not aura_internal_tools:
+            return ExecuteToolResponse(
+                status="error",
+                tool_name=request.tool_name,
+                error="Internal tools not initialized",
+                execution_time=asyncio.get_event_loop().time() - start_time,
+                timestamp=datetime.now().isoformat(),
+                metadata={"error_type": "initialization_error"}
+            )
+
+        # Execute tool with timeout
+        try:
+            if request.timeout:
+                result = await asyncio.wait_for(
+                    execute_mcp_tool(
+                        tool_name=request.tool_name,
+                        arguments=request.arguments,
+                        user_id=request.user_id,
+                        aura_internal_tools=aura_internal_tools
+                    ),
+                    timeout=request.timeout
+                )
+            else:
+                result = await execute_mcp_tool(
+                    tool_name=request.tool_name,
+                    arguments=request.arguments,
+                    user_id=request.user_id,
+                    aura_internal_tools=aura_internal_tools
+                )
+        except asyncio.TimeoutError:
+            execution_time = asyncio.get_event_loop().time() - start_time
+            logger.warning(f"⏰ Tool '{request.tool_name}' timed out after {request.timeout}s")
+            return ExecuteToolResponse(
+                status="timeout",
+                tool_name=request.tool_name,
+                error=f"Tool execution timed out after {request.timeout} seconds",
+                execution_time=execution_time,
+                timestamp=datetime.now().isoformat(),
+                metadata={"timeout_duration": request.timeout}
+            )
+
+        execution_time = asyncio.get_event_loop().time() - start_time
+
+        # Check if the result indicates an error
+        if isinstance(result, dict) and result.get("status") == "error":
+            return ExecuteToolResponse(
+                status="error",
+                tool_name=request.tool_name,
+                error=result.get("error", "Unknown error occurred"),
+                execution_time=execution_time,
+                timestamp=datetime.now().isoformat(),
+                metadata={
+                    "original_result": result,
+                    "request_metadata": request.metadata
+                }
+            )
+
+        # Successful execution
+        logger.info(f"✅ Tool '{request.tool_name}' executed successfully in {execution_time:.3f}s")
+        return ExecuteToolResponse(
+            status="success",
             tool_name=request.tool_name,
-            arguments=request.arguments,
-            user_id=request.user_id,
-            aura_internal_tools=aura_internal_tools
+            result=result,
+            execution_time=execution_time,
+            timestamp=datetime.now().isoformat(),
+            metadata={
+                "request_metadata": request.metadata,
+                "result_type": type(result).__name__
+            }
         )
-        return {"result": result}
+
+    except ValueError as e:
+        # Handle validation errors
+        execution_time = asyncio.get_event_loop().time() - start_time
+        logger.error(f"❌ Validation error for tool '{request.tool_name}': {e}")
+        return ExecuteToolResponse(
+            status="error",
+            tool_name=request.tool_name,
+            error=f"Validation error: {str(e)}",
+            execution_time=execution_time,
+            timestamp=datetime.now().isoformat(),
+            metadata={"error_type": "validation_error"}
+        )
+
     except Exception as e:
-        logger.error(f"❌ MCP tool execution failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Handle unexpected errors
+        execution_time = asyncio.get_event_loop().time() - start_time
+        logger.error(f"❌ Unexpected error executing tool '{request.tool_name}': {e}")
+        return ExecuteToolResponse(
+            status="error",
+            tool_name=request.tool_name,
+            error=f"Execution failed: {str(e)}",
+            execution_time=execution_time,
+            timestamp=datetime.now().isoformat(),
+            metadata={
+                "error_type": "execution_error",
+                "exception_type": type(e).__name__
+            }
+        )
+
+@app.get("/mcp/tools")
+async def list_available_tools():
+    """
+    List all available MCP tools with their descriptions and schemas.
+
+    Returns comprehensive information about available tools including:
+    - Internal Aura tools
+    - External MCP tools
+    - Tool parameters and descriptions
+    - Usage examples where available
+    """
+    try:
+        available_tools = []
+
+        # Get internal Aura tools
+        if aura_internal_tools:
+            internal_tools = aura_internal_tools.get_tool_definitions()
+            for tool_name, tool_info in internal_tools.items():
+                available_tools.append({
+                    "name": tool_name,
+                    "type": "internal",
+                    "description": tool_info.get("description", "No description available"),
+                    "parameters": tool_info.get("parameters", {}),
+                    "examples": tool_info.get("examples", [])
+                })
+
+        # Get external MCP tools
+        try:
+            external_tools = await get_all_available_tools()
+            for tool in external_tools:
+                available_tools.append({
+                    "name": tool.get("name", "unknown"),
+                    "type": "external",
+                    "description": tool.get("description", "No description available"),
+                    "parameters": tool.get("inputSchema", {}).get("properties", {}),
+                    "required": tool.get("inputSchema", {}).get("required", [])
+                })
+        except Exception as e:
+            logger.warning(f"⚠️ Could not fetch external MCP tools: {e}")
+
+        # Sort tools by name for easier browsing
+        available_tools.sort(key=lambda x: x["name"])
+
+        return {
+            "status": "success",
+            "total_tools": len(available_tools),
+            "tools": available_tools,
+            "categories": {
+                "internal": len([t for t in available_tools if t["type"] == "internal"]),
+                "external": len([t for t in available_tools if t["type"] == "external"])
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to list available tools: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tools: {str(e)}")
+
+@app.get("/mcp/tools/{tool_name}")
+async def get_tool_info(tool_name: str):
+    """
+    Get detailed information about a specific tool.
+
+    Args:
+        tool_name: Name of the tool to get information about
+
+    Returns:
+        Detailed tool information including schema, examples, and usage notes
+    """
+    try:
+        # Check internal tools first
+        if aura_internal_tools:
+            internal_tools = aura_internal_tools.get_tool_definitions()
+            if tool_name in internal_tools:
+                tool_info = internal_tools[tool_name]
+                return {
+                    "name": tool_name,
+                    "type": "internal",
+                    "found": True,
+                    "description": tool_info.get("description", "No description available"),
+                    "parameters": tool_info.get("parameters", {}),
+                    "examples": tool_info.get("examples", []),
+                    "usage_notes": tool_info.get("usage_notes", []),
+                    "timestamp": datetime.now().isoformat()
+                }
+
+        # Check external tools
+        try:
+            external_tools = await get_all_available_tools()
+            for tool in external_tools:
+                if tool.get("name") == tool_name:
+                    return {
+                        "name": tool_name,
+                        "type": "external",
+                        "found": True,
+                        "description": tool.get("description", "No description available"),
+                        "parameters": tool.get("inputSchema", {}).get("properties", {}),
+                        "required": tool.get("inputSchema", {}).get("required", []),
+                        "schema": tool.get("inputSchema", {}),
+                        "timestamp": datetime.now().isoformat()
+                    }
+        except Exception as e:
+            logger.warning(f"⚠️ Could not search external MCP tools: {e}")
+
+        # Tool not found
+        return {
+            "name": tool_name,
+            "found": False,
+            "error": "Tool not found in available tools",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to get tool info for '{tool_name}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get tool info: {str(e)}")
+
+@app.post("/mcp/tools/validate")
+async def validate_tool_request(request: ExecuteToolRequest):
+    """
+    Validate a tool execution request without actually executing it.
+
+    This endpoint helps users verify their tool requests before execution by:
+    - Checking if the tool exists
+    - Validating required parameters
+    - Checking parameter types and formats
+    - Providing helpful error messages and suggestions
+    """
+    try:
+        validation_result = {
+            "tool_name": request.tool_name,
+            "valid": True,
+            "errors": [],
+            "warnings": [],
+            "suggestions": [],
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # Check if tool exists
+        tool_found = False
+        tool_info = None
+
+        # Check internal tools
+        if aura_internal_tools:
+            internal_tools = aura_internal_tools.get_tool_definitions()
+            if request.tool_name in internal_tools:
+                tool_found = True
+                tool_info = internal_tools[request.tool_name]
+
+        # Check external tools if not found internally
+        if not tool_found:
+            try:
+                external_tools = await get_all_available_tools()
+                for tool in external_tools:
+                    if tool.get("name") == request.tool_name:
+                        tool_found = True
+                        tool_info = tool
+                        break
+            except Exception as e:
+                validation_result["warnings"].append(f"Could not check external tools: {str(e)}")
+
+        if not tool_found:
+            validation_result["valid"] = False
+            validation_result["errors"].append(f"Tool '{request.tool_name}' not found")
+            return validation_result
+
+        # Validate parameters if tool info is available
+        if tool_info and request.validate_args:
+            # Get parameter requirements
+            if "parameters" in tool_info:
+                required_params = tool_info["parameters"].get("required", [])
+                param_properties = tool_info["parameters"].get("properties", {})
+            elif "inputSchema" in tool_info:
+                required_params = tool_info["inputSchema"].get("required", [])
+                param_properties = tool_info["inputSchema"].get("properties", {})
+            else:
+                required_params = []
+                param_properties = {}
+
+            # Check required parameters
+            for param in required_params:
+                if param not in request.arguments:
+                    validation_result["valid"] = False
+                    validation_result["errors"].append(f"Missing required parameter: {param}")
+
+            # Check for unknown parameters
+            for param in request.arguments:
+                if param not in param_properties:
+                    validation_result["warnings"].append(f"Unknown parameter: {param}")
+
+            # Validate parameter types (basic validation)
+            for param, value in request.arguments.items():
+                if param in param_properties:
+                    param_spec = param_properties[param]
+                    expected_type = param_spec.get("type")
+
+                    if expected_type == "string" and not isinstance(value, str):
+                        validation_result["errors"].append(f"Parameter '{param}' should be a string")
+                        validation_result["valid"] = False
+                    elif expected_type == "integer" and not isinstance(value, int):
+                        validation_result["errors"].append(f"Parameter '{param}' should be an integer")
+                        validation_result["valid"] = False
+                    elif expected_type == "boolean" and not isinstance(value, bool):
+                        validation_result["errors"].append(f"Parameter '{param}' should be a boolean")
+                        validation_result["valid"] = False
+                    elif expected_type == "array" and not isinstance(value, list):
+                        validation_result["errors"].append(f"Parameter '{param}' should be an array")
+                        validation_result["valid"] = False
+                    elif expected_type == "object" and not isinstance(value, dict):
+                        validation_result["errors"].append(f"Parameter '{param}' should be an object")
+                        validation_result["valid"] = False
+
+        # Add helpful suggestions
+        if validation_result["valid"]:
+            validation_result["suggestions"].append("Tool request is valid and ready for execution")
+        else:
+            validation_result["suggestions"].append("Fix the errors above before executing the tool")
+            if tool_info and "description" in tool_info:
+                validation_result["suggestions"].append(f"Tool description: {tool_info['description']}")
+
+        return validation_result
+
+    except Exception as e:
+        logger.error(f"❌ Failed to validate tool request: {e}")
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
 @app.delete("/sessions/{user_id}")
 async def clear_user_sessions(user_id: str):

@@ -441,6 +441,64 @@ class RobustAuraVectorDB:
             )
             return doc_id
 
+    async def delete_messages(self, ids: List[str], collection_name: str = "conversations") -> Dict[str, Any]:
+        """
+        Delete messages using robust error handling and retry mechanisms.
+        
+        This method wraps the ChromaDB delete operation with the _safe_operation
+        context manager to ensure reliable deletion even under concurrent access
+        or transient database issues.
+        
+        Args:
+            ids: List of document IDs to delete
+            collection_name: Name of the collection to delete from (default: "conversations")
+        
+        Returns:
+            Dictionary containing:
+            - success: Boolean indicating if deletion was successful
+            - deleted_count: Number of documents actually deleted
+            - errors: List of any errors encountered
+        
+        Raises:
+            ValueError: If ids list is empty
+            Exception: If deletion fails after all retry attempts
+        """
+        if not ids:
+            raise ValueError("IDs list cannot be empty")
+        
+        async with self._safe_operation("delete_messages"):
+            try:
+                # Get the appropriate collection
+                if collection_name == "conversations":
+                    collection = self.conversations
+                elif collection_name == "emotional_patterns":
+                    collection = self.emotional_patterns
+                elif collection_name == "cognitive_patterns":
+                    collection = self.cognitive_patterns
+                elif collection_name == "knowledge_substrate":
+                    collection = self.knowledge_substrate
+                else:
+                    raise ValueError(f"Unknown collection: {collection_name}")
+                
+                # Perform the deletion with robust error handling
+                collection.delete(ids=ids)
+                
+                logger.info(f"🗑️ Successfully deleted {len(ids)} messages from {collection_name}")
+                
+                return {
+                    "success": True,
+                    "deleted_count": len(ids),
+                    "errors": []
+                }
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to delete messages from {collection_name}: {e}")
+                return {
+                    "success": False,
+                    "deleted_count": 0,
+                    "errors": [str(e)]
+                }
+
     async def analyze_emotional_trends(self, user_id: str, days: int = 7) -> Dict[str, Any]:
         """Analyze emotional trends with retry and proper date filtering"""
         async with self._safe_operation("analyze_emotional_trends"):

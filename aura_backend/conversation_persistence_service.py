@@ -660,7 +660,7 @@ class ConversationPersistenceService:
     async def cleanup_old_conversations(
         self,
         user_id: str,
-        days_to_keep: int = 30,
+        days_to_keep: int = 30000,
         archive_before_cleanup: bool = True
     ) -> Dict[str, Any]:
         """
@@ -689,7 +689,7 @@ class ConversationPersistenceService:
     async def _cleanup_old_conversations_internal(
         self,
         user_id: str,
-        days_to_keep: int = 30,
+        days_to_keep: int = 30000,
         archive_before_cleanup: bool = True
     ) -> Dict[str, Any]:
         """
@@ -829,7 +829,7 @@ class ConversationPersistenceService:
         self,
         query: str,
         user_id: str,
-        n_results: int = 5,
+        n_results: int = 50,
         include_emotional_context: bool = True,
         include_temporal_context: bool = True
     ) -> List[Dict[str, Any]]:
@@ -1154,7 +1154,7 @@ class ConversationPersistenceService:
         self,
         query: str,
         user_id: str,
-        n_results: int = 5,
+        n_results: int = 5000,
         where_filter: Optional[Dict] = None
     ) -> List[Dict]:
         """
@@ -1248,7 +1248,7 @@ class ConversationPersistenceService:
                             logger.debug(f"⚠️ Skipping duplicate message {doc_id}")
                             skipped_duplicates += 1
                             continue
-                        
+
                         seen_message_ids.add(doc_id)
 
                         # Validate essential fields
@@ -1270,7 +1270,7 @@ class ConversationPersistenceService:
                         if doc_id in sessions[session_id]["message_ids"]:
                             logger.debug(f"⚠️ Skipping duplicate message {doc_id} in session {session_id}")
                             continue
-                        
+
                         sessions[session_id]["message_ids"].add(doc_id)
 
                         # Add message with validation and unique ID
@@ -1316,7 +1316,7 @@ class ConversationPersistenceService:
 
                 logger.info(f"✅ Retrieved {len(session_list)} sessions with {processed_messages} total messages for {user_id} (skipped {skipped_duplicates} duplicates)")
                 return {
-                    "sessions": session_list, 
+                    "sessions": session_list,
                     "total": len(session_list),
                     "processed_messages": processed_messages,
                     "skipped_duplicates": skipped_duplicates
@@ -1326,24 +1326,24 @@ class ConversationPersistenceService:
                 logger.error(f"❌ Safe chat history retrieval failed: {e}")
                 return {"sessions": [], "total": 0, "error": str(e)}
 
-    async def get_fresh_chat_history(self, user_id: str, limit: int = 20) -> Dict[str, Any]:
+    async def get_fresh_chat_history(self, user_id: str, limit: int = 2000) -> Dict[str, Any]:
         """
         Get fresh chat history with aggressive deduplication for fixing stale UI data.
-        
+
         This method addresses the specific issue of repeated/stale chat history entries
         by implementing strict deduplication and fresh database queries.
         """
         logger.info(f"🔄 Getting fresh chat history for {user_id} (limit: {limit})")
-        
+
         async with self._write_semaphore:
             try:
                 # Force a fresh query with no caching
                 await asyncio.sleep(0.1)
-                
+
                 # Query last 30 days to get comprehensive session data
                 from datetime import datetime, timedelta
                 cutoff_date = (datetime.now() - timedelta(days=30)).isoformat()
-                
+
                 results = self.vector_db.conversations.get(
                     where={
                         "$and": [
@@ -1353,33 +1353,33 @@ class ConversationPersistenceService:
                     },
                     include=["documents", "metadatas", "ids"]
                 )
-                
+
                 if not results or not results.get('ids'):
                     return {"sessions": [], "total": 0, "fresh": True}
-                
+
                 # Strict deduplication and session mapping
                 session_map = {}
                 message_fingerprints = set()
-                
+
                 for i, doc_id in enumerate(results['ids']):
                     try:
                         doc = results['documents'][i] if i < len(results['documents']) else ""
                         metadata = results['metadatas'][i] if i < len(results['metadatas']) else {}
-                        
+
                         session_id = metadata.get('session_id', 'unknown')
                         sender = metadata.get('sender', 'unknown')
                         timestamp = metadata.get('timestamp', '')
-                        
+
                         # Skip invalid entries
                         if not doc or not timestamp or sender not in ['user', 'aura']:
                             continue
-                        
+
                         # Global deduplication fingerprint
                         message_fingerprint = f"{session_id}:{sender}:{doc[:50]}:{timestamp}"
                         if message_fingerprint in message_fingerprints:
                             continue
                         message_fingerprints.add(message_fingerprint)
-                        
+
                         # Initialize session
                         if session_id not in session_map:
                             session_map[session_id] = {
@@ -1388,7 +1388,7 @@ class ConversationPersistenceService:
                                 "last_timestamp": timestamp,
                                 "message_count": 0
                             }
-                        
+
                         # Add message
                         session_map[session_id]["messages"].append({
                             "content": doc.strip(),
@@ -1396,20 +1396,20 @@ class ConversationPersistenceService:
                             "timestamp": timestamp
                         })
                         session_map[session_id]["message_count"] += 1
-                        
+
                         if timestamp > session_map[session_id]["last_timestamp"]:
                             session_map[session_id]["last_timestamp"] = timestamp
-                            
+
                     except Exception as item_error:
                         logger.error(f"❌ Error processing item {i}: {item_error}")
                         continue
-                
+
                 # Convert and sort sessions
                 fresh_sessions = []
                 for session_data in session_map.values():
                     if session_data["message_count"] >= 1:
                         session_data["messages"].sort(key=lambda m: m.get("timestamp", ""))
-                        
+
                         # Get last message preview
                         last_message = ""
                         for msg in reversed(session_data["messages"]):
@@ -1417,25 +1417,25 @@ class ConversationPersistenceService:
                                 content = msg["content"]
                                 last_message = content[:100] + "..." if len(content) > 100 else content
                                 break
-                        
+
                         fresh_sessions.append({
                             "session_id": session_data["session_id"],
                             "timestamp": session_data["last_timestamp"],
                             "message_count": session_data["message_count"],
                             "last_message": last_message
                         })
-                
+
                 fresh_sessions.sort(key=lambda s: s.get("timestamp", ""), reverse=True)
                 if len(fresh_sessions) > limit:
                     fresh_sessions = fresh_sessions[:limit]
-                
+
                 logger.info(f"✅ Fresh chat history: {len(fresh_sessions)} distinct sessions for {user_id}")
                 return {
                     "sessions": fresh_sessions,
                     "total": len(fresh_sessions),
                     "fresh": True
                 }
-                
+
             except Exception as e:
                 logger.error(f"❌ Fresh chat history failed: {e}")
                 return {"sessions": [], "total": 0, "error": str(e)}

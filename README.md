@@ -20,6 +20,10 @@
 
 ![alt text](image-4.png)
 
+Chat storage currently broken sorry, but memory working well- not a coder 6/20/25
+
+![alt text](image-1.png)
+
 ## 🌟 Features
 
 ### 🧠 Advanced Cognitive Architecture
