@@ -31,7 +31,7 @@ export interface ConversationResponse {
   emotional_state: EmotionalState;
   cognitive_state: CognitiveState;
   session_id: string;
-  thinking_summary?: string;
+  thinking_content?: string;
   thinking_metrics?: {
     total_chunks: number;
     thinking_chunks: number;

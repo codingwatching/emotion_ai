@@ -37,7 +37,7 @@ import aiofiles
 # Import MCP-Gemini Bridge
 from mcp_to_gemini_bridge import MCPGeminiBridge
 
-# Import thinking processor (now fixed)
+# Import FIXED thinking processor
 from thinking_processor import ThinkingProcessor, ThinkingResult
 
 # Import JSON serialization fix for NumPy types
@@ -590,7 +590,7 @@ class ConversationResponse(BaseModel):
         emotional_state: Dictionary with detected emotional state information.
         cognitive_state: Dictionary with cognitive focus analysis results.
         session_id: Identifier for the conversation session.
-        thinking_summary: Optional summary of AI reasoning process.
+        thinking_content: Optional AI reasoning process including thoughts and tool calls.
         thinking_metrics: Optional metrics about thinking processing.
         has_thinking: Whether thinking data was captured.
     """
@@ -598,7 +598,7 @@ class ConversationResponse(BaseModel):
     emotional_state: Dict[str, Any]
     cognitive_state: Dict[str, Any]
     session_id: str
-    thinking_summary: Optional[str] = None
+    thinking_content: Optional[str] = None
     thinking_metrics: Optional[Dict[str, Any]] = None
     has_thinking: bool = False
 
@@ -1573,8 +1573,6 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
             logger.info(f"🧠 Thinking result debug for {request.user_id}:")
             logger.info(f"   - has_thinking: {thinking_result.has_thinking}")
             logger.info(f"   - thoughts length: {len(thinking_result.thoughts) if thinking_result.thoughts else 0}")
-            logger.info(f"   - thinking_summary length: {len(thinking_result.thinking_summary) if thinking_result.thinking_summary else 0}")
-            logger.info(f"   - thinking_summary preview: {thinking_result.thinking_summary[:100000] if thinking_result.thinking_summary else 'None'}")
             logger.info(f"   - answer length: {len(thinking_result.answer) if thinking_result.answer else 0}")
             logger.info(f"   - answer preview: {thinking_result.answer[:100] if thinking_result.answer else 'None'}")
             logger.info(f"   - aura_response length: {len(aura_response) if aura_response else 0}")
@@ -1755,8 +1753,8 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 "description": cognitive_state_data.description if cognitive_state_data else "Processing user input"
             },
             session_id=session_id,
-            # Include thinking data if available - pass raw thoughts directly for full transparency
-            thinking_summary=thinking_result.thoughts if thinking_result and thinking_result.thoughts else None,
+            # Include thinking data if available - pass raw thoughts directly
+            thinking_content=thinking_result.thoughts if thinking_result and thinking_result.thoughts else None,
             thinking_metrics={
                 "total_chunks": thinking_result.total_chunks if thinking_result else 0,
                 "thinking_chunks": thinking_result.thinking_chunks if thinking_result else 0,
@@ -1768,7 +1766,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
 
         # Debug the final response thinking data
         logger.info(f"🔍 Final response thinking debug for {request.user_id}:")
-        logger.info(f"   - response.thinking_summary: {response.thinking_summary}")
+        # logger.info(f"   - response.thinking_summary: {response.thinking_summary}") # Be careful not to break the autonomous system, I do not want a summary! I want the entire thinking process.
         logger.info(f"   - response.has_thinking: {response.has_thinking}")
         logger.info(f"   - response.thinking_metrics: {response.thinking_metrics}")
 
@@ -1932,11 +1930,11 @@ async def _process_conversation_with_thinking(
             # Include thinking in response only if explicitly enabled (usually false for separate UI display)
             include_thinking_in_response = os.getenv('INCLUDE_THINKING_IN_RESPONSE', 'false').lower() == 'true'
 
-            # Process with thinking using the FIXED approach that handles function calls properly
+            # Process with thinking using the non-streaming approach
             if thinking_processor:
-                # Always use the function call aware method when MCP bridge is available
+                # Use thinking processor when available
                 if mcp_gemini_bridge:
-                    # This is the RESTORED method that properly handles both function calls AND thinking
+                    # Process with both function calls and thinking
                     thinking_result = await thinking_processor.process_with_function_calls_and_thinking(
                         chat=chat,
                         message=message,
@@ -1945,7 +1943,7 @@ async def _process_conversation_with_thinking(
                         include_thinking_in_response=include_thinking_in_response
                     )
                 else:
-                    # Process with thinking only when no tools available
+                    # Process with thinking only (no function calls)
                     thinking_result = await thinking_processor.process_message_with_thinking(
                         chat=chat,
                         message=message,
@@ -1969,7 +1967,6 @@ async def _process_conversation_with_thinking(
                 thinking_result = ThinkingResult(
                     thoughts="",
                     answer=response_text,
-                    thinking_summary="Fallback processing - no thinking extraction",
                     total_chunks=1,
                     thinking_chunks=0,
                     answer_chunks=1,
@@ -1989,9 +1986,8 @@ async def _process_conversation_with_thinking(
             logger.info(f"✅ Thinking conversation processed successfully for {user_id} (attempt {attempt + 1})")
             logger.info(f"   🧠 Has thinking: {thinking_result.has_thinking}")
             if thinking_result.has_thinking:
-                logger.info(f"   💭 Thinking summary: {thinking_result.thinking_summary[:100]}...")
-            logger.info(f"   📊 Processing metrics: {thinking_result.thinking_chunks} thought chunks, {thinking_result.answer_chunks} answer chunks")
-            logger.info(f"   ⏱️ Processing time: {thinking_result.processing_time_ms:.1f}ms")
+               logger.info(f"   📊 Processing metrics: {thinking_result.thinking_chunks} thought chunks, {thinking_result.answer_chunks} answer chunks")
+               logger.info(f"   ⏱️ Processing time: {thinking_result.processing_time_ms:.1f}ms")
 
             return thinking_result.answer, thinking_result
 
@@ -2039,7 +2035,6 @@ async def _process_conversation_with_thinking(
                 fallback_thinking = ThinkingResult(
                     thoughts="",
                     answer=fallback_response,
-                    thinking_summary="Error recovery - no thinking available",
                     total_chunks=0,
                     thinking_chunks=0,
                     answer_chunks=0,
@@ -2055,7 +2050,6 @@ async def _process_conversation_with_thinking(
     fallback_thinking = ThinkingResult(
         thoughts="",
         answer="I'm here and ready to help, though I may have encountered some processing issues.",
-        thinking_summary="Unexpected processing path",
         total_chunks=0,
         thinking_chunks=0,
         answer_chunks=0,

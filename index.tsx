@@ -997,14 +997,13 @@ class AuraUIManager {
       // Display message with thinking data if available
       const thinkingData = response.has_thinking ? {
         has_thinking: response.has_thinking,
-        thinking_summary: response.thinking_summary,
+        thinking_content: response.thinking_content,
         thinking_metrics: response.thinking_metrics
       } : undefined;
 
       // Debug logging
       console.log('🧠 Thinking data debug:', {
         has_thinking: response.has_thinking,
-        thinking_summary: response.thinking_summary,
         thinking_metrics: response.thinking_metrics,
         thinkingData: thinkingData
       });
@@ -1131,8 +1130,8 @@ class AuraUIManager {
           <span class="thinking-metrics">${thinkingData.thinking_metrics?.thinking_chunks || 0} thoughts, ${thinkingData.thinking_metrics?.processing_time_ms?.toFixed(0) || 0}ms</span>
         </div>
         <div class="thinking-content">
-          <div class="thinking-summary">
-            ${thinkingData.thinking_summary ? await marked.parse(thinkingData.thinking_summary) : 'No reasoning summary available'}
+          <div class="thinking-raw">
+            ${thinkingData.thinking_content ? await marked.parse(thinkingData.thinking_content) : 'AI reasoning process completed with ' + (thinkingData.thinking_metrics?.thinking_chunks || 0) + ' thought sequences.'}
           </div>
         </div>
       `;

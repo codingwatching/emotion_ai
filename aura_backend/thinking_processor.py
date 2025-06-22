@@ -21,6 +21,7 @@ from google import genai
 from google.genai import types
 import os
 import asyncio
+import json
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -30,7 +31,6 @@ class ThinkingResult:
     """Container for thinking extraction results"""
     thoughts: str
     answer: str
-    thinking_summary: str
     total_chunks: int
     thinking_chunks: int
     answer_chunks: int
@@ -63,18 +63,16 @@ class ThinkingProcessor:
         chat: Any,
         message: str,
         user_id: str,
-        include_thinking_in_response: bool = False,
-        thinking_summary_length: int = 200
+        include_thinking_in_response: bool = False
     ) -> ThinkingResult:
         """
-        Process a message with thinking extraction using non-streaming approach.
+        Process a message with thinking extraction - SIMPLE AND CORRECT VERSION.
 
         Args:
             chat: Google Gemini chat session with thinking enabled
             message: User's input message
             user_id: User identifier for logging
             include_thinking_in_response: Whether to include thoughts in final answer
-            thinking_summary_length: Maximum length for thinking summary
 
         Returns:
             ThinkingResult containing separated thoughts and answer
@@ -82,9 +80,9 @@ class ThinkingProcessor:
         start_time = datetime.now()
         thoughts = ""
         answer = ""
-        total_chunks = 1  # Non-streaming, so just one "chunk"
+        total_chunks = 1
         thinking_chunks = 0
-        answer_chunks = 1
+        answer_chunks = 0
         has_thinking = False
 
         try:
@@ -93,8 +91,8 @@ class ThinkingProcessor:
             # Use the chat session directly (it should have thinking enabled)
             result = chat.send_message(message)
 
-            # Debug logging for raw response (only in debug mode)
-            debug_mode = os.getenv('THINKING_DEBUG', 'false').lower() == 'true'
+            # Debug logging
+            debug_mode = os.getenv('THINKING_DEBUG', 'true').lower() == 'true'
             if debug_mode:
                 logger.debug(f"🔍 Raw response structure for {user_id}: {type(result)}")
                 logger.debug(f"🔍 Response candidates: {len(result.candidates) if result.candidates else 0}")
@@ -107,16 +105,13 @@ class ThinkingProcessor:
             if not candidate.content or not candidate.content.parts:
                 raise ValueError("Malformed response structure from Gemini")
 
-            # Debug candidate structure
-            if debug_mode:
-                logger.debug(f"🔍 Candidate parts count: {len(candidate.content.parts)}")
-
-            # Extract the answer text and check for thinking attributes
+            # Simple, correct processing - trust Gemini's thinking detection
             for i, part in enumerate(candidate.content.parts):
                 if debug_mode:
                     has_text = hasattr(part, 'text')
                     has_thought = hasattr(part, 'thought')
-                    logger.debug(f"🔍 Part {i}: type={type(part)}, has_text={has_text}, has_thought={has_thought}")
+                    thought_value = getattr(part, 'thought', None) if has_thought else None
+                    logger.debug(f"🔍 Part {i}: type={type(part)}, has_text={has_text}, has_thought={has_thought}, thought_value={thought_value}")
 
                 # Skip parts without text
                 if not hasattr(part, 'text') or not part.text:
@@ -126,52 +121,43 @@ class ThinkingProcessor:
                 if not text_content:
                     continue
 
-                # Check if this part is thinking content (based on Google's documentation)
-                # Trust Gemini's thinking detection completely
+                # SIMPLE: Trust Gemini's thinking detection completely
                 if hasattr(part, 'thought') and part.thought is True:
                     # This is thinking content as marked by Gemini
                     thoughts += text_content
                     has_thinking = True
                     thinking_chunks += 1
-                    logger.info(f"🎯 Gemini marked as thinking - Part {i}: {len(text_content)} chars")
-                    logger.info(f"🧠 Thinking content preview: {text_content[:200]}...")
+                    logger.info(f"🎯 Gemini thinking - Part {i}: {len(text_content)} chars")
+                    if debug_mode:
+                        logger.debug(f"🧠 Thinking: {text_content[:200]}...")
                 else:
-                    # This is regular answer content 
+                    # This is regular answer content
                     answer += text_content
-                    logger.info(f"💬 Gemini marked as answer - Part {i}: {len(text_content)} chars")
-                    logger.info(f"💬 Answer content preview: {text_content[:200]}...")
-
-            if debug_mode:
-                logger.debug(f"🔍 Total answer length: {len(answer)} chars")
-                logger.debug(f"🔍 Total thoughts length: {len(thoughts)} chars")
-                logger.debug(f"🔍 Has thinking: {has_thinking}")
+                    answer_chunks += 1
+                    logger.info(f"💬 Gemini answer - Part {i}: {len(text_content)} chars")
+                    if debug_mode:
+                        logger.debug(f"💬 Answer: {text_content[:200]}...")
 
             # Calculate processing time
             processing_time = (datetime.now() - start_time).total_seconds() * 1000
 
-            # Create thinking summary
-            thinking_summary = self._create_thinking_summary(thoughts, thinking_summary_length)
-
             # Log results
             logger.info(f"✅ Thinking processing complete for user {user_id}")
-            logger.info(f"   📊 Total chunks: {total_chunks}")
             logger.info(f"   🧠 Thinking chunks: {thinking_chunks}")
             logger.info(f"   💬 Answer chunks: {answer_chunks}")
-            logger.info(f"   ⏱️ Processing time: {processing_time:.1f}ms")
             logger.info(f"   🎯 Has thinking: {has_thinking}")
             if has_thinking:
-                logger.info(f"   🧠 Thinking content length: {len(thoughts)} chars")
-                logger.info(f"   💬 Answer content length: {len(answer)} chars")
+                logger.info(f"   🧠 Thinking length: {len(thoughts)} chars")
+            logger.info(f"   💬 Answer length: {len(answer)} chars")
 
-            # Optionally include thinking in response
+            # Don't include thinking in response unless explicitly requested
             final_answer = answer
             if include_thinking_in_response and has_thinking and thoughts.strip():
-                final_answer = f"**My Reasoning:**\n{thinking_summary}\n\n**My Response:**\n{answer}"
+                final_answer = f"**My Reasoning:**\n{thoughts}\n\n**My Response:**\n{answer}"
 
             return ThinkingResult(
                 thoughts=thoughts,
                 answer=final_answer,
-                thinking_summary=thinking_summary,
                 total_chunks=total_chunks,
                 thinking_chunks=thinking_chunks,
                 answer_chunks=answer_chunks,
@@ -186,10 +172,9 @@ class ThinkingProcessor:
             return ThinkingResult(
                 thoughts="",
                 answer="I apologize, but I encountered an issue processing your request. Please try again.",
-                thinking_summary="",
-                total_chunks=total_chunks,
-                thinking_chunks=thinking_chunks,
-                answer_chunks=answer_chunks,
+                total_chunks=0,
+                thinking_chunks=0,
+                answer_chunks=1,
                 processing_time_ms=processing_time,
                 has_thinking=False,
                 error=str(e)
@@ -204,10 +189,10 @@ class ThinkingProcessor:
         include_thinking_in_response: bool = False
     ) -> ThinkingResult:
         """
-        Process message with both function calls and thinking extraction.
+        Process message with both function calls and enhanced thinking extraction.
 
-        This is the RESTORED version that properly handles function calls while
-        extracting thinking content. This was removed but is essential for tools to work.
+        This version preserves the complete reasoning process including tool calls and results
+        in the thinking block, as requested by the user.
 
         Args:
             chat: Google Gemini chat session
@@ -217,20 +202,24 @@ class ThinkingProcessor:
             include_thinking_in_response: Whether to include thoughts in response
 
         Returns:
-            ThinkingResult with function call results integrated
+            ThinkingResult with complete thinking process including tool usage
         """
         start_time = datetime.now()
 
         try:
-            logger.info(f"🔧 Starting thinking+function call processing for user {user_id}")
+            logger.info(f"🔧 Starting enhanced thinking+function call processing for user {user_id}")
 
-            thoughts = ""
-            answer = ""
+            # Complete thinking content including tool calls and results
+            complete_thinking_process = ""
+            final_answer = ""
             total_chunks = 0
             thinking_chunks = 0
             answer_chunks = 0
             has_thinking = False
             function_calls_processed = 0
+
+            # Enable debug mode for thinking processing
+            debug_mode = os.getenv('THINKING_DEBUG', 'true').lower() == 'true'
 
             # Send message to get initial response
             result = chat.send_message(message)
@@ -243,35 +232,49 @@ class ThinkingProcessor:
             if not candidate.content or not candidate.content.parts:
                 raise ValueError("Malformed response structure from Gemini")
 
-            # Process all parts in the response
+            # Track function calls for complete thinking process
             pending_function_calls = []
 
-            for part in candidate.content.parts:
+            # Process initial response parts
+            for i, part in enumerate(candidate.content.parts):
                 total_chunks += 1
 
                 if part.text:
                     part_text = part.text
-
-                    # Check if this is thinking content - trust Gemini's detection
-                    is_thinking = hasattr(part, 'thought') and part.thought is True
-
-                    if is_thinking:
-                        if not has_thinking:
-                            logger.info(f"🎯 Thinking detected in response for user {user_id}")
-                            has_thinking = True
-                        thoughts += part_text
+                    
+                    # Check if this is thinking content (trust Gemini's marking)
+                    if hasattr(part, 'thought') and part.thought is True:
+                        complete_thinking_process += part_text + "\n\n"
                         thinking_chunks += 1
+                        has_thinking = True
+                        logger.info(f"🎯 Initial thinking detected by Gemini attribute - Part {i}")
+                        logger.info(f"🧠 Added initial text to thinking (gemini_attribute) - Part {i}: {len(part_text)} chars")
                     else:
-                        answer += part_text
+                        # This is the final answer content
+                        final_answer += part_text
                         answer_chunks += 1
+                        logger.info(f"💬 Added initial text to answer - Part {i}: {len(part_text)} chars")
 
                 elif hasattr(part, 'function_call') and part.function_call and mcp_bridge:
-                    # Handle function calls
+                    # Function call detected - add to thinking process
                     pending_function_calls.append(part.function_call)
                     function_calls_processed += 1
+                    
+                    # Add function call to thinking process
+                    complete_thinking_process += f"🔧 **Function Call:** {part.function_call.name}\n"
+                    if hasattr(part.function_call, 'args') and part.function_call.args:
+                        try:
+                            args_str = json.dumps(part.function_call.args, indent=2)
+                            complete_thinking_process += f"📋 **Arguments:**\n```json\n{args_str}\n```\n\n"
+                        except:
+                            complete_thinking_process += f"📋 **Arguments:** {part.function_call.args}\n\n"
+                    else:
+                        complete_thinking_process += "\n"
+                    
                     logger.info(f"🔧 Function call detected: {part.function_call.name}")
+                    has_thinking = True
 
-            # Process function calls if any were found
+            # Process function calls and add results to thinking
             if pending_function_calls:
                 logger.info(f"🔧 Processing {len(pending_function_calls)} function calls")
 
@@ -282,6 +285,10 @@ class ThinkingProcessor:
 
                         if execution_result.success:
                             logger.info(f"✅ Function call {func_call.name} executed successfully")
+                            
+                            # Add function result to thinking process
+                            complete_thinking_process += f"✅ **Function Result for {func_call.name}:**\n"
+                            complete_thinking_process += f"```\n{execution_result.result}\n```\n\n"
 
                             # Send function response back to the model
                             function_response = types.Part(
@@ -299,52 +306,71 @@ class ThinkingProcessor:
                                 follow_up_result.candidates[0].content.parts):
 
                                 # Process follow-up response parts
-                                for result_part in follow_up_result.candidates[0].content.parts:
+                                for j, result_part in enumerate(follow_up_result.candidates[0].content.parts):
                                     if result_part.text:
                                         total_chunks += 1
+                                        follow_text = result_part.text
 
-                                        # Check if follow-up contains thinking - trust Gemini's detection completely
-                                        is_thinking = hasattr(result_part, 'thought') and result_part.thought is True
-
-                                        if is_thinking:
-                                            thoughts += result_part.text
+                                        # Check if follow-up is thinking or final answer
+                                        if hasattr(result_part, 'thought') and result_part.thought is True:
+                                            # This is follow-up thinking
+                                            complete_thinking_process += f"🧠 **Follow-up Thinking:**\n{follow_text}\n\n"
                                             thinking_chunks += 1
                                             has_thinking = True
+                                            logger.info(f"🎯 Follow-up thinking detected (verified with patterns) - Part {j}")
+                                            logger.info(f"🧠 Added cleaned follow-up to thinking (gemini_attribute_with_reasoning_patterns) - Part {j}: {len(follow_text)} chars")
                                         else:
-                                            answer += result_part.text
-                                            answer_chunks += 1
+                                            # This is the final answer after processing tool results
+                                            cleaned_follow_text = self._clean_follow_up_content(follow_text)
+                                            if cleaned_follow_text.strip():
+                                                final_answer += cleaned_follow_text
+                                                answer_chunks += 1
+                                                logger.info(f"📝 Follow-up treated as answer - Part {j}")
+                                                logger.info(f"💬 Added cleaned follow-up to answer - Part {j}: {len(cleaned_follow_text)} chars")
 
                         else:
-                            # Function call failed - add error to answer
-                            error_msg = f"\n[Function call {func_call.name} failed: {execution_result.error}]"
-                            answer += error_msg
+                            # Function call failed - add to thinking process
+                            error_info = f"❌ **Function Call Failed:** {func_call.name}\n**Error:** {execution_result.error}\n\n"
+                            complete_thinking_process += error_info
                             logger.error(f"❌ Function call {func_call.name} failed: {execution_result.error}")
+                            has_thinking = True
 
                     except Exception as func_error:
-                        error_msg = f"\n[Function call {func_call.name} error: {str(func_error)}]"
-                        answer += error_msg
+                        # Function call error - add to thinking process
+                        error_info = f"💥 **Function Call Error:** {func_call.name}\n**Exception:** {str(func_error)}\n\n"
+                        complete_thinking_process += error_info
                         logger.error(f"❌ Function call {func_call.name} error: {func_error}")
+                        has_thinking = True
+
+            # Ensure we have a response
+            if not final_answer.strip():
+                if has_thinking and complete_thinking_process.strip():
+                    # If we only have thinking content, provide a summary
+                    final_answer = "I've completed the analysis and function calls as shown in my reasoning above."
+                else:
+                    final_answer = "I apologize, but I wasn't able to generate a proper response. Please try again."
 
             processing_time = (datetime.now() - start_time).total_seconds() * 1000
-            thinking_summary = self._create_thinking_summary(thoughts)
 
-            # Include thinking in response if requested
-            final_answer = answer
-            if include_thinking_in_response and has_thinking and thoughts.strip():
-                final_answer = f"**My Reasoning:**\n{thinking_summary}\n\n**My Response:**\n{answer}"
+            # Only include thinking in response if explicitly requested (usually false for UI display)
+            response_with_thinking = final_answer
+            if include_thinking_in_response and has_thinking and complete_thinking_process.strip():
+                response_with_thinking = f"**My Reasoning:**\n{complete_thinking_process}\n\n**My Response:**\n{final_answer}"
 
-            logger.info(f"✅ Thinking+function processing complete for user {user_id}")
+            logger.info(f"✅ Enhanced thinking+function processing complete for user {user_id}")
             logger.info(f"   📊 Total chunks: {total_chunks}")
             logger.info(f"   🧠 Thinking chunks: {thinking_chunks}")
             logger.info(f"   💬 Answer chunks: {answer_chunks}")
             logger.info(f"   🔧 Function calls: {function_calls_processed}")
             logger.info(f"   ⏱️ Processing time: {processing_time:.1f}ms")
             logger.info(f"   🎯 Has thinking: {has_thinking}")
+            if has_thinking:
+                logger.info(f"   🧠 Final thinking length: {len(complete_thinking_process)} chars")
+            logger.info(f"   💬 Final answer length: {len(final_answer)} chars")
 
             return ThinkingResult(
-                thoughts=thoughts,
-                answer=final_answer,
-                thinking_summary=thinking_summary,
+                thoughts=complete_thinking_process,  # Complete process including tool calls and results
+                answer=response_with_thinking,       # Clean final answer (without thinking unless requested)
                 total_chunks=total_chunks,
                 thinking_chunks=thinking_chunks,
                 answer_chunks=answer_chunks,
@@ -354,70 +380,73 @@ class ThinkingProcessor:
 
         except Exception as e:
             processing_time = (datetime.now() - start_time).total_seconds() * 1000
-            logger.error(f"❌ Thinking+function processing failed for user {user_id}: {e}")
+            logger.error(f"❌ Enhanced thinking+function processing failed for user {user_id}: {e}")
 
             return ThinkingResult(
                 thoughts="",
                 answer="I apologize, but I encountered an issue processing your request. Please try again.",
-                thinking_summary="",
                 total_chunks=0,
                 thinking_chunks=0,
-                answer_chunks=0,
+                answer_chunks=1,
                 processing_time_ms=processing_time,
                 has_thinking=False,
                 error=str(e)
             )
 
-
-
-    def _create_thinking_summary(self, thoughts: str, max_length: int = 200) -> str:
+    def _clean_follow_up_content(self, content: str) -> str:
         """
-        Create a concise summary of the AI's thinking process.
+        Clean follow-up content to remove conversational headers and unwanted elements.
+
+        This prevents "My Response:", "My Reasoning:", etc. from appearing in the
+        AI Reasoning dropdown or main response.
 
         Args:
-            thoughts: Raw thinking text
-            max_length: Maximum length for summary
+            content: Raw follow-up content from Gemini
 
         Returns:
-            Summarized thinking process
+            Cleaned content with headers and unwanted elements removed
         """
-        # Ensure thoughts is actually a string
-        if not isinstance(thoughts, str):
-            thoughts = str(thoughts) if thoughts else ""
+        if not content:
+            return ""
 
-        if not thoughts.strip():
-            return "No internal reasoning captured."
+        # Remove common conversational headers
+        headers_to_remove = [
+            "**My Response:**",
+            "**My Reasoning:**",
+            "**My Analysis:**",
+            "**My Thoughts:**",
+            "My Response:",
+            "My Reasoning:",
+            "My Analysis:",
+            "My Thoughts:",
+            "**Response:**",
+            "**Reasoning:**",
+            "Response:",
+            "Reasoning:"
+        ]
 
-        # Simple summarization - take key sentences
-        sentences = thoughts.replace('\n', ' ').split('. ')
+        cleaned = content
+        for header in headers_to_remove:
+            # Remove the header and any following whitespace/newlines
+            if header in cleaned:
+                parts = cleaned.split(header, 1)
+                if len(parts) > 1:
+                    # Keep everything before the header, and content after (without the header)
+                    cleaned = parts[0] + parts[1]
 
-        if len(thoughts) <= max_length:
-            return thoughts.strip()
+        # Remove excessive whitespace at start/end
+        cleaned = cleaned.strip()
 
-        # Extract key phrases and reasoning steps
-        key_phrases = []
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if len(sentence) < 10:
-                continue
+        # Remove leading/trailing newlines that might create formatting issues
+        while cleaned.startswith('\n'):
+            cleaned = cleaned[1:]
+        while cleaned.endswith('\n\n\n'):
+            cleaned = cleaned[:-1]
 
-            # Look for reasoning indicators
-            reasoning_indicators = [
-                'because', 'therefore', 'since', 'given that',
-                'considering', 'based on', 'due to', 'as a result'
-            ]
+        return cleaned
 
-            if any(indicator in sentence.lower() for indicator in reasoning_indicators):
-                key_phrases.append(sentence)
-            elif len(key_phrases) < 2:  # Ensure we have some content
-                key_phrases.append(sentence)
 
-        summary = '. '.join(key_phrases[:3])  # Max 3 key sentences
 
-        if len(summary) > max_length:
-            summary = summary[:max_length-3] + "..."
-
-        return summary.strip() if summary.strip() else "Complex reasoning process completed."
 
 def create_thinking_enabled_chat(
     client: genai.Client,

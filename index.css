@@ -1734,7 +1734,8 @@ body {
 }
 
 .thinking-container.expanded .thinking-content {
-  max-height: 400px;
+  max-height: none; /* Allow unlimited expansion for long thinking content */
+  overflow-y: auto; /* Add scroll if needed */
 }
 
 .thinking-summary {
