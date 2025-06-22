@@ -125,11 +125,11 @@ class ConversationMemory:
 class AuraMemorySearch(BaseModel):
     user_id: str
     query: str
-    n_results: int = 5
+    n_results: int = 5000
 
 class AuraEmotionalAnalysis(BaseModel):
     user_id: str
-    days: int = 7
+    days: int = 5000
 
 class AuraConversationStore(BaseModel):
     user_id: str
@@ -240,7 +240,7 @@ class AuraVectorDBCompat(EnhancedAuraVectorDB):
         self,
         query: str,
         user_id: str,
-        n_results: int = 5,
+        n_results: int = 5000,
         where_filter: Optional[Dict] = None
     ) -> List[Dict]:
         """Semantic search through conversation history"""

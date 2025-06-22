@@ -727,7 +727,7 @@ body {
   padding: 8px;
   overflow-y: auto;
   flex: 1;
-  scrollbar-width: thin;
+  /* scrollbar-width: thin; */
 }
 
 .chat-history-list::-webkit-scrollbar {
@@ -1673,4 +1673,116 @@ body {
 
 .database-error .retry-button:hover {
   background: #d32f2f;
+}
+
+/* Thinking Display Styles */
+.thinking-container {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  transition: background-color 0.3s ease;
+}
+
+.thinking-header:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.thinking-icon {
+  font-size: 1rem;
+}
+
+.thinking-label {
+  font-weight: 500;
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+.thinking-toggle {
+  font-size: 0.7rem;
+  transition: transform 0.3s ease;
+  opacity: 0.7;
+}
+
+.thinking-container.expanded .thinking-toggle {
+  transform: rotate(180deg);
+}
+
+.thinking-metrics {
+  font-size: 0.7rem;
+  opacity: 0.6;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.thinking-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.thinking-container.expanded .thinking-content {
+  max-height: 400px;
+}
+
+.thinking-summary {
+  padding: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.thinking-summary p {
+  margin: 0;
+}
+
+.thinking-summary:first-child {
+  margin-top: 0;
+}
+
+.thinking-summary:last-child {
+  margin-bottom: 0;
+}
+
+.message-content {
+  /* Ensure message content is properly separated from thinking */
+  margin-top: 0;
+}
+
+/* Light theme adjustments for thinking display */
+[data-theme="light"] .thinking-container {
+  background: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .thinking-header {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .thinking-header:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .thinking-summary {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--text-primary);
+  border-top-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .thinking-metrics {
+  background: rgba(0, 0, 0, 0.1);
 }

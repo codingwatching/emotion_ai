@@ -994,7 +994,22 @@ class AuraUIManager {
       // Update system health to show successful communication
       this.updateSystemHealth('optimal', 'Connected', 'Communication successful');
 
-      await this.displayMessage(response.response, 'aura');
+      // Display message with thinking data if available
+      const thinkingData = response.has_thinking ? {
+        has_thinking: response.has_thinking,
+        thinking_summary: response.thinking_summary,
+        thinking_metrics: response.thinking_metrics
+      } : undefined;
+
+      // Debug logging
+      console.log('🧠 Thinking data debug:', {
+        has_thinking: response.has_thinking,
+        thinking_summary: response.thinking_summary,
+        thinking_metrics: response.thinking_metrics,
+        thinkingData: thinkingData
+      });
+
+      await this.displayMessage(response.response, 'aura', thinkingData);
 
     } catch (error) {
       console.error('❌ Chat error details:', {
@@ -1063,7 +1078,7 @@ class AuraUIManager {
     this.messageArea.appendChild(this.typingIndicatorElement);
     this.scrollToBottom();
 
-    // Animate through phases
+    // Animate through phases- this is not connected to any actual process or needed really afaik
     setTimeout(() => this.updateThinkingPhase('processing'), 1000);
     setTimeout(() => this.updateThinkingPhase('responding'), 2000);
   }
@@ -1087,24 +1102,64 @@ class AuraUIManager {
     }
   }
 
-  private async displayMessage(text: string, sender: 'user' | 'aura' | 'error'): Promise<void> {
+  private async displayMessage(text: string, sender: 'user' | 'aura' | 'error', thinkingData?: any): Promise<void> {
     this.removeTypingIndicator();
+
+    // Debug logging for thinking data
+    console.log('💭 DisplayMessage called with:', {
+      sender,
+      hasThinkingData: !!thinkingData,
+      thinkingData: thinkingData
+    });
 
     const messageBubble = document.createElement('div');
     messageBubble.className = `message-bubble ${sender}`;
     messageBubble.setAttribute('role', 'log');
     messageBubble.setAttribute('data-timestamp', Date.now().toString());
 
+    // Add thinking display if available
+    if (thinkingData && thinkingData.has_thinking && sender === 'aura') {
+      console.log('🧠 Creating thinking container with data:', thinkingData);
+
+      const thinkingContainer = document.createElement('div');
+      thinkingContainer.className = 'thinking-container';
+      thinkingContainer.innerHTML = `
+        <div class="thinking-header" onclick="this.parentElement.classList.toggle('expanded')">
+          <span class="thinking-icon">🧠</span>
+          <span class="thinking-label">AI Reasoning</span>
+          <span class="thinking-toggle">▼</span>
+          <span class="thinking-metrics">${thinkingData.thinking_metrics?.thinking_chunks || 0} thoughts, ${thinkingData.thinking_metrics?.processing_time_ms?.toFixed(0) || 0}ms</span>
+        </div>
+        <div class="thinking-content">
+          <div class="thinking-summary">
+            ${thinkingData.thinking_summary ? await marked.parse(thinkingData.thinking_summary) : 'No reasoning summary available'}
+          </div>
+        </div>
+      `;
+      messageBubble.appendChild(thinkingContainer);
+    } else {
+      console.log('🚫 Not showing thinking container. Conditions:', {
+        hasThinkingData: !!thinkingData,
+        hasThinking: thinkingData?.has_thinking,
+        isAura: sender === 'aura'
+      });
+    }
+
+    // Add main message content
+    const messageContent = document.createElement('div');
+    messageContent.className = 'message-content';
+
     try {
-      messageBubble.innerHTML = await marked.parse(text);
+      messageContent.innerHTML = await marked.parse(text);
     } catch (error) {
       console.warn('Markdown parsing failed, using plain text:', error);
-      messageBubble.textContent = text;
+      messageContent.textContent = text;
     }
+
+    messageBubble.appendChild(messageContent);
 
     // Always append new messages to ensure proper chronological order
     this.messageArea.appendChild(messageBubble);
-
 
     this.scrollToBottom();
   }
@@ -1589,11 +1644,11 @@ class AuraUIManager {
   // ============================================================================
 
   /**
-   * Truncate a message to 100 characters, appending "..." if longer.
+   * Truncate a message to 100000 characters, appending "..." if longer.
    */
   private truncateMessage(message: string): string {
     if (!message) return '';
-    return message.length > 100 ? message.substring(0, 100) + '...' : message;
+    return message.length > 100000 ? message.substring(0, 100000) + '...' : message;
   }
 
   private displaySearchResults(response: any, resultsElement: HTMLElement): void {

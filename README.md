@@ -480,6 +480,12 @@ results = await vector_db.search_conversations(
 
 ## 🐛 Troubleshooting
 
+Claude has started Aura services and the stop script still doesn't work:
+
+```python
+fuser -k 8000/tcp
+```
+
 ### Common Issues
 
 1. **Installation Errors**:

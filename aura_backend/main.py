@@ -37,8 +37,8 @@ import aiofiles
 # Import MCP-Gemini Bridge
 from mcp_to_gemini_bridge import MCPGeminiBridge
 
-# Import thinking processor
-from thinking_processor import ThinkingProcessor, ThinkingResult, create_thinking_enabled_chat
+# Import thinking processor (now fixed)
+from thinking_processor import ThinkingProcessor, ThinkingResult
 
 # Import JSON serialization fix for NumPy types
 try:
@@ -102,7 +102,6 @@ from robust_vector_db import RobustAuraVectorDB as AuraVectorDB
 from database_protection import (
     DatabaseProtectionService,
     get_protection_service,
-    # protected_db_operation this got broken unfortunately, so we will not use it for now
 )
 
 # Configure logging
@@ -112,10 +111,13 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-thinking_budget = int(os.getenv('THINKING_BUDGET', '-1'))
+budget = int(os.getenv('THINKING_BUDGET', '-1'))  # Default to adaptive thinking
+# Use adaptive thinking (-1) as intended by Google, don't impose artificial limits
+thinking_budget = budget
+logger.info(f"🧠 Thinking budget configured: {thinking_budget} tokens (adaptive)" if budget == -1 else f"🧠 Thinking budget configured: {thinking_budget} tokens")
 
 # Load and configure Gemini API
-api_key = os.getenv('GOOGLE_API_KEY')
+api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
 if not api_key:
     logger.error("❌ GOOGLE_API_KEY not found in environment variables")
     raise ValueError("GOOGLE_API_KEY environment variable is required")
@@ -588,11 +590,17 @@ class ConversationResponse(BaseModel):
         emotional_state: Dictionary with detected emotional state information.
         cognitive_state: Dictionary with cognitive focus analysis results.
         session_id: Identifier for the conversation session.
+        thinking_summary: Optional summary of AI reasoning process.
+        thinking_metrics: Optional metrics about thinking processing.
+        has_thinking: Whether thinking data was captured.
     """
     response: str
     emotional_state: Dict[str, Any]
     cognitive_state: Dict[str, Any]
     session_id: str
+    thinking_summary: Optional[str] = None
+    thinking_metrics: Optional[Dict[str, Any]] = None
+    has_thinking: bool = False
 
 class SearchRequest(BaseModel):
     """
@@ -605,7 +613,7 @@ class SearchRequest(BaseModel):
     """
     user_id: str
     query: str
-    n_results: int = 25
+    n_results: int = 5000
 
 class ExecuteToolRequest(BaseModel):
     """
@@ -622,7 +630,7 @@ class ExecuteToolRequest(BaseModel):
     tool_name: str
     arguments: Dict[str, Any] = {}
     user_id: str
-    timeout: Optional[int] = 30
+    timeout: Optional[int] = 3000  # Default to 5 minutes
     metadata: Optional[Dict[str, Any]] = None
     validate_args: bool = True
 
@@ -640,8 +648,8 @@ class ExecuteToolRequest(BaseModel):
             self.arguments = {}
 
         # Validate timeout
-        if self.timeout is not None and (self.timeout < 1 or self.timeout > 300):
-            raise ValueError("Timeout must be between 1 and 300 seconds")
+        if self.timeout is not None and (self.timeout < 1 or self.timeout > 3000):
+            raise ValueError("Timeout must be between 1 and 3000 seconds")
 
 class ExecuteToolResponse(BaseModel):
     """
@@ -818,12 +826,12 @@ You have access to advanced video-based memory compression technology:
             for server, server_tools in tools_by_server.items():
                 if server != 'aura-internal':  # Skip internal tools as they're already listed
                     instruction += f"**From {server} server:**\n"
-                    for tool in server_tools[:10]:  # Limit to first 10 tools per server to avoid token overflow
+                    for tool in server_tools[:1000]:  # Limit to first 1000 tools per server to avoid token overflow
                         clean_name = tool.get('clean_name', tool['name'])
-                        instruction += f"- **{clean_name}** - {tool.get('description', 'No description')[:100]}...\n"
+                        instruction += f"- **{clean_name}** - {tool.get('description', 'No description')[:1000]}...\n"
 
-                    if len(server_tools) > 10:
-                        instruction += f"  ... and {len(server_tools) - 10} more tools from {server}\n"
+                    if len(server_tools) > 1000:
+                        instruction += f"  ... and {len(server_tools) - 1000} more tools from {server}\n"
                     instruction += "\n"
 
     if user_name:
@@ -898,7 +906,7 @@ If neutral, output "Normal (Medium)"."""
 
     try:
         result = client.models.generate_content(
-            model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
+            model=os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
             contents=[prompt]
         )
 
@@ -1000,7 +1008,7 @@ If neutral, output "Normal (Medium)"."""
 
     try:
         result = client.models.generate_content(
-            model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
+            model=os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
             contents=[prompt]
         )
 
@@ -1102,7 +1110,7 @@ Output only the component code (e.g., "KI", "ESA", "Learning")."""
 
     try:
         result = client.models.generate_content(
-            model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
+            model=os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
             contents=[prompt]
         )
 
@@ -1141,9 +1149,9 @@ async def lifespan(app: FastAPI):
     db_protection_service = get_protection_service()
     logger.info("🛡️ Database Protection Service initialized and active")
 
-    # Thinking processor temporarily disabled to restore natural conversation
-    thinking_processor = None
-    logger.info("⚠️ Thinking Processor disabled - Aura personality restored")
+    # Initialize thinking processor properly for non-streaming operation
+    thinking_processor = ThinkingProcessor(client)
+    logger.info("🧠 Thinking Processor initialized (non-streaming mode)")
 
     # Initialize with robust vector database with SQLite-level concurrency control
     vector_db = AuraVectorDB()
@@ -1552,13 +1560,28 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         )
 
         # Enhanced conversation processing with Gemini 2.5 stability fixes and autonomic integration
-        aura_response = await _process_conversation_with_retry_original(
+        aura_response, thinking_result = await _process_conversation_with_thinking(
             chat,
             request.message,
             request.user_id,
             session_key,
             session_recovery_enabled
         )
+
+        # Debug thinking result
+        if thinking_result:
+            logger.info(f"🧠 Thinking result debug for {request.user_id}:")
+            logger.info(f"   - has_thinking: {thinking_result.has_thinking}")
+            logger.info(f"   - thoughts length: {len(thinking_result.thoughts) if thinking_result.thoughts else 0}")
+            logger.info(f"   - thinking_summary length: {len(thinking_result.thinking_summary) if thinking_result.thinking_summary else 0}")
+            logger.info(f"   - thinking_summary preview: {thinking_result.thinking_summary[:100000] if thinking_result.thinking_summary else 'None'}")
+            logger.info(f"   - answer length: {len(thinking_result.answer) if thinking_result.answer else 0}")
+            logger.info(f"   - answer preview: {thinking_result.answer[:100] if thinking_result.answer else 'None'}")
+            logger.info(f"   - aura_response length: {len(aura_response) if aura_response else 0}")
+            logger.info(f"   - aura_response preview: {aura_response[:100000] if aura_response else 'None'}")
+        else:
+            logger.warning(f"⚠️ No thinking result returned for {request.user_id}")
+
         if not aura_response:
             raise HTTPException(
                 status_code=500,
@@ -1585,7 +1608,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 )
 
                 if was_offloaded:
-                    logger.info(f"🤖 Offloaded autonomic task: {task_id} - {task_description[:50]}...")
+                    logger.info(f"🤖 Offloaded autonomic task: {task_id} - {task_description[:50000]}...")
 
         # Process emotional state detection for both user and Aura
         user_emotional_state = await detect_user_emotion(
@@ -1718,7 +1741,7 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         if not persistence_success:
             background_tasks.add_task(backup_persistence_monitor)
 
-        # Format response (RESTORED ORIGINAL)
+        # Format response with thinking data
         response = ConversationResponse(
             response=aura_response,
             emotional_state={
@@ -1731,8 +1754,23 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 "focus": cognitive_state_data.focus.value if cognitive_state_data else "Learning",
                 "description": cognitive_state_data.description if cognitive_state_data else "Processing user input"
             },
-            session_id=session_id
+            session_id=session_id,
+            # Include thinking data if available - pass raw thoughts directly
+            thinking_summary=thinking_result.thoughts if thinking_result and thinking_result.thoughts else None,
+            thinking_metrics={
+                "total_chunks": thinking_result.total_chunks if thinking_result else 0,
+                "thinking_chunks": thinking_result.thinking_chunks if thinking_result else 0,
+                "answer_chunks": thinking_result.answer_chunks if thinking_result else 0,
+                "processing_time_ms": thinking_result.processing_time_ms if thinking_result else 0.0
+            } if thinking_result else None,
+            has_thinking=thinking_result.has_thinking if thinking_result else False
         )
+
+        # Debug the final response thinking data
+        logger.info(f"🔍 Final response thinking debug for {request.user_id}:")
+        logger.info(f"   - response.thinking_summary: {response.thinking_summary}")
+        logger.info(f"   - response.has_thinking: {response.has_thinking}")
+        logger.info(f"   - response.thinking_metrics: {response.thinking_metrics}")
 
         logger.info(f"✅ Processed conversation for user {request.user_id}")
         return response
@@ -1774,31 +1812,30 @@ async def _get_or_create_chat_session(
     Returns:
         Tuple containing:
         - chat_session: Google Gemini chat instance with tools and configuration
-        - was_newly_created: Boolean indicating if session was created (True) or retrieved (False)
 
-    Session Management Features:
-        - Tool version tracking and automatic updates
-        - MCP tool integration with dynamic loading
-        - Session state validation and corruption detection
-        - Automatic session recreation for outdated tool versions
-        - Error recovery with cleanup on failure
 
-    Tool Integration:
-        - Dynamic MCP tool loading from bridge
-        - Tool function conversion to Gemini format
-        - Version-based session invalidation
-        - Comprehensive tool availability logging
+async def _process_conversation_with_retry_original(
+    chat: Any,
+    message: str,
+    user_id: str,
+    session_key: str,
+    session_recovery_enabled: bool
+) -> str:
 
-    Configuration Applied:
-        - Model: Configured AURA_MODEL (default: gemini-2.5-flash-preview-05-20)
-        - Temperature: 0.7 for balanced creativity/consistency
-        - Max Output Tokens: Configurable (default: 1,000,000)
-        - Tools: All available MCP tools if bridge is active
-        - System Instruction: Complete personality and capability definition
+    max_conversation_retries = 2  # Limit conversation-level retries
 
-    Raises:
-        Exception: If session creation fails or tool integration encounters errors
+    for attempt in range(max_conversation_retries + 1):
+        try:
+            if attempt > 0:
+                logger.info(f"🔄 Conversation retry attempt {attempt} for user {user_id}")
+                await asyncio.sleep(1.0 * attempt)  # Brief delay before retry
 
+            # Send message and handle function calls with enhanced error detection
+            result = chat.send_message(message)
+
+            # Check for empty or malformed response (common Gemini 2.5 issue)
+            if not result or not result.candidates:
+                raise ValueError("Empty response from Gemini (possible tool call cutoff)")
     Note:
         Session management is critical for maintaining conversation context,
         tool availability, and optimal AI performance across interactions.
@@ -1823,15 +1860,19 @@ async def _get_or_create_chat_session(
                 tools.extend(gemini_tools)
                 logger.info(f"🔧 Added {len(gemini_tools)} MCP tools to chat session for {user_id}")
 
-            # Create chat with system instruction and tools (RESTORED ORIGINAL)
+            # Create chat with system instruction and tools - thinking enabled for non-streaming
             chat = client.chats.create(
-                model=os.getenv('AURA_MODEL', 'gemini-2.5-flash-preview-05-20'),
+                model=os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
                 config=types.GenerateContentConfig(
                     temperature=0.7,
                     max_output_tokens=int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '1000000')),
                     tools=tools if tools else None,
-                    system_instruction=system_instruction
-                    # REMOVED: thinking_config that was interfering with natural conversation
+                    system_instruction=system_instruction,
+                    # Use consistent thinking config from environment
+                    thinking_config=types.ThinkingConfig(
+                        thinking_budget=thinking_budget,
+                        include_thoughts=True
+                    )
                 )
             )
             active_chat_sessions[session_key] = chat
@@ -1853,146 +1894,7 @@ async def _get_or_create_chat_session(
         logger.debug(f"💬 Using existing chat session for {user_id}")
         return chat, False
 
-async def _process_conversation_with_retry_original(
-    chat: Any,
-    message: str,
-    user_id: str,
-    session_key: str,
-    session_recovery_enabled: bool
-) -> str:
-    """
-    RESTORED: Original conversation processing without thinking extraction.
-    This restores Aura's natural conversational personality.
-    """
-    max_conversation_retries = 2  # Limit conversation-level retries
-
-    for attempt in range(max_conversation_retries + 1):
-        try:
-            if attempt > 0:
-                logger.info(f"🔄 Conversation retry attempt {attempt} for user {user_id}")
-                await asyncio.sleep(1.0 * attempt)  # Brief delay before retry
-
-            # Send message and handle function calls with enhanced error detection
-            result = chat.send_message(message)
-
-            # Check for empty or malformed response (common Gemini 2.5 issue)
-            if not result or not result.candidates:
-                raise ValueError("Empty response from Gemini (possible tool call cutoff)")
-
-            candidate = result.candidates[0]
-            if not candidate.content or not candidate.content.parts:
-                raise ValueError("Malformed response structure from Gemini")
-
-            # Process function calls with enhanced error handling
-            final_response = ""
-            function_calls_processed = 0
-
-            for part in candidate.content.parts:
-                if part.text:
-                    final_response += part.text
-                elif hasattr(part, 'function_call') and part.function_call and mcp_gemini_bridge:
-                    function_calls_processed += 1
-                    logger.info(f"🔧 Processing function call #{function_calls_processed}: {part.function_call.name}")
-
-                    # Execute function call with retry logic (handled by MCP bridge)
-                    execution_result = await mcp_gemini_bridge.execute_function_call(
-                        part.function_call,
-                        user_id
-                    )
-
-                    if not execution_result.success:
-                        logger.error(f"❌ Tool execution failed: {execution_result.error}")
-                        # Continue processing - let the model handle the error response
-                    else:
-                        logger.info("✅ Tool execution successful")
-
-                    # Prepare function result for the model
-                    result_data = execution_result.result if execution_result.success else {"error": execution_result.error}
-
-                    # Clean result data to ensure JSON serializability (fixes int64 errors)
-                    cleaned_result_data = ensure_json_serializable(result_data)
-
-                    try:
-                        # Send function result back to model
-                        follow_up = chat.send_message([
-                            types.Part(
-                                function_response=types.FunctionResponse(
-                                    name=part.function_call.name,
-                                    response={"result": cleaned_result_data}
-                                )
-                            )
-                        ])
-
-                        # Extract final response after function execution
-                        if (follow_up.candidates and
-                            follow_up.candidates[0].content and
-                            follow_up.candidates[0].content.parts):
-                            for follow_part in follow_up.candidates[0].content.parts:
-                                if follow_part.text:
-                                    final_response += follow_part.text
-                        else:
-                            logger.warning("⚠️ Empty follow-up response after function call")
-
-                    except Exception as follow_up_error:
-                        logger.error(f"❌ Follow-up message failed: {follow_up_error}")
-                        # This is a common Gemini 2.5 issue - treat as recoverable
-                        final_response += f"\n[Tool executed but response processing incomplete: {execution_result.error if not execution_result.success else 'completed'}]"
-
-            # Validate final response
-            if not final_response.strip():
-                raise ValueError("Empty final response generated (possible Gemini 2.5 cutoff)")
-
-            logger.info(f"✅ Conversation processed successfully for {user_id} (attempt {attempt + 1})")
-            logger.info(f"📊 Function calls processed: {function_calls_processed}")
-            return final_response
-
-        except Exception as e:
-            logger.error(f"❌ Conversation processing failed (attempt {attempt + 1}): {e}")
-
-            # Check if this is a recoverable error for Gemini 2.5 issues
-            error_str = str(e).lower()
-            recoverable_errors = [
-                "empty response",
-                "malformed response",
-                "cutoff",
-                "tool call",
-                "function call",
-                "follow-up",
-                "response processing incomplete"
-            ]
-
-            is_recoverable = any(keyword in error_str for keyword in recoverable_errors)
-
-            if is_recoverable and attempt < max_conversation_retries:
-                logger.info("🔄 Recoverable error detected, will retry conversation processing")
-
-                # If session recovery is enabled, try to recreate the session
-                if session_recovery_enabled and attempt > 0:
-                    logger.info(f"🔄 Attempting to recreate session for {user_id}")
-                    try:
-                        if session_key in active_chat_sessions:
-                            del active_chat_sessions[session_key]
-                        if session_key in session_tool_versions:
-                            del session_tool_versions[session_key]
-                        logger.info("🧹 Session cleared for recreation")
-                    except Exception as cleanup_error:
-                        logger.warning(f"⚠️ Session cleanup warning: {cleanup_error}")
-
-                continue  # Retry the conversation
-            else:
-                # Non-recoverable error or max retries reached
-                if attempt == max_conversation_retries:
-                    logger.error(f"💥 All conversation attempts failed for {user_id}")
-
-                # Return a fallback response instead of failing completely
-                fallback_response = "I apologize, but I'm experiencing some technical difficulties processing your request. Please try again, and I'll do my best to help you."
-                logger.warning(f"🛡️ Returning fallback response for {user_id}")
-                return fallback_response
-
-    # This should never be reached due to the loop structure, but safety fallback
-    return "I'm here and ready to help, though I may have encountered some processing issues."
-
-async def _process_conversation_with_retry(
+async def _process_conversation_with_thinking(
     chat: Any,
     message: str,
     user_id: str,
@@ -2000,10 +1902,11 @@ async def _process_conversation_with_retry(
     session_recovery_enabled: bool
 ) -> Tuple[str, Optional[ThinkingResult]]:
     """
-    Process conversation with thinking extraction and enhanced error handling.
+    Process conversation with thinking extraction (non-streaming mode).
 
-    Enhanced version that uses the thinking processor to extract AI reasoning
-    while maintaining all the existing stability features for Gemini 2.5.
+    Uses the thinking processor to extract AI reasoning in a non-streaming mode
+    that works well with Aura's architecture. This avoids the streaming issues
+    while still providing thinking transparency.
 
     Args:
         chat: Google Gemini chat session instance
@@ -2016,49 +1919,39 @@ async def _process_conversation_with_retry(
         Tuple containing:
         - Generated AI response text after processing and function execution
         - ThinkingResult object with extracted thoughts and metadata
-
-    New Features:
-        - Thinking extraction with transparent reasoning visibility
-        - Thought summary generation for cognitive analysis
-        - Enhanced logging with thinking metrics
-        - Optional thinking inclusion in responses
-
-    Maintains all existing features:
-        - Stability fixes for Gemini 2.5 issues
-        - Function call processing with MCP integration
-        - Recovery mechanisms and retry logic
-        - Error handling and graceful degradation
     """
-    max_conversation_retries = 2  # Limit conversation-level retries
+    max_conversation_retries = 2
 
     for attempt in range(max_conversation_retries + 1):
         try:
             if attempt > 0:
-                logger.info(f"🔄 Conversation retry attempt {attempt} for user {user_id}")
-                await asyncio.sleep(1.0 * attempt)  # Brief delay before retry
+                logger.info(f"🔄 Thinking conversation retry attempt {attempt} for user {user_id}")
+                await asyncio.sleep(1.0 * attempt)
 
-            # Use thinking processor for enhanced conversation processing
+            # Use thinking processor for non-streaming extraction
+            # Include thinking in response only if explicitly enabled (usually false for separate UI display)
             include_thinking_in_response = os.getenv('INCLUDE_THINKING_IN_RESPONSE', 'false').lower() == 'true'
 
-            if mcp_gemini_bridge and thinking_processor:
-                # Process with both function calls and thinking
-                # I am not sure, this was maybe, maybe! confused, the thinking was supposed to display in the ui in a collapsed area
-                # and the aura_autonomic_system.py is supposed to handle most function calls.
-                thinking_result = await thinking_processor.process_with_function_calls_and_thinking(
-                    chat=chat,
-                    message=message,
-                    user_id=user_id,
-                    mcp_bridge=mcp_gemini_bridge,
-                    include_thinking_in_response=include_thinking_in_response
-                )
-            elif thinking_processor:
-                # Process with thinking only (no function calls)
-                thinking_result = await thinking_processor.process_message_with_thinking(
-                    chat=chat,
-                    message=message,
-                    user_id=user_id,
-                    include_thinking_in_response=include_thinking_in_response
-                )
+            # Process with thinking using the FIXED approach that handles function calls properly
+            if thinking_processor:
+                # Always use the function call aware method when MCP bridge is available
+                if mcp_gemini_bridge:
+                    # This is the RESTORED method that properly handles both function calls AND thinking
+                    thinking_result = await thinking_processor.process_with_function_calls_and_thinking(
+                        chat=chat,
+                        message=message,
+                        user_id=user_id,
+                        mcp_bridge=mcp_gemini_bridge,
+                        include_thinking_in_response=include_thinking_in_response
+                    )
+                else:
+                    # Process with thinking only when no tools available
+                    thinking_result = await thinking_processor.process_message_with_thinking(
+                        chat=chat,
+                        message=message,
+                        user_id=user_id,
+                        include_thinking_in_response=include_thinking_in_response
+                    )
             else:
                 # Fallback to original processing if thinking processor unavailable
                 logger.warning(f"⚠️ Thinking processor unavailable, using fallback for {user_id}")
@@ -2090,10 +1983,10 @@ async def _process_conversation_with_retry(
 
             # Validate final response
             if not thinking_result.answer.strip():
-                raise ValueError("Empty final response generated (possible Gemini 2.5 cutoff)")
+                raise ValueError("Empty final response generated")
 
             # Enhanced logging with thinking metrics
-            logger.info(f"✅ Thinking-enabled conversation processed successfully for {user_id} (attempt {attempt + 1})")
+            logger.info(f"✅ Thinking conversation processed successfully for {user_id} (attempt {attempt + 1})")
             logger.info(f"   🧠 Has thinking: {thinking_result.has_thinking}")
             if thinking_result.has_thinking:
                 logger.info(f"   💭 Thinking summary: {thinking_result.thinking_summary[:100]}...")
@@ -2170,7 +2063,6 @@ async def _process_conversation_with_retry(
         has_thinking=False
     )
     return "I'm here and ready to help, though I may have encountered some processing issues.", fallback_thinking
-
 async def _analyze_conversation_for_autonomic_tasks(
     user_message: str,
     aura_response: str,
@@ -2296,7 +2188,7 @@ async def _analyze_conversation_for_autonomic_tasks(
                 "query": user_message,
                 "user_id": user_id,
                 "session_id": session_id,
-                "max_results": 15
+                "max_results": 5000  # Adjust as needed for performance
             }
         ))
 
@@ -2532,10 +2424,15 @@ async def get_thinking_status() -> Dict[str, Any]:
     and system readiness for transparent AI reasoning.
     """
     try:
+        budget = int(os.getenv('THINKING_BUDGET', '-1'))
+        effective_budget = budget  # No conversion - pass through -1 for adaptive thinking
+
         thinking_config = {
             "thinking_enabled": thinking_processor is not None,
-            "thinking_budget": int(os.getenv('THINKING_BUDGET', '-1')),
-            "include_thinking_in_response": os.getenv('INCLUDE_THINKING_IN_RESPONSE', 'true').lower() == 'false',
+            "thinking_budget": effective_budget,
+            "thinking_budget_raw": budget,
+            "thinking_budget_max": 24576,
+            "include_thinking_in_response": os.getenv('INCLUDE_THINKING_IN_RESPONSE', 'false').lower() == 'true',
             "model": os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
             "supports_thinking": True,  # Gemini models support thinking
         }
@@ -2690,7 +2587,7 @@ async def export_user_data(user_id: str, format: str = "json"):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/chat-history/{user_id}")
-async def get_chat_history(user_id: str, limit: int = 50000) -> Dict[str, Any]:
+async def get_chat_history(user_id: str, limit: int = 5000) -> Dict[str, Any]:
     """
     Retrieve comprehensive chat history for a user with thread-safe database access.
 
@@ -2774,7 +2671,7 @@ async def get_chat_history(user_id: str, limit: int = 50000) -> Dict[str, Any]:
 
             transformed_session = {
                 "session_id": session["session_id"],
-                "last_message": last_message_content[:100] + "..." if len(last_message_content) > 100 else last_message_content,
+                "last_message": last_message_content[:10000] + "..." if len(last_message_content) > 10000 else last_message_content,
                 "message_count": len(messages),
                 "timestamp": session.get("last_time", session.get("start_time", ""))  # Use last_time as timestamp
             }
@@ -3332,7 +3229,7 @@ async def get_mcp_system_status():
                     tools_by_server[server] = []
                 tools_by_server[server].append({
                     "name": tool["name"],
-                    "description": tool["description"][:100] + "..." if len(tool["description"]) > 100 else tool["description"]
+                    "description": tool["description"][:10000] + "..." if len(tool["description"]) > 10000 else tool["description"]
                 })
 
             status["tools_by_server"] = tools_by_server
@@ -3432,7 +3329,7 @@ async def test_persistence_reliability():
         )
 
         # Check chat history retrieval
-        history_result = await conversation_persistence.safe_get_chat_history(test_user_id, 10)
+        history_result = await conversation_persistence.safe_get_chat_history(test_user_id, limit=10)
 
         return {
             "status": "success",

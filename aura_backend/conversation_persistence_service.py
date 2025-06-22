@@ -829,7 +829,7 @@ class ConversationPersistenceService:
         self,
         query: str,
         user_id: str,
-        n_results: int = 50,
+        n_results: int = 5000,
         include_emotional_context: bool = True,
         include_temporal_context: bool = True
     ) -> List[Dict[str, Any]]:
@@ -1204,7 +1204,7 @@ class ConversationPersistenceService:
 
             return []
 
-    async def safe_get_chat_history(self, user_id: str, limit: int = 50) -> Dict[str, Any]:
+    async def safe_get_chat_history(self, user_id: str, limit: int = 5000) -> Dict[str, Any]:
         """
         Thread-safe retrieval of chat history with enhanced error handling.
 
@@ -1326,7 +1326,7 @@ class ConversationPersistenceService:
                 logger.error(f"❌ Safe chat history retrieval failed: {e}")
                 return {"sessions": [], "total": 0, "error": str(e)}
 
-    async def get_fresh_chat_history(self, user_id: str, limit: int = 2000) -> Dict[str, Any]:
+    async def get_fresh_chat_history(self, user_id: str, limit: int = 5000) -> Dict[str, Any]:
         """
         Get fresh chat history with aggressive deduplication for fixing stale UI data.
 
@@ -1415,7 +1415,7 @@ class ConversationPersistenceService:
                         for msg in reversed(session_data["messages"]):
                             if msg.get("content"):
                                 content = msg["content"]
-                                last_message = content[:100] + "..." if len(content) > 100 else content
+                                last_message = content[:10000] + "..." if len(content) > 10000 else content
                                 break
 
                         fresh_sessions.append({
@@ -1653,7 +1653,7 @@ class PersistenceHealthCheck:
             "max_error_rate": 0.05,  # 5% error rate
             "min_success_rate": 0.95,
             "max_failed_operations_queued": 10,
-            "max_hours_since_last_cleanup": 24
+            "max_hours_since_last_cleanup": 2400000
         }
 
     async def check_health(self) -> Dict[str, Any]:

@@ -118,6 +118,7 @@ The `/conversation` endpoint now returns thinking information:
 
 ### Thinking Budget
 Controls the depth and complexity of AI reasoning:
+- **-1**: Adaptive
 - **1024-4096**: Quick reasoning for simple questions
 - **4096-8192**: Balanced reasoning for most use cases (recommended)
 - **8192-16384**: Deep reasoning for complex problems

@@ -31,6 +31,14 @@ export interface ConversationResponse {
   emotional_state: EmotionalState;
   cognitive_state: CognitiveState;
   session_id: string;
+  thinking_summary?: string;
+  thinking_metrics?: {
+    total_chunks: number;
+    thinking_chunks: number;
+    answer_chunks: number;
+    processing_time_ms: number;
+  };
+  has_thinking: boolean;
 }
 
 export interface SearchRequest {
@@ -113,7 +121,7 @@ export class AuraAPI {
   // Connection state tracking
   private isConnected: boolean = false;
   private lastHealthCheck: number = 0;
-  private healthCheckInterval: number = 30000; // 30 seconds
+  private healthCheckInterval: number = 300000; // 300 seconds
 
   /**
    * Initializes the AuraAPI instance, sets base URL, timeouts, retries, and starts health monitoring.
@@ -121,7 +129,7 @@ export class AuraAPI {
    */
   private constructor() {
     this.baseUrl = this.getApiBaseUrl();
-    this.timeout = 30000; // 30 seconds
+    this.timeout = 300000; // 300 seconds
     this.maxRetries = 3;
 
     // Start periodic health checks
@@ -384,7 +392,7 @@ export class AuraAPI {
   async healthCheck(): Promise<HealthCheckResponse> {
     return this.makeRequest<HealthCheckResponse>('/health', {
       method: 'GET',
-      timeout: 5000 // Shorter timeout for health checks
+      timeout: 50000 // Shorter timeout for health checks
     });
   }
 
@@ -403,7 +411,7 @@ export class AuraAPI {
       const response = await this.makeRequest<ConversationResponse>('/conversation', {
         method: 'POST',
         body: request,
-        timeout: 60000 // Longer timeout for conversation processing
+        timeout: 600000 // Longer timeout for conversation processing
       });
 
       // Validate response structure
@@ -422,10 +430,10 @@ export class AuraAPI {
    * Searches user memories based on a query.
    * @param {string} userId The user identifier.
    * @param {string} query Search query string.
-   * @param {number} [nResults=5] Number of results to return (1-50).
+   * @param {number} [nResults=50000] Number of results to return (1-50000).
    * @returns {Promise<SearchResponse>}
    */
-  async searchMemories(userId: string, query: string, nResults: number = 5): Promise<SearchResponse> {
+  async searchMemories(userId: string, query: string, nResults: number = 50000): Promise<SearchResponse> {
     if (!userId || !query.trim()) {
       throw new Error('User ID and query are required');
     }
@@ -436,7 +444,7 @@ export class AuraAPI {
         body: {
           user_id: userId,
           query: query.trim(),
-          n_results: Math.max(1, Math.min(nResults, 50)) // Clamp between 1 and 50
+          n_results: Math.max(1, Math.min(nResults, 50000)) // Clamp between 1 and 50000
         }
       });
 
@@ -496,16 +504,16 @@ export class AuraAPI {
   /**
    * Retrieves chat history sessions for a user.
    * @param {string} userId The user identifier.
-   * @param {number} [limit=50] Maximum sessions to retrieve (1-200).
+   * @param {number} [limit=50000] Maximum sessions to retrieve (1-50000).
    * @returns {Promise<ChatHistoryResponse>}
    */
-  async getChatHistory(userId: string, limit: number = 50): Promise<ChatHistoryResponse> {
+  async getChatHistory(userId: string, limit: number = 50000): Promise<ChatHistoryResponse> {
     if (!userId) {
       throw new Error('User ID is required');
     }
 
     try {
-      const clampedLimit = Math.max(1, Math.min(limit, 200)); // Clamp between 1 and 200
+      const clampedLimit = Math.max(1, Math.min(limit, 200000)); // Clamp between 1 and 200000
       const response = await this.makeRequest<ChatHistoryResponse>(
         `/chat-history/${encodeURIComponent(userId)}?limit=${clampedLimit}`,
         { method: 'GET' }
