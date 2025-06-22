@@ -127,8 +127,10 @@ class ThinkingProcessor:
                     continue
 
                 # Check if this part is thinking content (based on Google's documentation)
-                if hasattr(part, 'thought') and part.thought is True:
-                    # This is thinking content - add to thoughts
+                # Only add to thoughts if it's explicitly marked as thinking AND contains actual reasoning
+                if (hasattr(part, 'thought') and part.thought is True and 
+                    not self._looks_like_final_response(text_content)):
+                    # This is actual thinking content - add to thoughts
                     thoughts += text_content
                     has_thinking = True
                     thinking_chunks += 1
@@ -136,7 +138,7 @@ class ThinkingProcessor:
                     if debug_mode:
                         logger.debug(f"🔍 Thinking content preview: {text_content[:100]}...")
                 else:
-                    # This is regular answer content (including when part.thought is None or False)
+                    # This is regular answer content 
                     answer += text_content
                     if debug_mode:
                         logger.debug(f"🔍 Added answer part: {len(text_content)} chars")
@@ -252,8 +254,9 @@ class ThinkingProcessor:
                 if part.text:
                     part_text = part.text
 
-                    # Check if this is thinking content
-                    is_thinking = hasattr(part, 'thought') and part.thought is True
+                    # Check if this is thinking content - exclude final responses
+                    is_thinking = (hasattr(part, 'thought') and part.thought is True and 
+                                 not self._looks_like_final_response(part_text))
 
                     if is_thinking:
                         if not has_thinking:
@@ -303,8 +306,9 @@ class ThinkingProcessor:
                                     if result_part.text:
                                         total_chunks += 1
 
-                                        # Check if follow-up contains thinking
-                                        is_thinking = hasattr(result_part, 'thought') and result_part.thought is True
+                                        # Check if follow-up contains thinking - exclude final responses  
+                                        is_thinking = (hasattr(result_part, 'thought') and result_part.thought is True and 
+                                                     not self._looks_like_final_response(result_part.text))
 
                                         if is_thinking:
                                             thoughts += result_part.text
@@ -367,6 +371,45 @@ class ThinkingProcessor:
                 has_thinking=False,
                 error=str(e)
             )
+
+    def _looks_like_final_response(self, text_content: str) -> bool:
+        """
+        Check if text content looks like a final response rather than internal thinking.
+        
+        Args:
+            text_content: The text to analyze
+            
+        Returns:
+            True if this looks like a response to the user, not internal thinking
+        """
+        if not text_content or len(text_content.strip()) < 10:
+            return False
+            
+        text_lower = text_content.lower().strip()
+        
+        # Signs this is likely a direct response to the user (NOT thinking)
+        response_indicators = [
+            "hello ty!", "hi ty!", "hello there", "hi there",
+            "thank you for", "thanks for", "i'm glad", "that's great",
+            "wonderful to hear", "nice to hear", "good to hear",
+            "i'm doing well", "i'm feeling", "i'm ready",
+            "let me help", "i can help", "how can i assist",
+            "what would you like", "what can i do",
+            "my cognitive processes are flowing",
+            "i'm prepared for whatever",
+            "my memory systems are indeed fully operational"
+        ]
+        
+        # If it contains these patterns, it's probably a response
+        for indicator in response_indicators:
+            if indicator in text_lower:
+                return True
+                
+        # If it starts like a direct response, it's probably not thinking
+        if text_lower.startswith(("hello", "hi", "thank", "i'm", "my ", "that's", "wonderful", "great")):
+            return True
+            
+        return False
 
     def _create_thinking_summary(self, thoughts: str, max_length: int = 200) -> str:
         """
