@@ -1755,8 +1755,8 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 "description": cognitive_state_data.description if cognitive_state_data else "Processing user input"
             },
             session_id=session_id,
-            # Include thinking data if available - pass raw thoughts directly
-            thinking_summary=thinking_result.thoughts if thinking_result and thinking_result.thoughts else None,
+            # Include thinking data if available - use the processed thinking_summary, not raw thoughts
+            thinking_summary=thinking_result.thinking_summary if thinking_result and thinking_result.thinking_summary else None,
             thinking_metrics={
                 "total_chunks": thinking_result.total_chunks if thinking_result else 0,
                 "thinking_chunks": thinking_result.thinking_chunks if thinking_result else 0,
