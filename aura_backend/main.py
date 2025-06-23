@@ -1946,7 +1946,8 @@ async def _process_conversation_with_thinking(
                 await asyncio.sleep(1.0 * attempt)
 
             # Use thinking processor for non-streaming extraction
-            # Include thinking in response only if explicitly enabled (usually false for separate UI display)
+            # This usually would mean thinking or no thinking phase enabled and it is AI confusion to have set up if the user wants thoughts in the block or in the response area.
+            # Include thinking in response only if explicitly enabled (usually false for separate UI display)- this is the AI being confused and should be removed. It is not usually done at all.
             include_thinking_in_response = os.getenv('INCLUDE_THINKING_IN_RESPONSE', 'false').lower() == 'true'
 
             # Process with thinking using the non-streaming approach
@@ -2083,62 +2084,259 @@ async def _analyze_conversation_for_autonomic_tasks(
     session_id: str
 ) -> List[Tuple[str, Dict[str, Any]]]:
     """
-    AI-driven analysis for autonomic task identification.
+    Enhanced autonomic task analysis with multi-task generation and intelligent offloading.
 
-    Uses intelligent analysis rather than crude keyword matching to identify
-    meaningful background processing opportunities that enhance user experience.
+    This function fully integrates with the autonomic system to analyze conversations
+    and generate multiple specialized tasks based on different aspects of the interaction.
+    It leverages the full capabilities of the TaskClassifier and creates diverse task types
+    for optimal background processing.
+
+    Args:
+        user_message: The user's input message
+        aura_response: Aura's generated response
+        user_id: Unique identifier for the user
+        session_id: Session identifier for context
+
+    Returns:
+        List of task tuples that were successfully submitted to the autonomic system.
+        Each tuple contains (description, payload) for tracking purposes.
+
+    Task Generation Strategy:
+        - Analyzes conversation for multiple task opportunities
+        - Creates specialized tasks for different processing needs
+        - Leverages all available task types (MCP tools, analysis, memory, etc.)
+        - Optimizes task priority based on conversation context
     """
-    potential_tasks = []
+    submitted_tasks = []
 
-    # Only create autonomic tasks for substantial conversations that could benefit from background processing
-    if len(user_message.split()) > 8 or len(aura_response.split()) > 15:
+    # Only proceed if autonomic system is available and running
+    if not autonomic_system or not autonomic_system._running:
+        logger.debug("🤖 Autonomic system not available or not running, skipping task analysis")
+        return submitted_tasks
 
-        # Use AI to analyze if this conversation would benefit from background processing
-        analysis_prompt = f"""Analyze this conversation to determine if it would benefit from background processing tasks:
+    # Calculate conversation metrics
+    conversation_length = len(user_message.split()) + len(aura_response.split())
+    user_message_lower = user_message.lower()
+    aura_response_lower = aura_response.lower()
+    combined_text_lower = user_message_lower + " " + aura_response_lower
 
-User: {user_message}
-Aura: {aura_response}
+    # Minimum threshold for basic autonomic processing
+    if conversation_length < 10:
+        logger.debug(f"🤖 Conversation too short ({conversation_length} words) for autonomic processing")
+        return submitted_tasks
 
-Consider:
-- Emotional complexity or personal sharing
-- Learning or knowledge-building opportunities
-- Memory consolidation needs
-- Pattern analysis potential
+    try:
+        # Track task opportunities
+        task_opportunities = []
 
-If this conversation would benefit from background analysis, respond with "YES" and briefly explain why.
-If not, respond with "NO"."""
+        # 1. EMOTIONAL PATTERN ANALYSIS - for conversations with emotional content
+        emotional_indicators = ["feel", "emotion", "happy", "sad", "angry", "anxious",
+                              "worried", "excited", "frustrated", "love", "hate",
+                              "personal", "sharing", "struggle", "difficult"]
 
-        try:
-            result = client.models.generate_content(
-                model=os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
-                contents=[analysis_prompt]
-            )
+        has_emotional_content = any(indicator in user_message_lower for indicator in emotional_indicators)
 
-            analysis_result = result.text.strip() if result.text else ""
-
-            if analysis_result.upper().startswith('YES'):
-                # Create a meaningful autonomic task based on the conversation context
-                potential_tasks.append((
-                    f"Background analysis and pattern recognition for user {user_id}",
-                    {
-                        "task_type": "intelligent_analysis",
+        if has_emotional_content or conversation_length > 50:
+            task_opportunities.append({
+                "description": f"Deep emotional pattern analysis for user {user_id}",
+                "payload": {
+                    "tool_name": "analyze_emotional_patterns",
+                    "arguments": {
+                        "user_id": user_id,
+                        "days": 30,  # Analyze last 30 days
+                        "include_conversation": True
+                    },
+                    "conversation_context": {
                         "user_message": user_message,
                         "aura_response": aura_response,
+                        "emotional_indicators_found": [ind for ind in emotional_indicators if ind in user_message_lower]
+                    }
+                },
+                "task_type_hint": "DATA_ANALYSIS",
+                "priority_boost": 0.2 if has_emotional_content else 0.1
+            })
+
+        # 2. MEMORY SEARCH AND CONSOLIDATION - for knowledge-seeking conversations
+        knowledge_indicators = ["remember", "recall", "previously", "last time", "before",
+                              "search", "find", "look for", "history", "past conversation"]
+        memory_indicators = ["learn", "understand", "explain", "teach", "how", "what", "why",
+                           "tell me about", "help me understand"]
+
+        needs_memory_search = any(indicator in combined_text_lower for indicator in knowledge_indicators)
+        needs_knowledge_building = any(indicator in combined_text_lower for indicator in memory_indicators)
+
+        if needs_memory_search or (conversation_length > 30 and needs_knowledge_building):
+            # Extract potential search query from conversation
+            search_query = user_message if len(user_message) > 20 else f"{user_message} {aura_response[:100]}"
+
+            task_opportunities.append({
+                "description": f"Comprehensive memory search and pattern extraction for user {user_id}",
+                "payload": {
+                    "tool_name": "search_all_memories",
+                    "arguments": {
+                        "query": search_query,
+                        "user_id": user_id,
+                        "max_results": 20
+                    },
+                    "analysis_required": True,
+                    "consolidate_findings": needs_knowledge_building
+                },
+                "task_type_hint": "MEMORY_SEARCH",
+                "priority_boost": 0.3 if needs_memory_search else 0.1
+            })
+
+        # 3. PATTERN RECOGNITION - for complex analytical conversations
+        analytical_indicators = ["analyze", "pattern", "trend", "insight", "data",
+                               "statistics", "correlation", "relationship", "connection"]
+
+        needs_pattern_analysis = (any(indicator in combined_text_lower for indicator in analytical_indicators)
+                                or conversation_length > 100)
+
+        if needs_pattern_analysis:
+            task_opportunities.append({
+                "description": f"Advanced pattern recognition and insight generation for user {user_id}",
+                "payload": {
+                    "analysis_type": "conversation_patterns",
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "conversation_data": {
+                        "message": user_message,
+                        "response": aura_response,
+                        "length": conversation_length,
+                        "complexity_score": len(set(combined_text_lower.split())) / conversation_length  # Vocabulary diversity
+                    },
+                    "extract_insights": True
+                },
+                "task_type_hint": "PATTERN_ANALYSIS",
+                "priority_boost": 0.2
+            })
+
+        # 4. KNOWLEDGE ARCHIVAL - for very long or information-rich conversations
+        if conversation_length > 150 or (conversation_length > 80 and needs_knowledge_building):
+            task_opportunities.append({
+                "description": f"Archive and compress conversation knowledge for user {user_id}",
+                "payload": {
+                    "tool_name": "archive_old_conversations",
+                    "arguments": {
                         "user_id": user_id,
                         "session_id": session_id,
-                        "analysis_reason": analysis_result,
-                        "conversation_context": f"User: {user_message}\nAura: {aura_response}"
+                        "priority_content": True
+                    },
+                    "conversation_summary": {
+                        "key_topics": "auto_extract",
+                        "emotional_tone": "analyze",
+                        "knowledge_gained": "summarize"
                     }
-                ))
-                logger.info(f"🤖 AI identified autonomic task opportunity: {analysis_result[:100]}...")
-            else:
-                logger.debug("🤖 AI determined no autonomic task needed for this conversation")
+                },
+                "task_type_hint": "BACKGROUND_PROCESSING",
+                "priority_boost": 0.1
+            })
 
-        except Exception as e:
-            logger.debug(f"⚠️ Autonomic task analysis failed, skipping: {e}")
-            # Don't create tasks if analysis fails - better to have fewer, meaningful tasks
+        # 5. COMPLEX REASONING - for philosophical or deep thinking conversations
+        reasoning_indicators = ["philosophy", "meaning", "purpose", "think about", "wonder",
+                              "hypothetical", "imagine", "suppose", "theory", "concept"]
 
-    return potential_tasks
+        needs_deep_reasoning = any(indicator in combined_text_lower for indicator in reasoning_indicators)
+
+        if needs_deep_reasoning and conversation_length > 40:
+            task_opportunities.append({
+                "description": f"Deep reasoning and philosophical analysis for user {user_id}",
+                "payload": {
+                    "reasoning_type": "philosophical_analysis",
+                    "conversation_context": f"User: {user_message}\nAura: {aura_response}",
+                    "user_id": user_id,
+                    "explore_concepts": True,
+                    "generate_insights": True
+                },
+                "task_type_hint": "COMPLEX_REASONING",
+                "priority_boost": 0.25
+            })
+
+        # 6. REAL-TIME TOOL EXECUTION - for conversations mentioning specific tools
+        tool_indicators = ["create", "generate", "make", "build", "code", "script",
+                         "program", "calculate", "compute", "visualize"]
+
+        needs_tool_execution = any(indicator in combined_text_lower for indicator in tool_indicators)
+
+        if needs_tool_execution:
+            task_opportunities.append({
+                "description": f"Background tool execution and code generation for user {user_id}",
+                "payload": {
+                    "execution_type": "deferred_tool_call",
+                    "conversation_request": user_message,
+                    "preliminary_response": aura_response,
+                    "user_id": user_id,
+                    "generate_artifacts": True
+                },
+                "task_type_hint": "CODE_GENERATION",
+                "priority_boost": 0.3
+            })
+
+        # Submit each identified task opportunity to the autonomic system
+        for task_opp in task_opportunities:
+            try:
+                # Create enhanced user context for better classification
+                user_context = {
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "conversation_length": conversation_length,
+                    "is_substantial": conversation_length > 40,
+                    "task_type_hint": task_opp.get("task_type_hint", "BACKGROUND_PROCESSING"),
+                    "priority_boost": task_opp.get("priority_boost", 0.0),
+                    "user_waiting": False  # Background tasks don't block user
+                }
+
+                # Use the autonomic system's TaskClassifier
+                should_offload, task_type, priority = await autonomic_system.classifier.should_offload_task(
+                    task_description=task_opp["description"],
+                    task_payload=task_opp["payload"],
+                    user_context=user_context
+                )
+
+                if should_offload:
+                    # Submit task to autonomic system
+                    was_offloaded, task_id = await autonomic_system.submit_task(
+                        description=task_opp["description"],
+                        payload=task_opp["payload"],
+                        user_id=user_id,
+                        session_id=session_id
+                    )
+
+                    if was_offloaded:
+                        logger.info(f"🤖 Successfully submitted autonomic task: {task_id}")
+                        logger.info(f"   Type: {task_type.value}, Priority: {priority.value}")
+                        logger.info(f"   Description: {task_opp['description'][:100]}...")
+
+                        # Add to submitted tasks list
+                        submitted_tasks.append((task_opp["description"], task_opp["payload"]))
+                    else:
+                        logger.debug(f"🤖 Task not offloaded (queue/rate limit): {task_opp['description'][:50]}...")
+                else:
+                    logger.debug(f"🤖 Task classified as not needing offload: {task_opp['description'][:50]}...")
+
+            except Exception as task_error:
+                logger.debug(f"⚠️ Failed to submit individual task: {task_error}")
+                # Continue with other tasks even if one fails
+
+        # Log final autonomic system status if tasks were submitted
+        if submitted_tasks:
+            system_status = autonomic_system.get_system_status()
+            logger.info("🤖 Autonomic system status after submissions:")
+            logger.info(f"   Submitted tasks: {len(submitted_tasks)}")
+            logger.info(f"   Queue status: {system_status['queued_tasks']} queued, {system_status['active_tasks']} active")
+            logger.info(f"   Queue utilization: {system_status['queue_utilization']:.1f}%")
+
+            # Log rate limiting status
+            rate_status = system_status.get('rate_limiting', {})
+            if rate_status:
+                logger.debug(f"   Rate limit: {rate_status.get('rpm_current', 0)}/{rate_status.get('rpm_limit', 30)} RPM")
+
+    except Exception as e:
+        logger.warning(f"⚠️ Autonomic task analysis failed: {e}")
+        logger.debug(f"   Error details: {type(e).__name__}: {str(e)}")
+        # Don't let autonomic system failures affect main conversation
+
+    return submitted_tasks
 @app.post("/search")
 async def search_memories(request: SearchRequest) -> Dict[str, Any]:
     """
