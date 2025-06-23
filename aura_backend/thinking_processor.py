@@ -357,16 +357,35 @@ class ThinkingProcessor:
                                             logger.info(f"💬 Added cleaned follow-up to answer - Part {j}: {len(cleaned_follow_text)} chars")
 
                                 elif hasattr(result_part, 'function_call') and result_part.function_call and mcp_bridge:
-                                    # Handle additional function calls in response phase (simplified)
-                                    logger.info(f"🔧 Additional function call detected in response: {result_part.function_call.name}")
+                                    # EXECUTE additional function calls as intended - no "efficiency" sabotage!
+                                    logger.info(f"🔧 Executing additional function call in response: {result_part.function_call.name}")
 
-                                    # Add to thinking process but don't execute iteratively to avoid delays
-                                    complete_thinking_process += f"🔧 **Response Phase Function Call Detected:** {result_part.function_call.name}\n"
-                                    complete_thinking_process += "📋 *Note: Additional function calling in response phase - execution deferred to prevent delays*\n\n"
+                                    try:
+                                        # ACTUALLY EXECUTE the function call instead of deferring it
+                                        execution_result = await mcp_bridge.execute_function_call(
+                                            result_part.function_call,
+                                            user_id
+                                        )
 
-                                    # Count it but don't execute to avoid complexity/delays
-                                    function_calls_processed += 1
-                                    has_thinking = True
+                                        if execution_result.success:
+                                            complete_thinking_process += f"🔧 **Additional Function Call:** {result_part.function_call.name}\n"
+                                            complete_thinking_process += f"✅ **Result:** {execution_result.result}\n\n"
+                                            
+                                            # Add result to final answer
+                                            if execution_result.result:
+                                                final_answer += f"\n\n{execution_result.result}"
+                                        else:
+                                            complete_thinking_process += f"🔧 **Additional Function Call:** {result_part.function_call.name}\n"
+                                            complete_thinking_process += f"❌ **Error:** {execution_result.error}\n\n"
+
+                                        function_calls_processed += 1
+                                        has_thinking = True
+
+                                    except Exception as func_error:
+                                        logger.error(f"❌ Additional function call failed: {func_error}")
+                                        complete_thinking_process += f"🔧 **Additional Function Call:** {result_part.function_call.name}\n"
+                                        complete_thinking_process += f"💥 **Exception:** {str(func_error)}\n\n"
+                                        has_thinking = True
 
                     except Exception as follow_up_error:
                         logger.error(f"❌ Failed to process follow-up response: {follow_up_error}")

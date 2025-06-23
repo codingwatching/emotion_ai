@@ -826,12 +826,10 @@ You have access to advanced video-based memory compression technology:
             for server, server_tools in tools_by_server.items():
                 if server != 'aura-internal':  # Skip internal tools as they're already listed
                     instruction += f"**From {server} server:**\n"
-                    for tool in server_tools[:1000]:  # Limit to first 1000 tools per server to avoid token overflow
+                    for tool in server_tools:  # Use ALL tools - don't artificially limit!
                         clean_name = tool.get('clean_name', tool['name'])
-                        instruction += f"- **{clean_name}** - {tool.get('description', 'No description')[:1000]}...\n"
-
-                    if len(server_tools) > 1000:
-                        instruction += f"  ... and {len(server_tools) - 1000} more tools from {server}\n"
+                        description = tool.get('description', 'No description')
+                        instruction += f"- **{clean_name}** - {description}\n"
                     instruction += "\n"
 
     if user_name:
@@ -1502,20 +1500,20 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         if aura_file_system:
             user_profile = await aura_file_system.load_user_profile(request.user_id)
 
-        # Search relevant memories for context - simplified and faster
+        # Search relevant memories for context - RESTORE PROPER FUNCTIONALITY
         memory_context = ""
         if len(request.message.split()) > 2 and conversation_persistence:
             try:
-                # Use faster memory search with fewer results to avoid delays
+                # Use proper memory search - don't sabotage with artificial limits!
                 relevant_memories = await conversation_persistence.safe_search_conversations(
                     query=request.message,
                     user_id=request.user_id,
-                    n_results=2  # Reduced from 3 to 2 for faster retrieval
+                    n_results=5  # Restored proper search capability
                 )
                 if relevant_memories:
                     memory_context = "\n".join([
-                        f"Previous context: {mem['content'][:500]}"  # Truncate to avoid token overflow
-                        for mem in relevant_memories[:1]  # Use only the most relevant memory
+                        f"Previous context: {mem['content']}"  # Use full content, not truncated
+                        for mem in relevant_memories[:3]  # Use multiple relevant memories
                     ])
                     if memory_context:
                         logger.debug(f"🧠 Retrieved memory context: {len(memory_context)} chars")
