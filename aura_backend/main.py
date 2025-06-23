@@ -1502,19 +1502,27 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
         if aura_file_system:
             user_profile = await aura_file_system.load_user_profile(request.user_id)
 
-        # Search relevant memories for context using thread-safe method
+        # Search relevant memories for context - simplified and faster
         memory_context = ""
-        if len(request.message.split()) > 3 and conversation_persistence:
-            relevant_memories = await conversation_persistence.safe_search_conversations(
-                query=request.message,
-                user_id=request.user_id,
-                n_results=3
-            )
-            if relevant_memories:
-                memory_context = "\n".join([
-                    f"Previous context: {mem['content']}"
-                    for mem in relevant_memories[:2]
-                ])
+        if len(request.message.split()) > 2 and conversation_persistence:
+            try:
+                # Use faster memory search with fewer results to avoid delays
+                relevant_memories = await conversation_persistence.safe_search_conversations(
+                    query=request.message,
+                    user_id=request.user_id,
+                    n_results=2  # Reduced from 3 to 2 for faster retrieval
+                )
+                if relevant_memories:
+                    memory_context = "\n".join([
+                        f"Previous context: {mem['content'][:500]}"  # Truncate to avoid token overflow
+                        for mem in relevant_memories[:1]  # Use only the most relevant memory
+                    ])
+                    if memory_context:
+                        logger.debug(f"🧠 Retrieved memory context: {len(memory_context)} chars")
+            except Exception as e:
+                logger.debug(f"⚠️ Memory context retrieval failed (non-critical): {e}")
+                # Continue without memory context rather than fail
+                memory_context = ""
 
         # Get available tools information for system instruction
         available_tools_info = []
@@ -1586,27 +1594,31 @@ async def process_conversation(request: ConversationRequest, background_tasks: B
                 detail="Failed to generate a valid response after all recovery attempts."
             )
 
-        # Autonomic task analysis and potential offloading
+        # Autonomic task analysis - let the intelligent system decide what to process
         if autonomic_system and autonomic_system._running:
-            # Analyze conversation for potential autonomic tasks
-            autonomic_tasks = await _analyze_conversation_for_autonomic_tasks(
-                user_message=request.message,
-                aura_response=aura_response,
-                user_id=request.user_id,
-                session_id=session_id
-            )
-
-            # Submit tasks to autonomic system for background processing
-            for task_description, task_payload in autonomic_tasks:
-                was_offloaded, task_id = await autonomic_system.submit_task(
-                    description=task_description,
-                    payload=task_payload,
+            try:
+                # Analyze conversation for potential autonomic tasks
+                autonomic_tasks = await _analyze_conversation_for_autonomic_tasks(
+                    user_message=request.message,
+                    aura_response=aura_response,
                     user_id=request.user_id,
                     session_id=session_id
                 )
 
-                if was_offloaded:
-                    logger.info(f"🤖 Offloaded autonomic task: {task_id} - {task_description[:50000]}...")
+                # Submit tasks to autonomic system for intelligent processing
+                for task_description, task_payload in autonomic_tasks:
+                    was_offloaded, task_id = await autonomic_system.submit_task(
+                        description=task_description,
+                        payload=task_payload,
+                        user_id=request.user_id,
+                        session_id=session_id
+                    )
+
+                    if was_offloaded:
+                        logger.debug(f"🤖 Offloaded autonomic task: {task_id}")
+            except Exception as e:
+                logger.debug(f"⚠️ Autonomic analysis failed (non-critical): {e}")
+                # Don't let autonomic system failures affect main conversation
 
         # Process emotional state detection for both user and Aura
         user_emotional_state = await detect_user_emotion(
@@ -1859,6 +1871,9 @@ async def _process_conversation_with_retry_original(
                 logger.info(f"🔧 Added {len(gemini_tools)} MCP tools to chat session for {user_id}")
 
             # Create chat with system instruction and tools - thinking enabled for non-streaming
+            # Get maximum remote calls for main model from environment (default 10 for free tier)
+            max_remote_calls = int(os.getenv('AFC_MAX_REMOTE_CALLS', '10'))
+
             chat = client.chats.create(
                 model=os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
                 config=types.GenerateContentConfig(
@@ -1866,6 +1881,10 @@ async def _process_conversation_with_retry_original(
                     max_output_tokens=int(os.getenv('AURA_MAX_OUTPUT_TOKENS', '1000000')),
                     tools=tools if tools else None,
                     system_instruction=system_instruction,
+                    # Configure automatic function calling with custom maximum remote calls
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        maximum_remote_calls=max_remote_calls
+                    ) if tools else None,
                     # Use consistent thinking config from environment
                     thinking_config=types.ThinkingConfig(
                         thinking_budget=thinking_budget,
@@ -1873,6 +1892,8 @@ async def _process_conversation_with_retry_original(
                     )
                 )
             )
+
+            logger.info(f"🔧 Chat session configured with {max_remote_calls} maximum function calls")
             active_chat_sessions[session_key] = chat
             session_tool_versions[session_key] = global_tool_version
             logger.info(f"💬 Created new chat session for {user_id} with {len(tools)} tools (v{global_tool_version})")
@@ -2064,141 +2085,60 @@ async def _analyze_conversation_for_autonomic_tasks(
     session_id: str
 ) -> List[Tuple[str, Dict[str, Any]]]:
     """
-    Analyze conversation for potential autonomic tasks that could enhance future interactions.
+    AI-driven analysis for autonomic task identification.
 
-    Applies systematic task identification methodology to determine background
-    processing opportunities that can improve user experience, optimize system
-    performance, and enable proactive intelligence augmentation.
-
-    Args:
-        user_message: User's input message for analysis
-        aura_response: Generated AI response for context analysis
-        user_id: User identifier for task personalization
-        session_id: Session identifier for task tracking
-
-    Returns:
-        List of tuples containing:
-        - task_description: Human-readable description of the autonomic task
-        - task_payload: Dictionary with task parameters and context data
-
-    Task Identification Criteria:
-
-        Memory Consolidation Tasks:
-        - Conversation length > 10 words (user) or > 20 words (AI)
-        - Triggers: Complex discussions requiring pattern analysis
-        - Purpose: Optimize memory structure and enhance retrieval
-
-        Emotional Pattern Analysis Tasks:
-        - Presence of emotional keywords (feel, mood, happy, sad, etc.)
-        - Triggers: Emotional expression or state discussion
-        - Purpose: Deep emotional pattern tracking and intervention preparation
-
-        Learning Optimization Tasks:
-        - Educational keywords (learn, understand, explain, teach, etc.)
-        - Triggers: Knowledge acquisition and conceptual exploration
-        - Purpose: Enhance knowledge structure and learning pathway optimization
-
-        Proactive Memory Search Tasks:
-        - Memory-related keywords (remember, recall)
-        - Triggers: Explicit or implicit memory references
-        - Purpose: Background context preparation for enhanced responses
-
-        Relationship Mapping Tasks:
-        - Default task for substantial conversations (> 5 words)
-        - Triggers: General conversation context building needs
-        - Purpose: Contextual relationship analysis and pattern mapping
-
-    Task Categorization:
-        - memory_consolidation: Pattern analysis and memory optimization
-        - emotional_analysis: Deep emotional state tracking
-        - learning_optimization: Knowledge structure enhancement
-        - proactive_memory_search: Background context preparation
-        - context_building: Relationship and pattern mapping
-
-    Note:
-        Task identification follows a systematic analytical framework that
-        balances computational efficiency with intelligence augmentation
-        opportunities. Tasks are designed to operate autonomously without
-        disrupting primary conversation flow.
+    Uses intelligent analysis rather than crude keyword matching to identify
+    meaningful background processing opportunities that enhance user experience.
     """
     potential_tasks = []
 
-    # Analyze for memory consolidation opportunities
-    if len(user_message.split()) > 10 or len(aura_response.split()) > 20:
-        potential_tasks.append((
-            f"Analyze and consolidate conversation memory patterns for user {user_id}",
-            {
-                "task_type": "memory_consolidation",
-                "user_message": user_message,
-                "aura_response": aura_response,
-                "user_id": user_id,
-                "session_id": session_id,
-                "conversation_length": len(user_message) + len(aura_response)
-            }
-        ))
+    # Only create autonomic tasks for substantial conversations that could benefit from background processing
+    if len(user_message.split()) > 8 or len(aura_response.split()) > 15:
 
-    # Analyze for emotional pattern tracking
-    emotional_keywords = [
-        "feel", "emotion", "mood", "happy", "sad", "excited", "worried",
-        "anxious", "calm", "peaceful", "frustrated", "angry", "love"
-    ]
+        # Use AI to analyze if this conversation would benefit from background processing
+        analysis_prompt = f"""Analyze this conversation to determine if it would benefit from background processing tasks:
 
-    if any(keyword in user_message.lower() for keyword in emotional_keywords):
-        potential_tasks.append((
-            f"Deep emotional pattern analysis for user {user_id}",
-            {
-                "task_type": "emotional_analysis",
-                "user_message": user_message,
-                "user_id": user_id,
-                "session_id": session_id,
-                "analysis_scope": "emotional_patterns"
-            }
-        ))
+User: {user_message}
+Aura: {aura_response}
 
-    # Analyze for learning pattern optimization
-    learning_keywords = [
-        "learn", "understand", "explain", "teach", "show", "how to",
-        "what is", "why", "concept", "idea", "knowledge"
-    ]
+Consider:
+- Emotional complexity or personal sharing
+- Learning or knowledge-building opportunities
+- Memory consolidation needs
+- Pattern analysis potential
 
-    if any(keyword in user_message.lower() for keyword in learning_keywords):
-        potential_tasks.append((
-            f"Optimize learning patterns and knowledge structure for user {user_id}",
-            {
-                "task_type": "learning_optimization",
-                "user_message": user_message,
-                "user_id": user_id,
-                "session_id": session_id,
-                "learning_context": "knowledge_acquisition"
-            }
-        ))
+If this conversation would benefit from background analysis, respond with "YES" and briefly explain why.
+If not, respond with "NO"."""
 
-    # Analyze for background memory search and preparation
-    if "remember" in user_message.lower() or "recall" in user_message.lower():
-        potential_tasks.append((
-            f"Proactive memory search and context preparation for user {user_id}",
-            {
-                "task_type": "proactive_memory_search",
-                "query": user_message,
-                "user_id": user_id,
-                "session_id": session_id,
-                "max_results": 5000  # Adjust as needed for performance
-            }
-        ))
+        try:
+            result = client.models.generate_content(
+                model=os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
+                contents=[analysis_prompt]
+            )
 
-    # Analyze for relationship and context building
-    if len(potential_tasks) == 0 and len(user_message.split()) > 5:
-        # Default background task for context building
-        potential_tasks.append((
-            f"Background context analysis and relationship mapping for user {user_id}",
-            {
-                "task_type": "context_building",
-                "user_message": user_message,
-                "user_id": user_id,
-                "session_id": session_id,
-                "analysis_type": "relationship_mapping"
-            }
-        ))
+            analysis_result = result.text.strip() if result.text else ""
+
+            if analysis_result.upper().startswith('YES'):
+                # Create a meaningful autonomic task based on the conversation context
+                potential_tasks.append((
+                    f"Background analysis and pattern recognition for user {user_id}",
+                    {
+                        "task_type": "intelligent_analysis",
+                        "user_message": user_message,
+                        "aura_response": aura_response,
+                        "user_id": user_id,
+                        "session_id": session_id,
+                        "analysis_reason": analysis_result,
+                        "conversation_context": f"User: {user_message}\nAura: {aura_response}"
+                    }
+                ))
+                logger.info(f"🤖 AI identified autonomic task opportunity: {analysis_result[:100]}...")
+            else:
+                logger.debug("🤖 AI determined no autonomic task needed for this conversation")
+
+        except Exception as e:
+            logger.debug(f"⚠️ Autonomic task analysis failed, skipping: {e}")
+            # Don't create tasks if analysis fails - better to have fewer, meaningful tasks
 
     return potential_tasks
 @app.post("/search")

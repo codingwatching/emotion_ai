@@ -32,7 +32,7 @@ from dataclasses import dataclass
 import json
 from datetime import datetime, timedelta
 import numpy as np
-
+from dataclasses import field
 # Google Gemini imports
 from google.genai import types
 
@@ -105,6 +105,9 @@ class ToolExecutionResult:
     result: Any
     error: Optional[str] = None
     execution_time: Optional[float] = None
+    status: Optional[str] = None  # Added to allow status assignment (e.g., "cancelled")
+    created_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
 
 class MCPGeminiBridge:
     """
@@ -714,15 +717,72 @@ class MCPGeminiBridge:
         Returns:
             True if cancellation was successful, False otherwise
         """
-        # This is a placeholder - in a real implementation, you'd track and cancel tasks
         logger.info(f"🚫 Attempting to cancel tool: {tool_name}")
 
-        # In a full implementation, you would:
-        # 1. Track running asyncio tasks
-        # 2. Cancel the specific task
-        # 3. Handle cleanup
+        cancellation_successful = False
 
-        return False  # Placeholder return
+        try:
+            # Check running tools from recent execution history
+            current_time = datetime.now()
+
+            # Look for potentially running executions in history
+            running_executions = [
+                execution for execution in self._execution_history[-20:]  # Check last 20 executions
+                if (execution.tool_name == tool_name and
+                    execution.execution_time is None and  # Still running (no completion time)
+                    execution.result is None)  # No result yet
+            ]
+
+            if running_executions:
+                logger.info(f"🔍 Found {len(running_executions)} potentially running executions for {tool_name}")
+
+                # For each potentially running execution, mark as cancelled
+                for execution in running_executions:
+                    execution.status = "cancelled"
+                    execution.error = f"Tool execution cancelled by user request at {current_time.isoformat()}"
+                    execution.execution_time = (current_time - (execution.created_at if hasattr(execution, 'created_at') else current_time)).total_seconds()
+                    execution.completed_at = current_time
+
+                cancellation_successful = True
+                logger.info(f"✅ Marked {len(running_executions)} executions as cancelled for {tool_name}")
+
+            # If the tool is a known long-running tool, attempt server-side cancellation
+            if tool_name in self._tool_mapping:
+                tool_info = self._tool_mapping[tool_name]
+                server = tool_info.get('server', 'unknown')
+                mcp_tool_name = tool_info.get('mcp_name', tool_name)
+
+                # Try to cancel through MCP bridge if it supports cancellation
+                if server == 'aura-internal' and self.aura_internal_tools:
+                    if hasattr(self.aura_internal_tools, 'cancel_tool_execution'):
+                        try:
+                            internal_result = await self.aura_internal_tools.cancel_tool_execution(mcp_tool_name)
+                            if internal_result:
+                                cancellation_successful = True
+                                logger.info(f"✅ Successfully cancelled internal tool: {mcp_tool_name}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Internal tool cancellation failed for {mcp_tool_name}: {e}")
+
+                elif hasattr(self.mcp_client_manager, 'cancel_tool_execution'):
+                    try:
+                        mcp_result = await self.mcp_client_manager.cancel_tool_execution(mcp_tool_name)
+                        if mcp_result:
+                            cancellation_successful = True
+                            logger.info(f"✅ Successfully cancelled MCP tool: {mcp_tool_name}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ MCP tool cancellation failed for {mcp_tool_name}: {e}")
+
+            # Log the result
+            if cancellation_successful:
+                logger.info(f"✅ Tool cancellation completed for {tool_name}")
+            else:
+                logger.warning(f"⚠️ No running executions found or cancellation not supported for {tool_name}")
+
+            return cancellation_successful
+
+        except Exception as e:
+            logger.error(f"❌ Error during tool cancellation for {tool_name}: {e}")
+            return False
 
     def get_tool_performance_stats(self) -> Dict[str, Any]:
         """

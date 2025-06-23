@@ -569,12 +569,20 @@ class AutonomicProcessor:
 
         # Create timeout wrapper
         async def model_call():
+            # Get maximum remote calls for autonomic model from environment
+            autonomic_max_remote_calls = int(os.getenv('AFC_AUTONOMIC_MAX_REMOTE_CALLS', '30'))
+            logger.debug(f"🤖 Autonomic model configured with {autonomic_max_remote_calls} maximum function calls")
+
             result = client.models.generate_content(
                 model=self.autonomic_model,
                 contents=[prompt],
                 config=types.GenerateContentConfig(
                     temperature=0.3,  # Lower temperature for more focused processing
                     max_output_tokens=self.max_output_tokens,
+                    # Configure automatic function calling for autonomic model (future-proofing)
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        maximum_remote_calls=autonomic_max_remote_calls
+                    ),
                 )
             )
             return result.text if result.text else ""
@@ -860,15 +868,15 @@ async def initialize_autonomic_system(
 
     # Get configuration from environment with optimized defaults
     autonomic_model = os.getenv('AURA_AUTONOMIC_MODEL', 'gemini-2.0-flash-lite')
-    max_concurrent = int(os.getenv('AUTONOMIC_MAX_CONCURRENT_TASKS', '12'))
+    max_concurrent = int(os.getenv('AUTONOMIC_MAX_CONCURRENT_TASKS', '30'))
     task_threshold = os.getenv('AUTONOMIC_TASK_THRESHOLD', 'medium')
     max_tokens = int(os.getenv('AURA_AUTONOMIC_MAX_OUTPUT_TOKENS', '100000'))
-    timeout = int(os.getenv('AUTONOMIC_TIMEOUT_SECONDS', '45'))
+    timeout = int(os.getenv('AUTONOMIC_TIMEOUT_SECONDS', '60'))
 
     # Rate limiting configuration
-    rpm_limit = int(os.getenv('AUTONOMIC_RATE_LIMIT_RPM', '25'))
-    rpd_limit = int(os.getenv('AUTONOMIC_RATE_LIMIT_RPD', '1200'))
-    queue_max_size = int(os.getenv('AUTONOMIC_QUEUE_MAX_SIZE', '100'))
+    rpm_limit = int(os.getenv('AUTONOMIC_RATE_LIMIT_RPM', '30'))
+    rpd_limit = int(os.getenv('AUTONOMIC_RATE_LIMIT_RPD', '1400'))
+    queue_max_size = int(os.getenv('AUTONOMIC_QUEUE_MAX_SIZE', '40'))
 
     _autonomic_system = AutonomicNervousSystem(
         autonomic_model=autonomic_model,

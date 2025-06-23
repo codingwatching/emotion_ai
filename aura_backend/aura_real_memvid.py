@@ -7,11 +7,9 @@ FIXED: ChromaDB instance conflict resolved - now reuses existing client
 
 from __future__ import annotations
 
-import os
-import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional
 from pathlib import Path
 
 # Aura imports
@@ -290,11 +288,11 @@ class AuraRealMemvid:
                                 # FIXED: Create properly chunked, searchable content instead of monolithic blocks
                                 # Create metadata context that's searchable
                                 metadata_context = f"User: {metadata.get('user_id', 'unknown')} | Timestamp: {timestamp_str} | Emotion: {metadata.get('emotion_name', 'none')} | Brainwave: {metadata.get('brainwave', 'none')}"
-                                
+
                                 # Split large conversations into searchable chunks (max ~500 chars per chunk)
                                 conversation_text = str(doc).strip()
                                 chunk_size = 400  # Optimal size for semantic search
-                                
+
                                 # Handle both single messages and multi-turn conversations
                                 if len(conversation_text) <= chunk_size:
                                     # Small conversation - add as single chunk with full context
@@ -304,18 +302,18 @@ class AuraRealMemvid:
                                     # Large conversation - split into searchable chunks with context
                                     # Try to split on sentence boundaries for better semantic coherence
                                     sentences = conversation_text.replace('. ', '.|').replace('! ', '!|').replace('? ', '?|').split('|')
-                                    
+
                                     current_chunk = ""
                                     chunk_num = 1
-                                    
+
                                     for sentence in sentences:
                                         sentence = sentence.strip()
                                         if not sentence:
                                             continue
-                                            
+
                                         # Check if adding this sentence would exceed chunk size
                                         test_chunk = f"{current_chunk} {sentence}".strip()
-                                        
+
                                         if len(test_chunk) <= chunk_size:
                                             current_chunk = test_chunk
                                         else:
@@ -325,7 +323,7 @@ class AuraRealMemvid:
                                                 encoder.add_text(searchable_chunk)
                                                 chunk_num += 1
                                             current_chunk = sentence
-                                    
+
                                     # Add the final chunk
                                     if current_chunk:
                                         searchable_chunk = f"{metadata_context} | Part {chunk_num}\n\nContent: {current_chunk}"

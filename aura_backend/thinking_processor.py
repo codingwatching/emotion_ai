@@ -20,7 +20,6 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 import os
-import asyncio
 import json
 
 # Configure logging
@@ -91,8 +90,11 @@ class ThinkingProcessor:
             # Use the chat session directly (it should have thinking enabled)
             result = chat.send_message(message)
 
-            # Debug logging
+            # Enable debug mode for thinking processing
+
             debug_mode = os.getenv('THINKING_DEBUG', 'true').lower() == 'true'
+
+            # Debug logging
             if debug_mode:
                 logger.debug(f"🔍 Raw response structure for {user_id}: {type(result)}")
                 logger.debug(f"🔍 Response candidates: {len(result.candidates) if result.candidates else 0}")
@@ -219,7 +221,6 @@ class ThinkingProcessor:
             function_calls_processed = 0
 
             # Enable debug mode for thinking processing
-            debug_mode = os.getenv('THINKING_DEBUG', 'true').lower() == 'true'
 
             # Send message to get initial response
             result = chat.send_message(message)
@@ -241,7 +242,7 @@ class ThinkingProcessor:
 
                 if part.text:
                     part_text = part.text
-                    
+
                     # Check if this is thinking content (trust Gemini's marking)
                     if hasattr(part, 'thought') and part.thought is True:
                         complete_thinking_process += part_text + "\n\n"
@@ -259,24 +260,27 @@ class ThinkingProcessor:
                     # Function call detected - add to thinking process
                     pending_function_calls.append(part.function_call)
                     function_calls_processed += 1
-                    
+
                     # Add function call to thinking process
                     complete_thinking_process += f"🔧 **Function Call:** {part.function_call.name}\n"
                     if hasattr(part.function_call, 'args') and part.function_call.args:
                         try:
                             args_str = json.dumps(part.function_call.args, indent=2)
                             complete_thinking_process += f"📋 **Arguments:**\n```json\n{args_str}\n```\n\n"
-                        except:
+                        except Exception:
                             complete_thinking_process += f"📋 **Arguments:** {part.function_call.args}\n\n"
                     else:
                         complete_thinking_process += "\n"
-                    
+
                     logger.info(f"🔧 Function call detected: {part.function_call.name}")
                     has_thinking = True
 
             # Process function calls and add results to thinking
             if pending_function_calls:
                 logger.info(f"🔧 Processing {len(pending_function_calls)} function calls")
+
+                # Execute all function calls and collect results
+                function_responses = []
 
                 for func_call in pending_function_calls:
                     try:
@@ -285,48 +289,19 @@ class ThinkingProcessor:
 
                         if execution_result.success:
                             logger.info(f"✅ Function call {func_call.name} executed successfully")
-                            
+
                             # Add function result to thinking process
                             complete_thinking_process += f"✅ **Function Result for {func_call.name}:**\n"
                             complete_thinking_process += f"```\n{execution_result.result}\n```\n\n"
 
-                            # Send function response back to the model
+                            # Collect function response for batch processing
                             function_response = types.Part(
                                 function_response=types.FunctionResponse(
                                     name=func_call.name,
                                     response={"result": execution_result.result}
                                 )
                             )
-
-                            # Get follow-up response from the model
-                            follow_up_result = chat.send_message([function_response])
-
-                            if (follow_up_result.candidates and
-                                follow_up_result.candidates[0].content and
-                                follow_up_result.candidates[0].content.parts):
-
-                                # Process follow-up response parts
-                                for j, result_part in enumerate(follow_up_result.candidates[0].content.parts):
-                                    if result_part.text:
-                                        total_chunks += 1
-                                        follow_text = result_part.text
-
-                                        # Check if follow-up is thinking or final answer
-                                        if hasattr(result_part, 'thought') and result_part.thought is True:
-                                            # This is follow-up thinking
-                                            complete_thinking_process += f"🧠 **Follow-up Thinking:**\n{follow_text}\n\n"
-                                            thinking_chunks += 1
-                                            has_thinking = True
-                                            logger.info(f"🎯 Follow-up thinking detected (verified with patterns) - Part {j}")
-                                            logger.info(f"🧠 Added cleaned follow-up to thinking (gemini_attribute_with_reasoning_patterns) - Part {j}: {len(follow_text)} chars")
-                                        else:
-                                            # This is the final answer after processing tool results
-                                            cleaned_follow_text = self._clean_follow_up_content(follow_text)
-                                            if cleaned_follow_text.strip():
-                                                final_answer += cleaned_follow_text
-                                                answer_chunks += 1
-                                                logger.info(f"📝 Follow-up treated as answer - Part {j}")
-                                                logger.info(f"💬 Added cleaned follow-up to answer - Part {j}: {len(cleaned_follow_text)} chars")
+                            function_responses.append(function_response)
 
                         else:
                             # Function call failed - add to thinking process
@@ -340,6 +315,62 @@ class ThinkingProcessor:
                         error_info = f"💥 **Function Call Error:** {func_call.name}\n**Exception:** {str(func_error)}\n\n"
                         complete_thinking_process += error_info
                         logger.error(f"❌ Function call {func_call.name} error: {func_error}")
+                        has_thinking = True
+
+                # Send all function responses to get follow-up response (simplified approach)
+                if function_responses:
+                    logger.info(f"📤 Sending {len(function_responses)} function results to model for final response")
+
+                    try:
+                        # Get follow-up response for function results
+                        follow_up_result = chat.send_message(function_responses)
+
+                        if (follow_up_result.candidates and
+                            follow_up_result.candidates[0].content and
+                            follow_up_result.candidates[0].content.parts):
+
+                            # Process follow-up response parts
+                            for j, result_part in enumerate(follow_up_result.candidates[0].content.parts):
+                                if result_part.text:
+                                    total_chunks += 1
+                                    follow_text = result_part.text
+
+                                    # Use verified patterns for follow-up classification
+                                    is_marked_as_thought = hasattr(result_part, 'thought') and result_part.thought is True
+                                    looks_like_thinking = self._looks_like_thinking_content(follow_text)
+
+                                    # Decision logic: Only treat as thinking if both marked AND looks like thinking
+                                    if is_marked_as_thought and looks_like_thinking:
+                                        # This is legitimate follow-up thinking
+                                        complete_thinking_process += f"🧠 **Follow-up Thinking:**\n{follow_text}\n\n"
+                                        thinking_chunks += 1
+                                        has_thinking = True
+                                        logger.info(f"🎯 Follow-up thinking detected (verified with patterns) - Part {j}")
+                                        logger.info(f"🧠 Added cleaned follow-up to thinking (gemini_attribute_with_reasoning_patterns) - Part {j}: {len(follow_text)} chars")
+                                    else:
+                                        # This is the final answer after processing tool results
+                                        cleaned_follow_text = self._clean_follow_up_content(follow_text)
+                                        if cleaned_follow_text.strip():
+                                            final_answer += cleaned_follow_text
+                                            answer_chunks += 1
+                                            logger.info(f"📝 Follow-up treated as answer - Part {j}")
+                                            logger.info(f"💬 Added cleaned follow-up to answer - Part {j}: {len(cleaned_follow_text)} chars")
+
+                                elif hasattr(result_part, 'function_call') and result_part.function_call and mcp_bridge:
+                                    # Handle additional function calls in response phase (simplified)
+                                    logger.info(f"🔧 Additional function call detected in response: {result_part.function_call.name}")
+
+                                    # Add to thinking process but don't execute iteratively to avoid delays
+                                    complete_thinking_process += f"🔧 **Response Phase Function Call Detected:** {result_part.function_call.name}\n"
+                                    complete_thinking_process += "📋 *Note: Additional function calling in response phase - execution deferred to prevent delays*\n\n"
+
+                                    # Count it but don't execute to avoid complexity/delays
+                                    function_calls_processed += 1
+                                    has_thinking = True
+
+                    except Exception as follow_up_error:
+                        logger.error(f"❌ Failed to process follow-up response: {follow_up_error}")
+                        complete_thinking_process += f"💥 **Follow-up Error:** {str(follow_up_error)}\n\n"
                         has_thinking = True
 
             # Ensure we have a response
@@ -392,6 +423,85 @@ class ThinkingProcessor:
                 has_thinking=False,
                 error=str(e)
             )
+
+    def _looks_like_thinking_content(self, content: str) -> bool:
+        """
+        Use heuristics to determine if content looks like internal thinking vs. user-facing response.
+
+        This helps override Gemini's thought=True marking when it's clearly wrong.
+
+        Args:
+            content: Text content to analyze
+
+        Returns:
+            True if content appears to be internal reasoning, False if it looks like a user response
+        """
+        if not content or not content.strip():
+            return False
+
+        content_lower = content.lower().strip()
+
+        # Strong indicators of thinking content
+        thinking_indicators = [
+            "let me think",
+            "i need to",
+            "i should",
+            "let me analyze",
+            "let me consider",
+            "i'll need to",
+            "first, i",
+            "next, i",
+            "then i",
+            "so i need to",
+            "i can see that",
+            "looking at this",
+            "from the search results",
+            "the search shows",
+            "based on the results",
+        ]
+
+        # Strong indicators of user-facing response
+        response_indicators = [
+            "you're absolutely right",
+            "thank you for",
+            "i apologize",
+            "you certainly can",
+            "that's fascinating",
+            "i've completed",
+            "i found",
+            "here's what",
+            "according to",
+            "the configuration shows",
+            "i can confirm",
+            "excellent news",
+            "perfect!",
+        ]
+
+        # Check for thinking indicators
+        thinking_score = sum(1 for indicator in thinking_indicators if indicator in content_lower)
+
+        # Check for response indicators
+        response_score = sum(1 for indicator in response_indicators if indicator in content_lower)
+
+        # If content is very short and conversational, likely a response
+        if len(content) < 200 and any(indicator in content_lower for indicator in ["thank you", "you're", "i've", "that's"]):
+            return False
+
+        # If we have clear response indicators and no thinking indicators, it's a response
+        if response_score > 0 and thinking_score == 0:
+            return False
+
+        # If we have more response indicators than thinking indicators, likely a response
+        if response_score > thinking_score:
+            return False
+
+        # If we have thinking indicators but no response indicators, likely thinking
+        if thinking_score > 0 and response_score == 0:
+            return True
+
+        # Default: if unclear and marked as thought by Gemini, trust Gemini but with lower confidence
+        # This should rarely be reached due to the logic in the calling function
+        return True
 
     def _clean_follow_up_content(self, content: str) -> str:
         """

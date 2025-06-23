@@ -4,18 +4,16 @@ Aura + Memvid Integration Setup Script
 Installs dependencies and sets up the hybrid memory system
 """
 
-import os
 import sys
 import subprocess
 import json
-import shutil
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 
 def run_command(cmd: list, check: bool = True, capture_output: bool = False) -> Optional[str]:
     """Run a command and optionally capture output"""
     print(f"Running: {' '.join(cmd)}")
-    
+
     if capture_output:
         result = subprocess.run(cmd, capture_output=True, text=True, check=check)
         return result.stdout.strip()
@@ -26,57 +24,57 @@ def run_command(cmd: list, check: bool = True, capture_output: bool = False) -> 
 def check_dependencies():
     """Check if required dependencies are available"""
     print("🔍 Checking dependencies...")
-    
+
     # Check Python version
     if sys.version_info < (3, 8):
         print("❌ Python 3.8+ required")
         return False
-    
+
     # Check if in virtual environment
-    if not (hasattr(sys, 'real_prefix') or 
+    if not (hasattr(sys, 'real_prefix') or
             (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)):
         print("⚠️  Warning: Not in virtual environment")
         print("   Recommended: python -m venv venv && source venv/bin/activate")
-    
+
     # Check for required system packages
-    try:
-        import cv2
+    import importlib.util
+    if importlib.util.find_spec("cv2") is not None:
         print("✅ OpenCV available")
-    except ImportError:
+    else:
         print("❌ OpenCV not available - will install")
-    
-    try:
-        import chromadb
+
+    if importlib.util.find_spec("chromadb") is not None:
         print("✅ ChromaDB available")
-    except ImportError:
+    else:
         print("❌ ChromaDB not available - will install")
-    
+
     return True
 
 def install_memvid():
     """Install Memvid package"""
     print("📦 Installing Memvid...")
-    
+
     # Try to install from the local repo first
-    memvid_repo = Path("/home/ty/Repositories/memvid")
-    
+    # Check for local memvid repo (optional, for development)
+    memvid_repo = Path.cwd().parent / "memvid"
+
     if memvid_repo.exists():
         print(f"Installing from local repo: {memvid_repo}")
         run_command([sys.executable, "-m", "pip", "install", "-e", str(memvid_repo)])
     else:
         print("Installing from PyPI...")
         run_command([sys.executable, "-m", "pip", "install", "memvid"])
-    
+
     # Install additional dependencies
     run_command([sys.executable, "-m", "pip", "install", "PyPDF2", "ebooklib", "beautifulsoup4"])
 
 def install_aura_dependencies():
     """Install Aura-specific dependencies"""
     print("📦 Installing Aura dependencies...")
-    
+
     dependencies = [
         "chromadb>=0.4.0",
-        "fastapi>=0.115.0", 
+        "fastapi>=0.115.0",
         "uvicorn",
         "google-generativeai",
         "sentence-transformers",
@@ -85,23 +83,23 @@ def install_aura_dependencies():
         "python-dotenv",
         "pydantic"
     ]
-    
+
     run_command([sys.executable, "-m", "pip", "install"] + dependencies)
 
 def setup_project_structure(base_path: str):
     """Set up the project directory structure"""
     print("📁 Setting up project structure...")
-    
+
     base = Path(base_path)
     directories = [
-        "aura_data/active_memory", 
+        "aura_data/active_memory",
         "aura_data/exports",
         "memvid_data/archives",
         "memvid_data/imports",
         "config",
         "logs"
     ]
-    
+
     for directory in directories:
         dir_path = base / directory
         dir_path.mkdir(parents=True, exist_ok=True)
@@ -110,14 +108,14 @@ def setup_project_structure(base_path: str):
 def create_config_files(base_path: str):
     """Create configuration files"""
     print("⚙️ Creating configuration files...")
-    
+
     base = Path(base_path)
-    
+
     # Main configuration
     config = {
         "aura_memvid": {
             "active_memory_days": 30,
-            "emotional_memory_retention": 90, 
+            "emotional_memory_retention": 90,
             "auto_archival": True,
             "archival_interval_days": 7,
             "max_active_memories": 10000
@@ -135,22 +133,22 @@ def create_config_files(base_path: str):
             "enable_cognitive_tracking": True
         }
     }
-    
+
     config_path = base / "config" / "aura_memvid_config.json"
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
     print(f"✅ Created config: {config_path}")
-    
+
     # Environment template
     env_template = """# Aura + Memvid Configuration
 GOOGLE_API_KEY=your_api_key_here
 
 # Aura Settings
 AURA_DATA_DIRECTORY=./aura_data
-AURA_MODEL=gemini-2.5-flash-preview-05-20
-AURA_MAX_OUTPUT_TOKENS=8192
+AURA_MODEL=gemini-2.5-flash
+AURA_MAX_OUTPUT_TOKENS=1000000
 
-# Memvid Settings  
+# Memvid Settings
 MEMVID_DATA_DIRECTORY=./memvid_data
 MEMVID_DEFAULT_CODEC=h265
 
@@ -163,7 +161,7 @@ ENABLE_EMOTIONAL_ANALYSIS=true
 ENABLE_COGNITIVE_TRACKING=true
 ENABLE_MEMVID_INTEGRATION=true
 """
-    
+
     env_path = base / ".env.template"
     with open(env_path, 'w') as f:
         f.write(env_template)
@@ -172,15 +170,15 @@ ENABLE_MEMVID_INTEGRATION=true
 def copy_integration_files(base_path: str):
     """Copy integration files to the project"""
     print("📋 Setting up integration files...")
-    
+
     base = Path(base_path)
-    
+
     # Create the hybrid memory system file
     hybrid_file = base / "aura_memvid_hybrid.py"
     if not hybrid_file.exists():
         print(f"⚠️  Copy the hybrid system code to: {hybrid_file}")
         print("   (The code from the first artifact)")
-    
+
     # Create MCP tools file
     mcp_tools_file = base / "aura_memvid_mcp_tools.py"
     if not mcp_tools_file.exists():
@@ -190,9 +188,9 @@ def copy_integration_files(base_path: str):
 def create_example_scripts(base_path: str):
     """Create example usage scripts"""
     print("📝 Creating example scripts...")
-    
+
     base = Path(base_path)
-    
+
     # Basic example
     basic_example = '''#!/usr/bin/env python3
 """
@@ -207,7 +205,7 @@ from aura_memvid_hybrid import AuraMemvidHybrid
 def main():
     # Initialize hybrid system
     memory_system = AuraMemvidHybrid()
-    
+
     # Store a conversation with emotional context
     memory_id = memory_system.store_conversation(
         user_id="example_user",
@@ -216,19 +214,19 @@ def main():
         emotional_state="anxiety",
         cognitive_focus="problem_solving"
     )
-    
+
     print(f"Stored conversation: {memory_id}")
-    
+
     # Search memory
     results = memory_system.unified_search(
-        "presentation anxiety", 
+        "presentation anxiety",
         "example_user"
     )
-    
+
     print("Search results:")
     for result in results["active_memory"]:
         print(f"- {result['text'][:100]}...")
-    
+
     # Import a knowledge base (example with a text file)
     # knowledge_file = Path("example_knowledge.txt")
     # if knowledge_file.exists():
@@ -241,12 +239,12 @@ def main():
 if __name__ == "__main__":
     main()
 '''
-    
+
     example_path = base / "example_basic.py"
     with open(example_path, 'w') as f:
         f.write(basic_example)
     print(f"✅ Created: {example_path}")
-    
+
     # MCP server example
     mcp_example = '''#!/usr/bin/env python3
 """
@@ -264,21 +262,21 @@ logging.basicConfig(level=logging.INFO)
 async def main():
     # Create server and hybrid system
     server, hybrid_system = await create_aura_memvid_mcp_server()
-    
+
     print("🚀 Starting Aura + Memvid MCP Server...")
     print("📡 Available tools:")
-    
+
     tools = server.list_tools()
     for tool in tools:
         print(f"   - {tool.name}: {tool.description}")
-    
+
     # Start server (this would typically be handled by the MCP runtime)
     print("✅ Server ready for MCP connections")
 
 if __name__ == "__main__":
     asyncio.run(main())
 '''
-    
+
     mcp_path = base / "start_mcp_server.py"
     with open(mcp_path, 'w') as f:
         f.write(mcp_example)
@@ -326,7 +324,7 @@ This integration combines Aura's emotional intelligence with Memvid's revolution
 memory_system.store_conversation(
     user_id="user123",
     message="user message",
-    response="aura response", 
+    response="aura response",
     emotional_state="happy",
     cognitive_focus="creativity"
 )
@@ -401,7 +399,7 @@ To integrate with your existing Aura system:
 
 For more information, see the source code and examples in this directory.
 '''
-    
+
     guide_path = Path(base_path) / "INTEGRATION_GUIDE.md"
     with open(guide_path, 'w') as f:
         f.write(guide)
@@ -411,21 +409,21 @@ def main():
     """Main setup function"""
     print("🚀 Aura + Memvid Integration Setup")
     print("=" * 50)
-    
+
     # Get setup path
     aura_path = Path("/home/ty/Repositories/ai_workspace/emotion_ai")
     if not aura_path.exists():
         print(f"❌ Aura path not found: {aura_path}")
         aura_path = Path.cwd()
         print(f"Using current directory: {aura_path}")
-    
+
     print(f"Setting up in: {aura_path}")
-    
+
     # Setup steps
     if not check_dependencies():
         print("❌ Dependency check failed")
         return
-    
+
     try:
         install_memvid()
         install_aura_dependencies()
@@ -434,7 +432,7 @@ def main():
         copy_integration_files(str(aura_path))
         create_example_scripts(str(aura_path))
         create_integration_guide(str(aura_path))
-        
+
         print("\n✅ Setup Complete!")
         print("\nNext steps:")
         print(f"1. cd {aura_path}")
@@ -443,7 +441,7 @@ def main():
         print("4. Edit .env with your Google API key")
         print("5. python example_basic.py")
         print("\nSee INTEGRATION_GUIDE.md for detailed instructions")
-        
+
     except Exception as e:
         print(f"❌ Setup failed: {e}")
         return
