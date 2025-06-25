@@ -1870,7 +1870,7 @@ async def _process_conversation_with_retry_original(
 
             # Create chat with system instruction and tools - thinking enabled for non-streaming
             # Get maximum remote calls for main model from environment (default 10 for free tier)
-            max_remote_calls = int(os.getenv('AFC_MAX_REMOTE_CALLS', '10'))
+            max_main_remote_calls = int(os.getenv('AFC_MAX__MAIN_REMOTE_CALLS', '10'))
 
             chat = client.chats.create(
                 model=os.getenv('AURA_MODEL', 'gemini-2.5-flash'),
@@ -1881,7 +1881,7 @@ async def _process_conversation_with_retry_original(
                     system_instruction=system_instruction,
                     # Configure automatic function calling with custom maximum remote calls
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                        maximum_remote_calls=max_remote_calls
+                        maximum_remote_calls=max_main_remote_calls
                     ) if tools else None,
                     # Use consistent thinking config from environment
                     thinking_config=types.ThinkingConfig(
@@ -1891,7 +1891,7 @@ async def _process_conversation_with_retry_original(
                 )
             )
 
-            logger.info(f"🔧 Chat session configured with {max_remote_calls} maximum function calls")
+            logger.info(f"🔧 Chat session configured with {max_main_remote_calls} maximum function calls")
             active_chat_sessions[session_key] = chat
             session_tool_versions[session_key] = global_tool_version
             logger.info(f"💬 Created new chat session for {user_id} with {len(tools)} tools (v{global_tool_version})")

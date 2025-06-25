@@ -236,34 +236,48 @@ AUTONOMIC_QUEUE_PRIORITY_ENABLED=true  # Enable priority-based processing
 
 ```
 
-**Start Services**: This will start the backend, it runs in dev mode so hot restarts on saved code changes.
- I will try and design an internal copy that the Aura system can use to add to itself safely with a revert to the original system on failures feature. Sounds fun huh?
+## 🚀 Quick Start - One Command Setup
+
+**Easy Full System Start**: This will start both backend and frontend in separate terminals automatically:
 
 ```bash
+./start_full_system.sh
+```
+
+This script will:
+- ✅ Check all prerequisites (Node.js, npm, uv)
+- ✅ Set up backend environment (.venv with Python 3.12)
+- ✅ Install frontend dependencies if needed
+- ✅ Start backend in one terminal (with hot reload)
+- ✅ Start frontend in another terminal (with hot reload)
+- ✅ Verify both services are running
+- ✅ Display status and URLs
+
+**Stop All Services**:
+```bash
+./stop_full_system.sh
+```
+
+### Manual Setup (Alternative)
+
+If you prefer to start services manually:
+
+**Backend**:
+```bash
+cd aura_backend
 ./start.sh
 ```
 
-### Frontend activation
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-
+**Frontend** (in a separate terminal):
 ```bash
-npm install
-```
-
-2. Run the app, also in dev mode so it also hot restarts on code changes:
-
-```bash
+npm install  # First time only
 npm run dev
 ```
 
-Go to-
-Local:   http://localhost:5173
-
-Network: use --host to expose
+### Access URLs
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
 
 ![alt text](image-5.png)
 

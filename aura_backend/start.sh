@@ -31,6 +31,7 @@ fi
 
 # Activate venv
 # shellcheck source=.venv/bin/activate
+# shellcheck disable=SC1091
 source .venv/bin/activate
 
 # Start API (which includes Aura internal tools)
