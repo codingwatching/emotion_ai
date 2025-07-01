@@ -1,0 +1,33 @@
+{
+  "theme": "Default",
+  "contextFileName": "GEMINI.md",
+  "selectedModel": "gemini-2.5-flash-preview-05-20",
+  "autoAccept": true,
+  "sandbox": true,
+  "preferredEditor": "vscode",
+  "fileFiltering": {
+    "respectGitIgnore": true,
+    "enableRecursiveFileSearch": true
+  },
+  "checkpointing": {
+    "enabled": false
+  },
+  "coreTools": [
+    "ReadFileTool",
+    "GlobTool",
+    "SearchText",
+    "WriteFileTool",
+    "ShellTool"
+  ],
+  "excludeTools": [],
+  "toolDiscoveryCommand": "",
+  "toolCallCommand": "",
+  "mcpServers": {},
+  "telemetry": {
+    "enabled": false,
+    "target": "local",
+    "otlpEndpoint": "http://localhost:4317",
+    "logPrompts": true
+  },
+  "usageStatisticsEnabled": true
+}
