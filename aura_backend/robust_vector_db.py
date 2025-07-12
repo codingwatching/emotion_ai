@@ -306,11 +306,11 @@ class RobustAuraVectorDB:
         async with self._safe_operation("store_conversation"):
             # Generate embedding if needed
             if memory.embedding is None:
-                from sentence_transformers import SentenceTransformer
-                embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+                from shared_embedding_service import get_embedding_service
+                embedding_service = get_embedding_service()
                 # Convert to list and ensure all values are Python native types
-                embedding_array = embedding_model.encode(memory.message)
-                memory.embedding = [float(x) for x in embedding_array.tolist()]
+                embedding_array = embedding_service.encode_single(memory.message)
+                memory.embedding = embedding_array
 
             # Create unique ID
             if memory.timestamp is None:
@@ -362,11 +362,10 @@ class RobustAuraVectorDB:
         """Search with automatic retry"""
         async with self._safe_operation("search_conversations"):
             # Generate query embedding
-            from sentence_transformers import SentenceTransformer
-            embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            from shared_embedding_service import get_embedding_service
+            embedding_service = get_embedding_service()
             # Convert to list and ensure all values are Python native types
-            embedding_array = embedding_model.encode(query)
-            query_embedding = [float(x) for x in embedding_array.tolist()]
+            query_embedding = embedding_service.encode_single(query)
 
             # Prepare filter
             base_filter: Dict[str, Any] = {"user_id": {"$eq": user_id}}
@@ -399,11 +398,10 @@ class RobustAuraVectorDB:
             # Create embedding
             emotion_text = f"{emotional_state.name} {emotional_state.description} {emotional_state.brainwave} {emotional_state.neurotransmitter}"
 
-            from sentence_transformers import SentenceTransformer
-            embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            from shared_embedding_service import get_embedding_service
+            embedding_service = get_embedding_service()
             # Convert to list and ensure all values are Python native types
-            embedding_array = embedding_model.encode(emotion_text)
-            embedding = [float(x) for x in embedding_array.tolist()]
+            embedding = embedding_service.encode_single(emotion_text)
 
             # Create ID
             if emotional_state.timestamp is None:

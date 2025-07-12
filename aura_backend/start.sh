@@ -36,7 +36,7 @@ source .venv/bin/activate
 
 # Start API (which includes Aura internal tools)
 log "Starting Aura API Server..."
-python -m main &
+python main.py &
 export API_PID=$!
 
 # Wait for API

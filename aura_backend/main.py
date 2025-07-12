@@ -22,7 +22,6 @@ import uuid
 from contextlib import asynccontextmanager
 import asyncio
 
-from sentence_transformers import SentenceTransformer
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -117,15 +116,16 @@ thinking_budget = budget
 logger.info(f"🧠 Thinking budget configured: {thinking_budget} tokens (adaptive)" if budget == -1 else f"🧠 Thinking budget configured: {thinking_budget} tokens")
 
 # Load and configure Gemini API
-api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
 if not api_key:
-    logger.error("❌ GOOGLE_API_KEY not found in environment variables")
-    raise ValueError("GOOGLE_API_KEY environment variable is required")
+    logger.error("❌ GEMINI_API_KEY or GOOGLE_API_KEY not found in environment variables")
+    raise ValueError("GEMINI_API_KEY environment variable is required")
 
 client = genai.Client(api_key=api_key)
 
-# Initialize embedding model
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+# Initialize shared embedding service (replaces individual SentenceTransformer instances)
+from shared_embedding_service import get_embedding_service
+embedding_service = get_embedding_service()
 
 class EmotionalIntensity(str, Enum):
     LOW = "Low"
@@ -541,7 +541,7 @@ class AuraStateManager:
         try:
             # Store cognitive pattern
             focus_text = f"{new_focus.focus.value} {new_focus.description}"
-            embedding = embedding_model.encode(focus_text).tolist()
+            embedding = embedding_service.encode_single(focus_text)
 
             if new_focus.timestamp is None:
                 new_focus.timestamp = datetime.now()

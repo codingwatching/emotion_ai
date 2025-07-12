@@ -159,9 +159,9 @@ class AuraRealMemvid:
 
         # Search active memory (ChromaDB) with conflict protection
         try:
-            from sentence_transformers import SentenceTransformer
-            embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            query_embedding = embedding_model.encode(query).tolist()
+            from shared_embedding_service import get_embedding_service
+            embedding_service = get_embedding_service()
+            query_embedding = embedding_service.encode_single(query)
 
             active_search = self.conversations.query(
                 query_embeddings=[query_embedding],

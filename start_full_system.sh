@@ -22,14 +22,14 @@ command_exists() {
 
 # Function to check if a port is in use
 port_in_use() {
-    lsof -ti:$1 >/dev/null 2>&1
+    lsof -ti:"$1" >/dev/null 2>&1
 }
 
 # Function to kill processes on specific ports
 kill_port() {
-    if port_in_use $1; then
+    if port_in_use "$1"; then
         echo -e "${YELLOW}Killing existing process on port $1...${NC}"
-        fuser -k $1/tcp 2>/dev/null || true
+        fuser -k "$1"/tcp 2>/dev/null || true
         sleep 2
     fi
 }
@@ -50,7 +50,8 @@ fi
 if ! command_exists uv; then
     echo -e "${YELLOW}Warning: uv is not installed. Attempting to install...${NC}"
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    source ~/.bashrc
+    # shellcheck source=$HOME/.bashrc
+    source "$HOME/.bashrc"
     if ! command_exists uv; then
         echo -e "${RED}Error: Failed to install uv. Please install it manually.${NC}"
         exit 1
