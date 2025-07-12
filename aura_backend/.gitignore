@@ -51,6 +51,7 @@ memvid_data/
 memvid_videos/
 chromadb_backups/
 auto_backups/
+aura_backend/aura_data/
 # MCP
 mcp_server.log
 mcp_client.log
