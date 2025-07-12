@@ -1,4 +1,4 @@
 
 # Backend specific ignores
 aura_backend/aura_chroma_db/
-aura_backend/aura_data/users/
+aura_backend/aura_data/

@@ -1,0 +1,14 @@
+# This file preserves important directory structure for Aura AI
+# These directories contain user data and should be preserved locally
+# but their contents are excluded from git via .gitignore
+
+# Core data directories that need to exist:
+# - aura_chroma_db/     (Vector database storage)
+# - aura_data/          (User data, sessions, exports)
+# - memvid_data/        (Memory video data)
+# - memvid_videos/      (Generated video files)
+# - chromadb_backups/   (Database backups)
+# - auto_backups/       (Automated system backups)
+
+# Note: This .gitkeep ensures these directories exist after cloning
+# while .gitignore prevents their contents from being committed

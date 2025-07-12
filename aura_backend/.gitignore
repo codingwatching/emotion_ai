@@ -34,24 +34,22 @@ pyvenv.cfg
 *.log
 logs/
 
-# Database
+# Database and data directories (preserve structure but exclude contents)
 *.db
 *.sqlite
 *.sqlite3
-aura_chroma_db/
-aura_data/users/
-aura_data/sessions/
-aura_data/exports/
-aura_data/backups/
-memvid_data/
-memvid_videos/
-chromadb_backups/
-auto_backups/
-memvid_data/
-memvid_videos/
-chromadb_backups/
-auto_backups/
-aura_backend/aura_data/
+aura_chroma_db/*
+!aura_chroma_db/.gitkeep
+aura_data/*
+!aura_data/.gitkeep
+memvid_data/*
+!memvid_data/.gitkeep
+memvid_videos/*
+!memvid_videos/.gitkeep
+chromadb_backups/*
+!chromadb_backups/.gitkeep
+auto_backups/*
+!auto_backups/.gitkeep
 # MCP
 mcp_server.log
 mcp_client.log

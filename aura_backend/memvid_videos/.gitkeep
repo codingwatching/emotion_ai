@@ -1,0 +1,3 @@
+# This directory stores generated memory videos
+# Contents are excluded from git but directory structure is preserved
+# This ensures video generation functionality works after cloning

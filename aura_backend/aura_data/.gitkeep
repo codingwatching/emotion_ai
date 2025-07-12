@@ -1,0 +1,3 @@
+# This directory stores user data, sessions, and exports
+# Contents are excluded from git but directory structure is preserved
+# This ensures user data persists locally across git operations

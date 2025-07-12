@@ -1,0 +1,3 @@
+# This directory stores memory video data and processing files
+# Contents are excluded from git but directory structure is preserved
+# This ensures memvid functionality works after cloning
