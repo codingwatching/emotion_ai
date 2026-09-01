@@ -14,6 +14,7 @@ from aura_backend.storage.models import (
     MemoryKind,
     TurnCommand,
 )
+from aura_backend.storage.repository import canonical_request_hash
 
 
 def _digest(value: str) -> str:
@@ -59,8 +60,13 @@ def turn_command() -> TurnCommand:
         turn_id="turn-001",
         idempotency_key="request-001",
         request_hash_version=1,
-        request_hash=_digest("canonical request"),
-        response_hash=_digest("canonical response"),
+        request_hash=canonical_request_hash(
+            "scope-alpha",
+            "session-001",
+            user.content,
+            version=1,
+        ),
+        response_hash=_digest(aura.content),
         occurred_at="2026-08-31T12:00:00Z",
         user_event=user,
         aura_event=aura,

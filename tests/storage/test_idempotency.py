@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -17,7 +18,7 @@ from aura_backend.storage.models import (
     TurnCommand,
     TurnWriteStatus,
 )
-from aura_backend.storage.repository import StorageRepository
+from aura_backend.storage.repository import StorageRepository, canonical_request_hash
 
 
 def _row_counts(path: Path) -> tuple[int, int, int]:
@@ -73,13 +74,26 @@ def test_same_key_with_changed_hash_conflicts_without_mutation(
     repository = StorageRepository(ledger_path)
     original = repository.append_turn(turn_command.scope_id, turn_command)
     before = _row_counts(ledger_path)
+    changed_content = "A different synthetic request"
     conflict = repository.append_turn(
         turn_command.scope_id,
         replace(
             turn_command,
             turn_id="conflicting-turn",
-            request_hash="f" * 64,
-            response_hash="e" * 64,
+            request_hash=canonical_request_hash(
+                turn_command.scope_id,
+                turn_command.session_id,
+                changed_content,
+                version=turn_command.request_hash_version,
+            ),
+            user_event=replace(
+                turn_command.user_event,
+                event_id="conflicting-user",
+                content=changed_content,
+                content_sha256=hashlib.sha256(
+                    changed_content.encode("utf-8")
+                ).hexdigest(),
+            ),
         ),
     )
 
@@ -95,6 +109,33 @@ def test_same_key_with_changed_hash_conflicts_without_mutation(
             "SELECT request_hash, response_hash FROM turns"
         ).fetchone()
     assert hashes == (turn_command.request_hash, turn_command.response_hash)
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    (
+        lambda command: replace(command, request_hash="0" * 64),
+        lambda command: replace(command, response_hash="0" * 64),
+        lambda command: replace(
+            command,
+            user_event=replace(command.user_event, content_sha256="0" * 64),
+        ),
+        lambda command: replace(
+            command,
+            aura_event=replace(command.aura_event, content_sha256="0" * 64),
+        ),
+    ),
+)
+def test_tampered_command_hash_fails_before_any_durable_row(
+    ledger_path: Path, turn_command: TurnCommand, tamper
+) -> None:
+    repository = StorageRepository(ledger_path)
+
+    with pytest.raises(StorageFailure) as error:
+        repository.append_turn(turn_command.scope_id, tamper(turn_command))
+
+    assert error.value.code == "command_hash_mismatch"
+    assert not ledger_path.exists()
 
 
 def test_post_commit_interruption_replays_and_schedules_reconciliation(

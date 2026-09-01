@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import hashlib
 from dataclasses import replace
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from aura_backend.storage.models import (
     StorageFailure,
     TurnCommand,
 )
-from aura_backend.storage.repository import StorageRepository
+from aura_backend.storage.repository import StorageRepository, canonical_request_hash
 
 
 def _snapshot_memory(path: Path, memory_id: str) -> tuple[object, ...]:
@@ -54,18 +55,20 @@ def _snapshot_event(path: Path, event_id: str) -> tuple[object, ...]:
 
 
 def _correction_command(original: TurnCommand) -> TurnCommand:
+    user_content = "Synthetic corrected preference"
+    aura_content = "Synthetic correction acknowledgement"
     user_event = replace(
         original.user_event,
         event_id="event-user-correction",
-        content="Synthetic corrected preference",
-        content_sha256="c" * 64,
+        content=user_content,
+        content_sha256=hashlib.sha256(user_content.encode("utf-8")).hexdigest(),
         observed_at="2026-08-31T13:00:00Z",
     )
     aura_event = replace(
         original.aura_event,
         event_id="event-aura-correction",
-        content="Synthetic correction acknowledgement",
-        content_sha256="d" * 64,
+        content=aura_content,
+        content_sha256=hashlib.sha256(aura_content.encode("utf-8")).hexdigest(),
         observed_at="2026-08-31T13:00:01Z",
     )
     memory = replace(
@@ -82,8 +85,13 @@ def _correction_command(original: TurnCommand) -> TurnCommand:
         original,
         turn_id="turn-002",
         idempotency_key="request-002",
-        request_hash="2" * 64,
-        response_hash="3" * 64,
+        request_hash=canonical_request_hash(
+            original.scope_id,
+            original.session_id,
+            user_content,
+            version=original.request_hash_version,
+        ),
+        response_hash=hashlib.sha256(aura_content.encode("utf-8")).hexdigest(),
         occurred_at="2026-08-31T13:00:00Z",
         user_event=user_event,
         aura_event=aura_event,
@@ -176,8 +184,12 @@ def test_cross_scope_derivation_source_fails_without_mutating_either_scope(
         session_id="session-beta",
         turn_id="turn-beta",
         idempotency_key="request-beta",
-        request_hash="6" * 64,
-        response_hash="7" * 64,
+        request_hash=canonical_request_hash(
+            "scope-beta",
+            "session-beta",
+            turn_command.user_event.content,
+            version=turn_command.request_hash_version,
+        ),
         user_event=replace(turn_command.user_event, event_id="event-beta-user"),
         aura_event=replace(turn_command.aura_event, event_id="event-beta-aura"),
         derived_memories=(),
@@ -287,8 +299,12 @@ def test_invalid_supersession_fails_closed(
             session_id="session-beta",
             turn_id="turn-beta",
             idempotency_key="request-beta",
-            request_hash="4" * 64,
-            response_hash="5" * 64,
+            request_hash=canonical_request_hash(
+                "scope-beta",
+                "session-beta",
+                turn_command.user_event.content,
+                version=turn_command.request_hash_version,
+            ),
             user_event=replace(turn_command.user_event, event_id="event-beta-user"),
             aura_event=replace(turn_command.aura_event, event_id="event-beta-aura"),
             derived_memories=(
