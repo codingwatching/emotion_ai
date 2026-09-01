@@ -234,6 +234,7 @@ def test_duplicates_fragments_raw_metadata_and_anomalies_remain_explicit(
         "durable",
         "outside_workspace",
         "symlink",
+        "inner_symlink",
         "missing_evidence",
         "wrong_alias",
         "wrong_fingerprint",
@@ -279,6 +280,11 @@ def test_unauthorized_paths_fail_before_chroma_opens(
         linked = workspace / "linked-root"
         linked.symlink_to(restored_a, target_is_directory=True)
         authorization = authorization.replace(disposable_root=linked)
+    elif case == "inner_symlink":
+        (restored_a / "external-link").symlink_to(
+            tmp_path / "outside-sentinel",
+            target_is_directory=False,
+        )
     elif case == "missing_evidence":
         authorization = authorization.replace(evidence_status="not_run")
     elif case == "wrong_alias":

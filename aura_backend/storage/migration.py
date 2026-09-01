@@ -63,7 +63,10 @@ def legacy_tree_sha256(root: Path) -> str:
     if not resolved.is_dir():
         raise StorageFailure("legacy_source_not_directory")
     digest = hashlib.sha256()
-    for path in sorted(item for item in resolved.rglob("*") if item.is_file()):
+    entries = sorted(resolved.rglob("*"))
+    if any(path.is_symlink() for path in entries):
+        raise StorageFailure("legacy_source_symlink_rejected")
+    for path in (item for item in entries if item.is_file()):
         relative = path.relative_to(resolved).as_posix()
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
