@@ -18,6 +18,8 @@ from aura_backend.storage.models import (
     EpistemicStatus,
     EventInput,
     MemoryKind,
+    RetrievalItem,
+    StorageFailure,
     TurnCommand,
 )
 from aura_backend.storage.projection import ProjectionCandidate
@@ -517,6 +519,28 @@ def test_cursor_tampering_binding_expiry_and_page_bounds_fail_closed(
             query="changed query",
             cursor=first.next_cursor,
         )
+    retriever.config = RetrievalConfig(version=2)
+    with pytest.raises(StorageFailure, match="cursor_binding_mismatch"):
+        retriever.retrieve(
+            scope_id="scope-alpha",
+            query="Stable page marker",
+            cursor=first.next_cursor,
+        )
+    retriever.config = RetrievalConfig()
+
+    binding = retriever._cursor_binding(first.next_cursor)
+    assert binding.run_id is not None
+    stored_run = retriever._runs[binding.run_id]
+    retriever._runs[binding.run_id] = replace(
+        stored_run,
+        projection_generation="tampered-generation",
+    )
+    with pytest.raises(StorageFailure, match="cursor_binding_mismatch"):
+        retriever.retrieve(
+            scope_id="scope-alpha",
+            query="Stable page marker",
+            cursor=first.next_cursor,
+        )
     with pytest.raises(StorageFailure, match="invalid_page_size"):
         retriever.retrieve(scope_id="scope-alpha", query="stable", page_size=101)
 
@@ -603,7 +627,8 @@ def test_trace_is_complete_content_free_and_zero_salience_is_enforced(
     assert trace.run_id == baseline.trace_id
 
     class NonZeroScorer:
-        def score(self, _item: object) -> float:
+        def score(self, item: RetrievalItem) -> float:
+            del item
             return 0.01
 
     with pytest.raises(StorageFailure, match="nonzero_salience_forbidden"):

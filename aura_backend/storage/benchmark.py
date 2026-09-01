@@ -5,10 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol
+
+from aura_backend.storage.models import RetrievalPage
 
 _MANIFEST_KEYS = {
     "admission_thresholds",
@@ -109,6 +113,7 @@ class BenchmarkQuery:
     case_class: str
     scope_id: str
     expected_origin_ids: tuple[str, ...]
+    query_text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +149,80 @@ class BenchmarkRetriever(Protocol):
     ) -> RetrievalResponse:
         """Return at most five ranked candidates for one fixed case."""
         ...
+
+
+class PublicRetriever(Protocol):
+    """Public bounded retrieval page consumed by the frozen instrument."""
+
+    def retrieve(
+        self,
+        *,
+        scope_id: str,
+        query: str,
+        page_size: int = 20,
+        cursor: str | None = None,
+    ) -> RetrievalPage: ...
+
+
+class ConnectedBenchmarkRetriever:
+    """Adapt the public neutral retriever to the frozen benchmark protocol."""
+
+    def __init__(
+        self,
+        *,
+        instrument: LoadedInstrument,
+        retriever: PublicRetriever,
+        storage_bytes: int,
+        restore_pass: bool,
+        elapsed_ms: Callable[[], float] | None = None,
+    ) -> None:
+        self._retriever = retriever
+        self._instrument = instrument
+        self.storage_bytes = storage_bytes
+        self.restore_pass = restore_pass
+        self.controls = frozenset(str(item) for item in instrument.manifest["controls"])
+        self._elapsed_ms = elapsed_ms
+        self._origins = {
+            str(record["origin_id"]): record
+            for record in instrument.records
+            if record["record_type"] in {"event", "memory"}
+        }
+
+    def retrieve(
+        self,
+        query: BenchmarkQuery,
+        *,
+        repetition: int,
+    ) -> RetrievalResponse:
+        """Run one top-five public query and retain only content-free facts."""
+        del repetition
+        started = time.perf_counter()
+        page = self._retriever.retrieve(
+            scope_id=query.scope_id,
+            query=query.query_text,
+            page_size=5,
+            cursor=None,
+        )
+        measured = (time.perf_counter() - started) * 1_000
+        elapsed_ms = self._elapsed_ms() if self._elapsed_ms is not None else measured
+        candidates: list[RetrievedCandidate] = []
+        for item in page.items:
+            origin = self._origins.get(item.origin_id)
+            active = bool(origin is not None and origin.get("active", True))
+            candidates.append(
+                RetrievedCandidate(
+                    origin_id=item.origin_id,
+                    scope_id=item.scope_id,
+                    provenance_event_ids=item.provenance_event_ids,
+                    active=active,
+                    content_hash=item.content_sha256,
+                )
+            )
+        return RetrievalResponse(
+            candidates=tuple(candidates),
+            elapsed_ms=float(elapsed_ms),
+            complete=True,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,6 +456,7 @@ def _benchmark_queries(instrument: LoadedInstrument) -> tuple[BenchmarkQuery, ..
             case_class=str(by_case[case_id]["case_class"]),
             scope_id=str(by_case[case_id]["scope_id"]),
             expected_origin_ids=tuple(instrument.manifest["expected_origins"][case_id]),
+            query_text=str(by_case[case_id]["query"]),
         )
         for case_id in instrument.manifest["case_ids"]
     )

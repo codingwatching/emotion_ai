@@ -195,3 +195,36 @@ class RetrievalResult:
     run_id: str
     items: tuple[RetrievalItem, ...]
     traces: tuple[RetrievalTrace, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalPage:
+    """One bounded page from a frozen neutral retrieval run."""
+
+    items: tuple[RetrievalItem, ...]
+    next_cursor: str | None
+    has_more: bool
+    trace_id: str
+    traces: tuple[RetrievalTrace, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryItem:
+    """One immutable source event from bounded ledger history."""
+
+    event_id: str
+    scope_id: str
+    turn_id: str
+    actor: str
+    content: str
+    content_sha256: str
+    observed_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryPage:
+    """One keyset page frozen to an initial ledger watermark."""
+
+    items: tuple[HistoryItem, ...]
+    next_cursor: str | None
+    has_more: bool
