@@ -93,7 +93,7 @@ def synthetic_restores(tmp_path: Path) -> tuple[Path, Path, Path, tuple[Path, ..
                 "metadata": {
                     "user_id": "synthetic-user",
                     "timestamp": "not-a-timestamp",
-                    "confidence": float("nan"),
+                    "confidence": "NaN",
                 },
             },
         ],
@@ -291,7 +291,7 @@ def test_unauthorized_paths_fail_before_chroma_opens(
     assert opened == []
 
 
-def test_importer_rejects_source_mutation_as_failed_evidence(
+def test_importer_opens_only_an_operation_copy_and_keeps_source_immutable(
     ledger_path: Path,
     synthetic_restores: tuple[Path, Path, Path, tuple[Path, ...]],
 ) -> None:
@@ -302,15 +302,16 @@ def test_importer_rejects_source_mutation_as_failed_evidence(
         workspace=workspace,
         forbidden_roots=forbidden,
     )
+    source_before = legacy_tree_sha256(restored_a)
 
     class MutatingClient:
         def __init__(self, path: str) -> None:
             self.path = Path(path)
             self.real = chromadb.PersistentClient(path=path)
 
-        def list_collections(self) -> Any:
+        def list_collections(self, **kwargs: Any) -> Any:
             (self.path / "mutation-marker").write_bytes(b"mutated")
-            return self.real.list_collections()
+            return self.real.list_collections(**kwargs)
 
         def get_collection(self, name: str) -> Any:
             return self.real.get_collection(name)
@@ -322,6 +323,7 @@ def test_importer_rejects_source_mutation_as_failed_evidence(
         repository=StorageRepository(ledger_path),
         client_factory=MutatingClient,
     )
-    with pytest.raises(StorageFailure, match="legacy_source_mutated"):
-        importer.import_authorized(authorization)
-
+    result = importer.import_authorized(authorization)
+    assert result.imported_count == 3
+    assert result.source_before_sha256 == result.source_after_sha256 == source_before
+    assert legacy_tree_sha256(restored_a) == source_before

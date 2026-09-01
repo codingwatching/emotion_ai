@@ -6,7 +6,7 @@ import sqlite3
 
 from aura_backend.storage.models import StorageFailure
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _MIGRATION_1 = """
 CREATE TABLE memory_scopes (
@@ -213,6 +213,34 @@ CREATE TRIGGER memories_fts_update AFTER UPDATE OF canonical_text ON derived_mem
 END;
 """
 
+_MIGRATION_2 = """
+CREATE TABLE legacy_fragments (
+    fragment_id TEXT PRIMARY KEY,
+    source_alias TEXT NOT NULL,
+    root_fingerprint TEXT NOT NULL,
+    collection_name TEXT NOT NULL,
+    legacy_id TEXT NOT NULL,
+    scope_id TEXT NOT NULL REFERENCES memory_scopes(scope_id),
+    content TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    observed_at TEXT,
+    raw_metadata_json TEXT NOT NULL,
+    status_codes_json TEXT NOT NULL,
+    imported_at TEXT NOT NULL,
+    UNIQUE(root_fingerprint, collection_name, legacy_id)
+) STRICT;
+CREATE INDEX legacy_fragments_scope
+    ON legacy_fragments(scope_id, observed_at, fragment_id);
+
+CREATE TABLE legacy_import_evidence (
+    source_alias TEXT NOT NULL,
+    root_fingerprint TEXT NOT NULL,
+    reason_code TEXT NOT NULL,
+    evidence_sha256 TEXT NOT NULL,
+    PRIMARY KEY(source_alias, root_fingerprint, reason_code)
+) STRICT;
+"""
+
 
 def apply_migrations(connection: sqlite3.Connection) -> None:
     """Apply ordered forward migrations to ``connection``."""
@@ -222,7 +250,14 @@ def apply_migrations(connection: sqlite3.Connection) -> None:
     if current == 0:
         try:
             connection.executescript(_MIGRATION_1)
-            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            connection.execute("PRAGMA user_version = 1")
+            current = 1
+        except sqlite3.Error as error:
+            raise StorageFailure("schema_migration_failed") from error
+    if current == 1:
+        try:
+            connection.executescript(_MIGRATION_2)
+            connection.execute("PRAGMA user_version = 2")
         except sqlite3.Error as error:
             raise StorageFailure("schema_migration_failed") from error
 

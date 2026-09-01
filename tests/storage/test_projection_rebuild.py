@@ -161,7 +161,7 @@ def test_stable_ids_metadata_and_cosine_query_are_bound_to_sqlite(
             "origin_id": "memory-001",
             "origin_kind": "memory",
             "scope_id": "scope-alpha",
-            "sqlite_schema": 1,
+            "sqlite_schema": repository.schema_version,
         }
     finally:
         client.close()

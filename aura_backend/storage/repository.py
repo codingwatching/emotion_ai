@@ -54,6 +54,35 @@ class ProjectionGenerationRecord:
     completed_at: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class LegacySourceRecord:
+    """Exact source-triple mapping for one imported legacy record."""
+
+    root_fingerprint: str
+    collection_name: str
+    legacy_id: str
+    imported_origin_id: str
+    metadata_json: str
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyFragmentRecord:
+    """Unpaired historical evidence preserved without invented structure."""
+
+    fragment_id: str
+    source_alias: str
+    root_fingerprint: str
+    collection_name: str
+    legacy_id: str
+    scope_id: str
+    content: str
+    content_sha256: str
+    observed_at: str | None
+    raw_metadata_json: str
+    status_codes: tuple[str, ...]
+    imported_at: str
+
+
 def canonical_request_hash(
     scope_id: str,
     session_id: str,
@@ -487,6 +516,235 @@ class StorageRepository:
         finally:
             connection.close()
         return None if row is None else self.projection_generation(str(row[0]))
+
+    def import_legacy_fragment(
+        self,
+        *,
+        source_alias: str,
+        root_fingerprint: str,
+        collection_name: str,
+        legacy_id: str,
+        scope_id: str,
+        content: str,
+        content_sha256: str,
+        observed_at: str | None,
+        raw_metadata_json: str,
+        status_codes: tuple[str, ...],
+        imported_at: str,
+    ) -> bool:
+        """Insert one exact legacy source triple, or validate its prior import."""
+        expected_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        if not hmac.compare_digest(content_sha256, expected_hash):
+            raise StorageFailure("legacy_content_hash_mismatch", identifier=legacy_id)
+        if not (
+            source_alias
+            and root_fingerprint
+            and collection_name
+            and legacy_id
+            and scope_id
+            and status_codes
+        ):
+            raise StorageFailure("legacy_mapping_invalid", identifier=legacy_id)
+        canonical_codes = tuple(sorted(set(status_codes)))
+        status_json = json.dumps(canonical_codes, separators=(",", ":"))
+        fragment_digest = hashlib.sha256(
+            json.dumps(
+                (root_fingerprint, collection_name, legacy_id),
+                ensure_ascii=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        fragment_id = f"legacy-fragment:{fragment_digest}"
+
+        with self._writer_lock:
+            connection = open_database(self.database_path)
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                existing = connection.execute(
+                    """
+                    SELECT imported_origin_id, metadata_json
+                    FROM legacy_sources
+                    WHERE root_fingerprint = ? AND collection_name = ?
+                      AND legacy_id = ?
+                    """,
+                    (root_fingerprint, collection_name, legacy_id),
+                ).fetchone()
+                if existing is not None:
+                    fragment = connection.execute(
+                        """
+                        SELECT source_alias, scope_id, content_sha256, observed_at,
+                               raw_metadata_json, status_codes_json
+                        FROM legacy_fragments WHERE fragment_id = ?
+                        """,
+                        (fragment_id,),
+                    ).fetchone()
+                    expected = (
+                        source_alias,
+                        scope_id,
+                        content_sha256,
+                        observed_at,
+                        raw_metadata_json,
+                        status_json,
+                    )
+                    if (
+                        str(existing[0]) != fragment_id
+                        or str(existing[1]) != raw_metadata_json
+                        or fragment is None
+                        or tuple(fragment) != expected
+                    ):
+                        raise StorageFailure(
+                            "legacy_source_conflict", identifier=legacy_id
+                        )
+                    connection.rollback()
+                    return False
+                connection.execute(
+                    "INSERT OR IGNORE INTO memory_scopes(scope_id, created_at) "
+                    "VALUES (?, ?)",
+                    (scope_id, imported_at),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO legacy_fragments(
+                        fragment_id, source_alias, root_fingerprint,
+                        collection_name, legacy_id, scope_id, content,
+                        content_sha256, observed_at, raw_metadata_json,
+                        status_codes_json, imported_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        fragment_id,
+                        source_alias,
+                        root_fingerprint,
+                        collection_name,
+                        legacy_id,
+                        scope_id,
+                        content,
+                        content_sha256,
+                        observed_at,
+                        raw_metadata_json,
+                        status_json,
+                        imported_at,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO legacy_sources(
+                        root_fingerprint, collection_name, legacy_id,
+                        imported_origin_id, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        root_fingerprint,
+                        collection_name,
+                        legacy_id,
+                        fragment_id,
+                        raw_metadata_json,
+                    ),
+                )
+                connection.commit()
+                return True
+            except StorageFailure:
+                connection.rollback()
+                raise
+            except sqlite3.Error as error:
+                connection.rollback()
+                raise StorageFailure(
+                    "legacy_import_failed", identifier=legacy_id
+                ) from error
+            finally:
+                connection.close()
+
+    def record_legacy_import_evidence(
+        self,
+        *,
+        source_alias: str,
+        root_fingerprint: str,
+        reason_codes: tuple[str, ...],
+    ) -> None:
+        """Persist content-free anomaly reasons after an immutable source read."""
+        with self._writer_lock:
+            connection = open_database(self.database_path)
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                for reason_code in sorted(set(reason_codes)):
+                    evidence_sha256 = hashlib.sha256(
+                        json.dumps(
+                            (source_alias, root_fingerprint, reason_code),
+                            separators=(",", ":"),
+                        ).encode("utf-8")
+                    ).hexdigest()
+                    connection.execute(
+                        """
+                        INSERT OR IGNORE INTO legacy_import_evidence(
+                            source_alias, root_fingerprint, reason_code,
+                            evidence_sha256
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            source_alias,
+                            root_fingerprint,
+                            reason_code,
+                            evidence_sha256,
+                        ),
+                    )
+                connection.commit()
+            except sqlite3.Error as error:
+                connection.rollback()
+                raise StorageFailure(
+                    "legacy_evidence_write_failed", identifier=source_alias
+                ) from error
+            finally:
+                connection.close()
+
+    def legacy_source_records(self) -> tuple[LegacySourceRecord, ...]:
+        """Return exact legacy mappings for audit and deterministic tests."""
+        connection = open_database(self.database_path)
+        try:
+            rows = connection.execute(
+                """
+                SELECT root_fingerprint, collection_name, legacy_id,
+                       imported_origin_id, metadata_json
+                FROM legacy_sources
+                ORDER BY root_fingerprint, collection_name, legacy_id
+                """
+            ).fetchall()
+            return tuple(LegacySourceRecord(*map(str, row)) for row in rows)
+        finally:
+            connection.close()
+
+    def legacy_fragment_records(self) -> tuple[LegacyFragmentRecord, ...]:
+        """Return typed fragments without inventing pair or timestamp facts."""
+        connection = open_database(self.database_path)
+        try:
+            rows = connection.execute(
+                """
+                SELECT fragment_id, source_alias, root_fingerprint,
+                       collection_name, legacy_id, scope_id, content,
+                       content_sha256, observed_at, raw_metadata_json,
+                       status_codes_json, imported_at
+                FROM legacy_fragments
+                ORDER BY root_fingerprint, collection_name, legacy_id
+                """
+            ).fetchall()
+            return tuple(
+                LegacyFragmentRecord(
+                    fragment_id=str(row[0]),
+                    source_alias=str(row[1]),
+                    root_fingerprint=str(row[2]),
+                    collection_name=str(row[3]),
+                    legacy_id=str(row[4]),
+                    scope_id=str(row[5]),
+                    content=str(row[6]),
+                    content_sha256=str(row[7]),
+                    observed_at=None if row[8] is None else str(row[8]),
+                    raw_metadata_json=str(row[9]),
+                    status_codes=tuple(json.loads(str(row[10]))),
+                    imported_at=str(row[11]),
+                )
+                for row in rows
+            )
+        finally:
+            connection.close()
 
     @property
     def schema_version(self) -> int:
