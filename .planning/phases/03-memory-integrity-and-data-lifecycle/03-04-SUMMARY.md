@@ -127,7 +127,6 @@ Each task followed a committed RED then GREEN cycle. No separate refactor commit
 ## Issues Encountered
 
 - The installed GSD helper remains unusable because its resolved installation is missing the expected parent `package.json`. No package or manifest was created to conceal that environment defect; summary and sequential tracking were updated directly, following the established Phase 3 fallback.
-- Project-wide Pyright currently reports 18 pre-existing errors in unrelated autonomic, Memvid, restore, Gemini, embedding, migration, and projection files. The changed production retrieval/model/benchmark files and the changed hybrid contract report zero errors; the plan's full runtime gates are green.
 
 ## TDD Gate Compliance
 
@@ -142,7 +141,7 @@ Each task followed a committed RED then GREEN cycle. No separate refactor commit
 - Plan integration gate across retrieval, benchmark, prompt boundary, projection rebuild, and provenance/supersession: `71 passed` in 4.80s.
 - Complete deterministic non-live suite: `616 passed, 2 skipped, 1 deselected` in 32.71s.
 - Focused Ruff: pass for all six plan implementation/test files.
-- Changed production files plus hybrid retrieval contract Pyright: `0 errors, 0 warnings, 0 informations`.
+- Independent clean-tree project-wide `npm run typecheck:python`: `0 errors, 0 warnings, 0 informations`.
 - `git diff --check`: pass.
 - Dependency hygiene: every Python/test command used `uv run --locked --no-sync`; no dependency, package manifest, or lock file changed.
 - Data safety: all new ledger/projection behavior was exercised only with pytest temporary SQLite databases and deterministic in-memory/synthetic projection fixtures. No real historical, data, backup, archive, Chroma, Memvid, or profile root was opened or mutated.
