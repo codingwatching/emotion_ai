@@ -1,23 +1,98 @@
 {
-  "admission_thresholds": {},
-  "arms": {},
-  "benchmark_code_commit": "plan-03-02-red",
-  "candidate_caps": {},
+  "admission_thresholds": {
+    "lexical_min_token_coverage": 0.5,
+    "vector_min_cosine_similarity": 0.35
+  },
+  "arms": {
+    "constant_salience_control": {
+      "salience_contribution": 0.0
+    },
+    "neutral": {
+      "salience_contribution": 0.0
+    }
+  },
+  "benchmark_code_commit": "03-02-task-01-green",
+  "candidate_caps": {
+    "lexical": 50,
+    "vector": 50
+  },
   "case_ids": [
-    "direct-01"
+    "absent-01",
+    "correction-01",
+    "cross-scope-01",
+    "direct-01",
+    "distractor-01",
+    "duplicate-01",
+    "injection-01",
+    "pagination-01",
+    "paraphrase-01",
+    "provenance-01",
+    "temporal-01"
   ],
-  "controls": [],
-  "corpus_sha256": "",
+  "controls": [
+    "absent_fact_abstains",
+    "correction_excludes_stale",
+    "faithful_exact_fact_retrieves",
+    "provenance_drop_detected",
+    "scope_leak_detected",
+    "stale_preference_detected"
+  ],
+  "corpus_sha256": "7c50a8a4b6db28c52d4ae1397f2dfdd3e85bea53d31055f19a898df265e17d51",
   "corpus_version": "memory-eval-v1",
   "embedding_fingerprint_slot": "not-measured-phase-03-02",
+  "expected_origins": {
+    "absent-01": [],
+    "correction-01": [
+      "mem-correction-new"
+    ],
+    "cross-scope-01": [
+      "evt-cross-scope-a"
+    ],
+    "direct-01": [
+      "evt-direct-01"
+    ],
+    "distractor-01": [
+      "evt-distractor-target"
+    ],
+    "duplicate-01": [
+      "evt-duplicate-a"
+    ],
+    "injection-01": [
+      "evt-injection-01"
+    ],
+    "pagination-01": [
+      "evt-page-00",
+      "evt-page-01",
+      "evt-page-02"
+    ],
+    "paraphrase-01": [
+      "evt-paraphrase-01"
+    ],
+    "provenance-01": [
+      "mem-provenance-01"
+    ],
+    "temporal-01": [
+      "evt-temporal-early"
+    ]
+  },
   "fts_tokenizer": "unicode61 remove_diacritics 2",
-  "gates": {},
+  "gates": {
+    "critical_absent_abstention": 1.0,
+    "cross_scope_leaks": 0,
+    "direct_paraphrase_recall_at_5": 0.9,
+    "explicit_update_accuracy": 0.9,
+    "max_warmed_local_p95_ms": 250.0,
+    "selected_without_provenance": 0
+  },
   "hardware_label": "popos-rtx3060-cpu-correctness",
-  "load_event_count": 0,
+  "load_event_count": 10000,
   "load_seed": 3202,
   "max_corpus_bytes": 4000000,
   "max_records": 10100,
-  "page_bounds": {},
+  "page_bounds": {
+    "default": 20,
+    "maximum": 100
+  },
   "rrf_k": 60,
   "runtime_label": "python-3.12-locked-no-sync",
   "schema_version": 1,
