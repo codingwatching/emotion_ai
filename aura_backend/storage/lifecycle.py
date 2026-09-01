@@ -28,6 +28,7 @@ from aura_backend.storage.models import StorageFailure
 from aura_backend.storage.projection import ProjectionAdapter
 from aura_backend.storage.repository import StorageRepository
 from aura_backend.storage.schema import rebuild_fts
+from aura_backend.runtime_security import StoragePathError, safe_export_format, safe_storage_component
 
 
 class SnapshotStatus(str, Enum):
@@ -40,6 +41,12 @@ class RestoreStatus(str, Enum):
     """Restore state returned only after the complete required gate passes."""
 
     COMPLETE = "complete"
+
+
+class ExportStatus(str, Enum):
+    """Publication state for a complete versioned scope export."""
+
+    PUBLISHED = "published"
 
 
 class ProjectionFactory(Protocol):
@@ -89,6 +96,26 @@ class RestoreResult:
     projection_ids_sha256: str
 
 
+@dataclass(frozen=True, slots=True)
+class ExportResult:
+    """Content-free identity and parity facts for one published JSON export."""
+
+    status: ExportStatus
+    path: Path
+    manifest_sha256: str
+    counts: dict[str, int]
+    record_hashes: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class ExportVerification:
+    """Round-trip comparison between one export and current scoped truth."""
+
+    valid: bool
+    counts: dict[str, int]
+    record_hashes: dict[str, str]
+
+
 _SAFE_OPERATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _CHUNK_BYTES = 1024 * 1024
 _SNAPSHOT_FORMAT_VERSION = 1
@@ -112,6 +139,30 @@ _CANONICAL_TABLES = (
     "legacy_import_evidence",
 )
 _FTS_TABLES = ("event_fts", "memory_fts")
+_EXPORT_RECORDS = (
+    "sessions",
+    "turns",
+    "events",
+    "derived_memories",
+    "memory_sources",
+    "memory_supersessions",
+    "memory_retractions",
+    "profile_versions",
+)
+_PRIVATE_PROFILE_KEYS = {
+    "api_key",
+    "apikey",
+    "credential",
+    "credentials",
+    "cursor_secret",
+    "embedding",
+    "embeddings",
+    "internal_path",
+    "password",
+    "provider_api_key",
+    "secret",
+    "token",
+}
 
 
 class LifecycleService:
@@ -405,6 +456,188 @@ class LifecycleService:
         except (OSError, sqlite3.Error, ValueError) as error:
             raise StorageFailure("restore_verification_failed") from error
 
+    def export_scope_json(
+        self,
+        output_root: Path,
+        *,
+        scope_id: str,
+        export_id: str,
+        output_format: str = "json",
+        created_at: str | None = None,
+        fault_hook: SnapshotFaultHook | None = None,
+    ) -> ExportResult:
+        """Atomically publish actual allowlisted rows for one exact scope."""
+        try:
+            safe_export_format(output_format)
+        except StoragePathError as error:
+            raise StorageFailure("export_format_unsupported") from error
+        try:
+            safe_storage_component(scope_id)
+        except StoragePathError as error:
+            raise StorageFailure("export_scope_invalid") from error
+        try:
+            safe_storage_component(export_id)
+        except StoragePathError as error:
+            raise StorageFailure("export_id_invalid") from error
+        root = _resolve_directory(output_root, "export_destination")
+        final_path = root / f"{export_id}.json"
+        staging_path = root / f".{export_id}.json.partial"
+        if any(path.exists() or path.is_symlink() for path in (final_path, staging_path)):
+            raise StorageFailure("export_target_exists", identifier=export_id)
+
+        records = self._collect_export_records(scope_id)
+        counts = {name: len(records[name]) for name in _EXPORT_RECORDS}
+        record_hashes = {
+            name: hashlib.sha256(_canonical_json_bytes(records[name])).hexdigest()
+            for name in _EXPORT_RECORDS
+        }
+        payload: dict[str, object] = {
+            "schema_version": 1,
+            "scope_id": scope_id,
+            "export_id": export_id,
+            "created_at": created_at
+            or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "format": "json",
+            "counts": counts,
+            "record_hashes": record_hashes,
+            "records": records,
+        }
+        manifest_sha256 = hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
+        payload["manifest_sha256"] = manifest_sha256
+        try:
+            _write_private_file(staging_path, _canonical_json_bytes(payload))
+            if fault_hook is not None:
+                fault_hook("before_publish")
+            os.replace(staging_path, final_path)
+            _fsync_directory(root)
+        except StorageFailure:
+            _unlink_owned_file(staging_path)
+            _unlink_owned_file(final_path)
+            raise
+        except OSError as error:
+            _unlink_owned_file(staging_path)
+            _unlink_owned_file(final_path)
+            raise StorageFailure("export_io_failed", identifier=export_id) from error
+        return ExportResult(
+            status=ExportStatus.PUBLISHED,
+            path=final_path,
+            manifest_sha256=manifest_sha256,
+            counts=counts,
+            record_hashes=record_hashes,
+        )
+
+    def verify_scope_export(
+        self, export_path: Path, *, expected_scope_id: str
+    ) -> ExportVerification:
+        """Verify manifest, record, ID, count, and live-ledger round-trip parity."""
+        path = _resolve_regular_file(export_path, "export_verification")
+        payload_bytes = _read_regular_file(path, max_bytes=256 * 1024 * 1024)
+        try:
+            payload = json.loads(payload_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise StorageFailure("export_manifest_invalid") from error
+        if not isinstance(payload, dict) or payload.get("scope_id") != expected_scope_id:
+            raise StorageFailure("export_scope_mismatch")
+        supplied_manifest = payload.pop("manifest_sha256", None)
+        if not isinstance(supplied_manifest, str) or not hmac.compare_digest(
+            hashlib.sha256(_canonical_json_bytes(payload)).hexdigest(), supplied_manifest
+        ):
+            raise StorageFailure("export_manifest_hash_mismatch")
+        records_value = payload.get("records")
+        if (
+            not isinstance(records_value, dict)
+            or set(records_value) != set(_EXPORT_RECORDS)
+            or any(not isinstance(records_value[name], list) for name in _EXPORT_RECORDS)
+        ):
+            raise StorageFailure("export_record_shape_invalid")
+        exported_records = {
+            name: list(records_value[name]) for name in _EXPORT_RECORDS
+        }
+        exported_counts = {name: len(exported_records[name]) for name in _EXPORT_RECORDS}
+        exported_hashes = {
+            name: hashlib.sha256(_canonical_json_bytes(exported_records[name])).hexdigest()
+            for name in _EXPORT_RECORDS
+        }
+        if exported_counts != _string_int_map(payload.get("counts")):
+            raise StorageFailure("export_count_mismatch")
+        if exported_hashes != _string_map(payload.get("record_hashes")):
+            raise StorageFailure("export_record_hash_mismatch")
+        current_records = self._collect_export_records(expected_scope_id)
+        current_counts = {name: len(current_records[name]) for name in _EXPORT_RECORDS}
+        current_hashes = {
+            name: hashlib.sha256(_canonical_json_bytes(current_records[name])).hexdigest()
+            for name in _EXPORT_RECORDS
+        }
+        if exported_counts != current_counts or exported_hashes != current_hashes:
+            raise StorageFailure("export_round_trip_mismatch")
+        return ExportVerification(
+            valid=True,
+            counts=exported_counts,
+            record_hashes=exported_hashes,
+        )
+
+    def _collect_export_records(self, scope_id: str) -> dict[str, list[dict[str, object]]]:
+        connection = sqlite3.connect(
+            f"file:{self.repository.database_path.as_posix()}?mode=ro",
+            uri=True,
+            isolation_level=None,
+        )
+        connection.row_factory = sqlite3.Row
+        try:
+            connection.execute("BEGIN")
+            records: dict[str, list[dict[str, object]]] = {
+                "sessions": _query_dicts(
+                    connection,
+                    "SELECT session_id,created_at,closed_at FROM sessions "
+                    "WHERE scope_id=? ORDER BY created_at,session_id",
+                    (scope_id,),
+                ),
+                "turns": _query_dicts(
+                    connection,
+                    "SELECT turn_id,session_id,idempotency_key,request_hash_version,"
+                    "request_hash,response_hash,occurred_at FROM turns "
+                    "WHERE scope_id=? ORDER BY occurred_at,turn_id",
+                    (scope_id,),
+                ),
+                "events": _event_export_rows(connection, scope_id),
+                "derived_memories": _query_dicts(
+                    connection,
+                    "SELECT memory_id,memory_kind,canonical_text,confidence,"
+                    "epistemic_status,primary_source_event_id,created_at,content_sha256 "
+                    "FROM derived_memories WHERE scope_id=? "
+                    "ORDER BY created_at,memory_id",
+                    (scope_id,),
+                ),
+                "memory_sources": _query_dicts(
+                    connection,
+                    "SELECT memory_id,event_id,relation FROM memory_sources "
+                    "WHERE scope_id=? ORDER BY memory_id,event_id",
+                    (scope_id,),
+                ),
+                "memory_supersessions": _query_dicts(
+                    connection,
+                    "SELECT old_memory_id,new_memory_id,basis_event_id,reason,created_at "
+                    "FROM memory_supersessions WHERE scope_id=? "
+                    "ORDER BY created_at,old_memory_id,new_memory_id",
+                    (scope_id,),
+                ),
+                "memory_retractions": _query_dicts(
+                    connection,
+                    "SELECT memory_id,basis_event_id,reason,created_at "
+                    "FROM memory_retractions WHERE scope_id=? "
+                    "ORDER BY created_at,memory_id",
+                    (scope_id,),
+                ),
+                "profile_versions": _profile_export_rows(connection, scope_id),
+            }
+            connection.rollback()
+            return records
+        except sqlite3.Error as error:
+            connection.rollback()
+            raise StorageFailure("export_read_failed") from error
+        finally:
+            connection.close()
+
     def _build_snapshot_manifest(
         self,
         database_path: Path,
@@ -555,6 +788,84 @@ def _fts_facts(
             b"\n".join(_canonical_json_bytes(list(row)) for row in rows)
         ).hexdigest()
     return counts, digests
+
+
+def _query_dicts(
+    connection: sqlite3.Connection,
+    statement: str,
+    parameters: tuple[object, ...],
+) -> list[dict[str, object]]:
+    """Return deterministic allowlisted rows from a parameterized scope query."""
+    return [dict(row) for row in connection.execute(statement, parameters).fetchall()]
+
+
+def _event_export_rows(
+    connection: sqlite3.Connection, scope_id: str
+) -> list[dict[str, object]]:
+    rows = connection.execute(
+        "SELECT event_id,turn_id,ordinal,event_type,actor,observed_at,content,"
+        "payload_json,content_sha256,source_kind FROM events WHERE scope_id=? "
+        "ORDER BY observed_at,event_id",
+        (scope_id,),
+    ).fetchall()
+    exported: list[dict[str, object]] = []
+    for row in rows:
+        values = dict(row)
+        raw_payload = values.pop("payload_json")
+        try:
+            parsed = json.loads(str(raw_payload))
+        except json.JSONDecodeError as error:
+            raise StorageFailure("export_event_payload_invalid") from error
+        sanitized = _sanitize_profile_value(parsed)
+        values["payload"] = sanitized
+        values["payload_sha256"] = hashlib.sha256(
+            _canonical_json_bytes(sanitized)
+        ).hexdigest()
+        exported.append(values)
+    return exported
+
+
+def _profile_export_rows(
+    connection: sqlite3.Connection, scope_id: str
+) -> list[dict[str, object]]:
+    rows = connection.execute(
+        "SELECT profile_version,payload_json,created_at FROM profile_versions "
+        "WHERE scope_id=? ORDER BY profile_version",
+        (scope_id,),
+    ).fetchall()
+    exported: list[dict[str, object]] = []
+    for row in rows:
+        try:
+            payload = json.loads(str(row["payload_json"]))
+        except json.JSONDecodeError as error:
+            raise StorageFailure("export_profile_payload_invalid") from error
+        sanitized = _sanitize_profile_value(payload)
+        exported.append(
+            {
+                "profile_version": int(row["profile_version"]),
+                "payload": sanitized,
+                "payload_sha256": hashlib.sha256(
+                    _canonical_json_bytes(sanitized)
+                ).hexdigest(),
+                "created_at": str(row["created_at"]),
+            }
+        )
+    return exported
+
+
+def _sanitize_profile_value(value: object) -> object:
+    """Remove operational secrets and rebuildable vectors from portable JSON."""
+    if isinstance(value, dict):
+        return {
+            str(key): _sanitize_profile_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            if str(key).casefold().replace("-", "_") not in _PRIVATE_PROFILE_KEYS
+        }
+    if isinstance(value, list):
+        return [_sanitize_profile_value(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise StorageFailure("export_payload_type_invalid")
 
 
 def _canonical_json_bytes(value: object) -> bytes:
