@@ -2,7 +2,7 @@
 
 **Updated:** 2026-09-01
 **Active phase:** Phase 3 — Memory Integrity and Data Lifecycle
-**Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 through 03-04 complete (4/9 plans)
+**Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 through 03-05 complete (5/9 plans)
 
 ## Verified So Far
 
@@ -45,18 +45,29 @@
   and the shipped Phase 3 salience seam accepts only exact zero.
 - The complete deterministic non-live suite passes at 616 tests with 2 expected
   skips and 1 live deselection after Plan 03-04.
+- Online SQLite snapshots now publish only after bounded backup, fsync, hash,
+  canonical manifest, and atomic-rename gates; isolated restore additionally
+  requires integrity/FK/schema/count/digest/FTS/projection/retrieval parity.
+- Scoped export is truthful JSON only, with deterministic allowlisted ledger and
+  profile records, sanitization, content hashes, and live-ledger round-trip proof.
+- Deletion now requires an expiring HMAC-bound exact inventory, explicit one-use
+  confirmation, transactional canonical deletion, active-target verification,
+  retry truth, and explicit retained historical/archive/backup copies.
+- The complete deterministic non-live suite passes at 647 tests with 2 expected
+  skips and 1 live deselection after Plan 03-05.
 
 ## Current Position
 
 Phase 1 is independently verified at 30/30 and Phase 2 at 16/16. Phase 3 now has
 the SQLite truth owner, independent measurement instrument, rebuildable cosine
-projection/import boundary, and a bounded affect-neutral retrieval/history
-service. Retrieval eligibility cannot be weakened by caller filters or salience;
-frozen synthetic benchmark controls and explicit failed-gate outcomes are wired
-through the public page contract. No real conversation-quality benchmark has
-been run, and no historical store has been opened, migrated, repaired, or
-deleted. The retained eight-row FK anomalies remain gated work before any
-authorized real import, read switch, cleanup, or deletion.
+projection/import boundary, bounded affect-neutral retrieval/history service,
+and a verified snapshot/restore/export/deletion lifecycle boundary. Retrieval
+eligibility cannot be weakened by caller filters or salience, and destructive
+authority cannot be inferred from vague, expired, replayed, tampered, or changed
+inventory. No real conversation-quality benchmark has been run, and no
+historical store has been opened, migrated, repaired, or deleted. The retained
+eight-row FK anomalies remain gated work before any authorized real import, read
+switch, cleanup, or deletion.
 
 ## Locked Decisions
 
@@ -88,6 +99,11 @@ authorized real import, read switch, cleanup, or deletion.
   SQLite-authoritative gates to form the affect-neutral eligible set.
 - Bind opaque cursors to frozen run/history state, exact scope/query/config/
   generation, expiry, and stable ordering boundaries; reject non-zero salience.
+- Treat SQLite as snapshot truth and rebuild FTS/Chroma during isolated restore;
+  never require a live Chroma directory copy for recoverability.
+- Advertise JSON export only, and require exact plan-confirm-execute-verify
+  deletion with one-use confirmation, failed-target retries, residual-copy truth,
+  and no forensic-erasure claim.
 
 ## Execution Metrics
 
@@ -97,10 +113,11 @@ authorized real import, read switch, cleanup, or deletion.
 | 03-02 | 13h 3m | 2 | 4 | 585 passed, 2 skipped, 1 deselected |
 | 03-03 | 19 min | 2 | 7 | 604 passed, 2 skipped, 1 deselected |
 | 03-04 | 4h 39m | 2 | 6 | 616 passed, 2 skipped, 1 deselected |
+| 03-05 | 22 min | 3 | 6 | 647 passed, 2 skipped, 1 deselected |
 
 ## Last Session
 
-**Stopped at:** Completed 03-04-PLAN.md
+**Stopped at:** Completed 03-05-PLAN.md
 **Resume file:** None
 
 ## Working Tree Note
