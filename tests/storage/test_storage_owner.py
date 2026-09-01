@@ -44,3 +44,18 @@ def test_projection_does_not_capture_singleton_or_default_data_path() -> None:
     assert "./aura_chroma_db" not in source
     assert "aura_data_v2" not in source
 
+
+def test_migration_uses_repository_and_public_chroma_only() -> None:
+    path = ROOT / "aura_backend" / "storage" / "migration.py"
+    imports = _imports(path)
+    source = path.read_text(encoding="utf-8")
+
+    assert "aura_backend.storage.repository" in imports
+    assert "sqlite3" not in imports
+    assert "aura_backend.robust_vector_db" not in imports
+    assert not any(name.startswith("chromadb.db") for name in imports)
+    assert "chroma.sqlite3" not in source
+    assert "PRAGMA" not in source
+    assert "REINDEX" not in source
+    assert "PersistentClient(" not in source.split("class LegacyImporter", 1)[0]
+    assert "def import_path" not in source
