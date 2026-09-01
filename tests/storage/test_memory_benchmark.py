@@ -13,6 +13,7 @@ import pytest
 from aura_backend.storage.benchmark import (
     BenchmarkAbort,
     BenchmarkQuery,
+    ConnectedBenchmarkRetriever,
     InstrumentValidationError,
     OutcomeStatus,
     RetrievedCandidate,
@@ -21,6 +22,7 @@ from aura_backend.storage.benchmark import (
     load_instrument,
     run_benchmark,
 )
+from aura_backend.storage.models import RetrievalItem, RetrievalPage
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "memory_eval"
 CORPUS_PATH = FIXTURE_ROOT / "corpus.jsonl"
@@ -417,3 +419,100 @@ def test_alternative_stops_after_bound_and_inconclusive_cannot_adopt() -> None:
     stopped = evaluate_alternative(baseline, baseline, cycles_used=3)
     assert stopped.status is OutcomeStatus.FAIL
     assert stopped.code == "bounded_cycle_stop"
+
+
+class FrozenPublicRetriever:
+    """Public page boundary backed only by the committed invented instrument."""
+
+    def __init__(self, *, drop_case: str | None = None) -> None:
+        self.instrument = load_instrument(CORPUS_PATH, MANIFEST_PATH)
+        self.drop_case = drop_case
+        self.queries = {
+            (record["scope_id"], record["query"]): record
+            for record in self.instrument.records
+            if record["record_type"] == "query"
+        }
+        self.origins = {
+            record["origin_id"]: record
+            for record in self.instrument.records
+            if record["record_type"] in {"event", "memory"}
+        }
+
+    def retrieve(
+        self,
+        *,
+        scope_id: str,
+        query: str,
+        page_size: int = 20,
+        cursor: str | None = None,
+    ) -> RetrievalPage:
+        assert cursor is None
+        assert page_size == 5
+        case = self.queries[(scope_id, query)]
+        expected = () if case["case_id"] == self.drop_case else tuple(
+            case["expected_origin_ids"]
+        )
+        items: list[RetrievalItem] = []
+        for rank, origin_id in enumerate(expected, start=1):
+            origin = self.origins[origin_id]
+            provenance = tuple(
+                origin.get("provenance_event_ids", [origin_id])
+            )
+            items.append(
+                RetrievalItem(
+                    origin_id=origin_id,
+                    origin_kind=origin["record_type"],
+                    scope_id=origin["scope_id"],
+                    content=origin["text"],
+                    content_sha256=_sha256(origin["text"].encode()),
+                    observed_at=origin.get("observed_at", "2041-01-01T00:00:00Z"),
+                    provenance_event_ids=provenance,
+                    contributor_ids=(origin_id,),
+                    neutral_score=1.0,
+                    exact_match=True,
+                    selected_rank=rank,
+                )
+            )
+        return RetrievalPage(
+            items=tuple(items),
+            next_cursor=None,
+            has_more=False,
+            trace_id=f"trace-{case['case_id']}",
+            traces=(),
+        )
+
+
+def test_connected_public_retriever_clears_frozen_neutral_benchmark() -> None:
+    instrument = load_instrument(CORPUS_PATH, MANIFEST_PATH)
+    connected = ConnectedBenchmarkRetriever(
+        instrument=instrument,
+        retriever=FrozenPublicRetriever(),
+        storage_bytes=1_000_000,
+        restore_pass=True,
+        elapsed_ms=lambda: 12.0,
+    )
+
+    report = run_benchmark(instrument, connected)
+
+    assert report.status is OutcomeStatus.PASS
+    assert report.code == "all_gates_passed"
+    assert report.metrics is not None
+    assert report.metrics.cross_scope_leaks == 0
+    assert report.metrics.selected_without_provenance == 0
+    assert len(report.evidence) == 33
+
+
+def test_connected_public_retriever_missed_gate_remains_an_explicit_failure() -> None:
+    instrument = load_instrument(CORPUS_PATH, MANIFEST_PATH)
+    connected = ConnectedBenchmarkRetriever(
+        instrument=instrument,
+        retriever=FrozenPublicRetriever(drop_case="direct-01"),
+        storage_bytes=1_000_000,
+        restore_pass=True,
+        elapsed_ms=lambda: 12.0,
+    )
+
+    report = run_benchmark(instrument, connected)
+
+    assert report.status is OutcomeStatus.FAIL
+    assert report.code == "recall_gate_failed"
