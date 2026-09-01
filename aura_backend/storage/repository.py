@@ -8,6 +8,7 @@ import json
 import sqlite3
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from aura_backend.storage.connection import FaultHook, append_turn_atomic, open_database
@@ -21,9 +22,36 @@ from aura_backend.storage.models import (
     TurnCommand,
     TurnWriteStatus,
 )
+from aura_backend.storage.schema import SCHEMA_VERSION
 
 TurnOutcome = PersistedTurn | IdempotencyConflict
 TurnCallback = Callable[[PersistedTurn], None]
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionOrigin:
+    """One active SQLite origin eligible for a derived vector projection."""
+
+    projection_id: str
+    origin_kind: str
+    origin_id: str
+    scope_id: str
+    content: str
+    content_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionGenerationRecord:
+    """SQLite-owned lifecycle state for one disposable projection build."""
+
+    generation_id: str
+    embedding_model: str
+    config_sha256: str
+    metric: str
+    sqlite_watermark: int
+    build_status: str
+    created_at: str
+    completed_at: str | None
 
 
 def canonical_request_hash(
@@ -166,6 +194,304 @@ class StorageRepository:
             )
         finally:
             connection.close()
+
+    def projection_origins(
+        self,
+        *,
+        after_projection_id: str = "",
+        limit: int = 100,
+        turn_id: str | None = None,
+    ) -> tuple[ProjectionOrigin, ...]:
+        """Page committed events and active provenance-bearing memories."""
+        if limit <= 0 or limit > 10_000:
+            raise StorageFailure("invalid_projection_page_size")
+        connection = open_database(self.database_path)
+        try:
+            turn_clause = "AND event.turn_id = ?" if turn_id is not None else ""
+            memory_turn_clause = (
+                "AND EXISTS (SELECT 1 FROM memory_sources AS turn_source "
+                "JOIN events AS turn_event ON turn_event.event_id = turn_source.event_id "
+                "WHERE turn_source.memory_id = memory.memory_id "
+                "AND turn_event.turn_id = ?)"
+                if turn_id is not None
+                else ""
+            )
+            parameters: list[object] = []
+            if turn_id is not None:
+                parameters.append(turn_id)
+            if turn_id is not None:
+                parameters.append(turn_id)
+            parameters.extend((after_projection_id, limit))
+            rows = connection.execute(
+                f"""
+                WITH active_origins AS (
+                    SELECT
+                        'event:' || event.event_id AS projection_id,
+                        'event' AS origin_kind,
+                        event.event_id AS origin_id,
+                        event.scope_id,
+                        event.content,
+                        event.content_sha256
+                    FROM events AS event
+                    JOIN turns AS turn ON turn.turn_id = event.turn_id
+                    WHERE 1 = 1 {turn_clause}
+                    UNION ALL
+                    SELECT
+                        'memory:' || memory.memory_id AS projection_id,
+                        'memory' AS origin_kind,
+                        memory.memory_id AS origin_id,
+                        memory.scope_id,
+                        memory.canonical_text AS content,
+                        memory.content_sha256
+                    FROM derived_memories AS memory
+                    WHERE EXISTS (
+                        SELECT 1 FROM memory_sources AS source
+                        WHERE source.memory_id = memory.memory_id
+                          AND source.scope_id = memory.scope_id
+                    )
+                      AND NOT EXISTS (
+                        SELECT 1 FROM memory_supersessions AS edge
+                        WHERE edge.old_memory_id = memory.memory_id
+                          AND edge.scope_id = memory.scope_id
+                    )
+                      AND NOT EXISTS (
+                        SELECT 1 FROM memory_retractions AS retraction
+                        WHERE retraction.memory_id = memory.memory_id
+                          AND retraction.scope_id = memory.scope_id
+                    )
+                      {memory_turn_clause}
+                )
+                SELECT projection_id, origin_kind, origin_id, scope_id,
+                       content, content_sha256
+                FROM active_origins
+                WHERE projection_id > ?
+                ORDER BY projection_id
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+            return tuple(ProjectionOrigin(*map(str, row)) for row in rows)
+        finally:
+            connection.close()
+
+    def projection_origin(self, projection_id: str) -> ProjectionOrigin | None:
+        """Resolve one projection ID only if its SQLite origin remains active."""
+        if ":" not in projection_id:
+            return None
+        origin_kind, origin_id = projection_id.split(":", 1)
+        if origin_kind not in {"event", "memory"} or not origin_id:
+            return None
+        after = ""
+        while True:
+            page = self.projection_origins(after_projection_id=after, limit=1_000)
+            if not page:
+                return None
+            match = next(
+                (item for item in page if item.projection_id == projection_id), None
+            )
+            if match is not None:
+                return match
+            if page[-1].projection_id > projection_id:
+                return None
+            after = page[-1].projection_id
+
+    def projection_origin_ids(self) -> tuple[str, ...]:
+        """Return all active stable projection IDs in deterministic order."""
+        identities: list[str] = []
+        after = ""
+        while True:
+            page = self.projection_origins(after_projection_id=after, limit=1_000)
+            if not page:
+                return tuple(identities)
+            identities.extend(item.projection_id for item in page)
+            after = page[-1].projection_id
+
+    def pending_projection_turn_ids(self) -> tuple[str, ...]:
+        """Return committed turns whose projection acknowledgement is pending."""
+        connection = open_database(self.database_path)
+        try:
+            return tuple(
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT turn_id FROM turns WHERE projection_status = 'pending' "
+                    "ORDER BY occurred_at, turn_id"
+                ).fetchall()
+            )
+        finally:
+            connection.close()
+
+    def mark_turn_projection_complete(self, turn_id: str) -> None:
+        """Acknowledge a turn only after every eligible origin was upserted."""
+        with self._writer_lock:
+            connection = open_database(self.database_path)
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    "UPDATE turns SET projection_status = 'complete' "
+                    "WHERE turn_id = ? AND projection_status = 'pending'",
+                    (turn_id,),
+                )
+                if cursor.rowcount not in {0, 1}:
+                    raise StorageFailure(
+                        "projection_status_failed", identifier=turn_id
+                    )
+                connection.commit()
+            except StorageFailure:
+                connection.rollback()
+                raise
+            except sqlite3.Error as error:
+                connection.rollback()
+                raise StorageFailure(
+                    "projection_status_failed", identifier=turn_id
+                ) from error
+            finally:
+                connection.close()
+
+    def sqlite_projection_watermark(self) -> int:
+        """Return a monotonic-enough rebuild watermark from canonical row IDs."""
+        connection = open_database(self.database_path)
+        try:
+            event_max = int(
+                connection.execute(
+                    "SELECT COALESCE(MAX(event_pk), 0) FROM events"
+                ).fetchone()[0]
+            )
+            memory_max = int(
+                connection.execute(
+                    "SELECT COALESCE(MAX(memory_pk), 0) FROM derived_memories"
+                ).fetchone()[0]
+            )
+            return (event_max << 32) | memory_max
+        finally:
+            connection.close()
+
+    def begin_projection_generation(
+        self,
+        *,
+        generation_id: str,
+        embedding_model: str,
+        config_sha256: str,
+        created_at: str,
+    ) -> None:
+        """Record a fresh building generation before derived files are created."""
+        with self._writer_lock:
+            connection = open_database(self.database_path)
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    """
+                    INSERT INTO projection_generations(
+                        generation_id, embedding_model, config_sha256, metric,
+                        sqlite_watermark, build_status, created_at
+                    ) VALUES (?, ?, ?, 'cosine', ?, 'building', ?)
+                    """,
+                    (
+                        generation_id,
+                        embedding_model,
+                        config_sha256,
+                        self.sqlite_projection_watermark(),
+                        created_at,
+                    ),
+                )
+                connection.commit()
+            except sqlite3.Error as error:
+                connection.rollback()
+                raise StorageFailure(
+                    "projection_generation_start_failed", identifier=generation_id
+                ) from error
+            finally:
+                connection.close()
+
+    def finish_projection_generation(
+        self,
+        generation_id: str,
+        *,
+        status: str,
+        completed_at: str,
+    ) -> None:
+        """Mark a build ready or failed; only a verified build may be ready."""
+        if status not in {"ready", "failed"}:
+            raise StorageFailure(
+                "invalid_projection_generation_status", identifier=generation_id
+            )
+        with self._writer_lock:
+            connection = open_database(self.database_path)
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    "UPDATE projection_generations SET build_status = ?, "
+                    "completed_at = ? WHERE generation_id = ? "
+                    "AND build_status = 'building'",
+                    (status, completed_at, generation_id),
+                )
+                if cursor.rowcount != 1:
+                    raise StorageFailure(
+                        "projection_generation_transition_failed",
+                        identifier=generation_id,
+                    )
+                connection.commit()
+            except StorageFailure:
+                connection.rollback()
+                raise
+            except sqlite3.Error as error:
+                connection.rollback()
+                raise StorageFailure(
+                    "projection_generation_transition_failed",
+                    identifier=generation_id,
+                ) from error
+            finally:
+                connection.close()
+
+    def projection_generation(
+        self, generation_id: str
+    ) -> ProjectionGenerationRecord:
+        """Return one SQLite-owned generation record."""
+        connection = open_database(self.database_path)
+        try:
+            row = connection.execute(
+                """
+                SELECT generation_id, embedding_model, config_sha256, metric,
+                       sqlite_watermark, build_status, created_at, completed_at
+                FROM projection_generations WHERE generation_id = ?
+                """,
+                (generation_id,),
+            ).fetchone()
+            if row is None:
+                raise StorageFailure(
+                    "projection_generation_not_found", identifier=generation_id
+                )
+            return ProjectionGenerationRecord(
+                generation_id=str(row[0]),
+                embedding_model=str(row[1]),
+                config_sha256=str(row[2]),
+                metric=str(row[3]),
+                sqlite_watermark=int(row[4]),
+                build_status=str(row[5]),
+                created_at=str(row[6]),
+                completed_at=None if row[7] is None else str(row[7]),
+            )
+        finally:
+            connection.close()
+
+    def current_projection_generation(self) -> ProjectionGenerationRecord | None:
+        """Return the newest verified generation; failed builds never switch."""
+        connection = open_database(self.database_path)
+        try:
+            row = connection.execute(
+                """
+                SELECT generation_id FROM projection_generations
+                WHERE build_status = 'ready'
+                ORDER BY completed_at DESC, generation_id DESC LIMIT 1
+                """
+            ).fetchone()
+        finally:
+            connection.close()
+        return None if row is None else self.projection_generation(str(row[0]))
+
+    @property
+    def schema_version(self) -> int:
+        """Expose the owned SQLite schema version to projection metadata."""
+        return SCHEMA_VERSION
 
     def supersede_memory(
         self,

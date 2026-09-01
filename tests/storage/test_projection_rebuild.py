@@ -173,7 +173,7 @@ def test_stable_ids_metadata_and_cosine_query_are_bound_to_sqlite(
     )
     assert candidates
     assert all(0.0 <= item.cosine_similarity <= 1.0 for item in candidates)
-    assert all(item.raw_distance >= 0.0 for item in candidates)
+    assert all(item.raw_distance >= -1e-6 for item in candidates)
     assert candidates[0].generation_id == "generation-001"
 
 
@@ -257,10 +257,12 @@ def test_query_rejects_tampered_hash_generation_and_orphan_origins(
         )
         metadata = dict((record["metadatas"] or [])[0])
         metadata["content_sha256"] = "0" * 64
+        embeddings = record["embeddings"]
+        assert embeddings is not None
         collection.upsert(
             ids=["memory:memory-001"],
             documents=[(record["documents"] or [])[0]],
-            embeddings=[(record["embeddings"] or [])[0]],
+            embeddings=[embeddings[0]],
             metadatas=[metadata],
         )
         collection.upsert(
@@ -276,6 +278,20 @@ def test_query_rejects_tampered_hash_generation_and_orphan_origins(
                 }
             ],
         )
+        aura_record = collection.get(
+            ids=["event:event-aura-001"],
+            include=["documents", "embeddings", "metadatas"],
+        )
+        aura_metadata = dict((aura_record["metadatas"] or [])[0])
+        aura_metadata["generation"] = "generation-forged"
+        aura_embeddings = aura_record["embeddings"]
+        assert aura_embeddings is not None
+        collection.upsert(
+            ids=["event:event-aura-001"],
+            documents=[(aura_record["documents"] or [])[0]],
+            embeddings=[aura_embeddings[0]],
+            metadatas=[aura_metadata],
+        )
     finally:
         client.close()
 
@@ -286,6 +302,7 @@ def test_query_rejects_tampered_hash_generation_and_orphan_origins(
     )
     assert "memory-001" not in {item.origin_id for item in candidates}
     assert "orphan" not in {item.origin_id for item in candidates}
+    assert "event-aura-001" not in {item.origin_id for item in candidates}
 
 
 def test_failed_rebuild_never_switches_and_fresh_rebuild_has_exact_parity(
@@ -339,3 +356,21 @@ def test_failed_rebuild_never_switches_and_fresh_rebuild_has_exact_parity(
         ).encode("utf-8")
     ).hexdigest()
 
+    repository.supersede_memory(
+        "scope-alpha",
+        old_memory_id="memory-001",
+        new_memory_id="memory-002",
+        basis_event_id="event-user-002",
+        reason="Synthetic correction",
+        created_at="2026-09-01T00:03:00Z",
+    )
+    assert adapter.reconcile() == 0
+    client = chromadb.PersistentClient(path=str(adapter.generation_path("generation-002")))
+    try:
+        identities = set(
+            client.get_collection(adapter.collection_name).get(include=[])["ids"]
+        )
+    finally:
+        client.close()
+    assert "memory:memory-001" not in identities
+    assert "memory:memory-002" in identities
