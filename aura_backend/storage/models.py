@@ -25,6 +25,13 @@ class EpistemicStatus(str, Enum):
     DISPUTED = "disputed"
 
 
+class TurnWriteStatus(str, Enum):
+    """Observable disposition of an idempotent turn request."""
+
+    STORED = "stored"
+    REPLAYED = "replayed"
+
+
 class StorageFailure(RuntimeError):
     """Content-free storage error identified by a stable code."""
 
@@ -77,3 +84,30 @@ class TurnCommand:
     user_event: EventInput
     aura_event: EventInput
     derived_memories: tuple[DerivedMemoryInput, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PersistedTurn:
+    """Stable identifiers and hashes returned for a durable turn."""
+
+    scope_id: str
+    session_id: str
+    turn_id: str
+    idempotency_key: str
+    request_hash_version: int
+    request_hash: str
+    response_hash: str
+    user_event_id: str
+    aura_event_id: str
+    status: TurnWriteStatus
+    projection_reconciliation_required: bool
+
+
+@dataclass(frozen=True, slots=True)
+class IdempotencyConflict:
+    """Content-free conflict preserving the original durable identity."""
+
+    scope_id: str
+    idempotency_key: str
+    existing_turn_id: str
+    code: str = "idempotency_conflict"
