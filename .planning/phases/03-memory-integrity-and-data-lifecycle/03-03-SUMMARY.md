@@ -85,6 +85,8 @@ Each behavior-adding task followed a committed RED then GREEN cycle. No separate
    - `242cfd4` — RED authorization, two-root, fragment, rerun, and immutability contract
    - `275ae19` — GREEN authorized operation-copy importer and typed legacy schema
    - `731a2a1` — nested-symlink containment hardening
+3. **Post-wave verification repair**
+   - `8b78eba` — narrow the optional Chroma client before collection creation
 
 ## Files Created/Modified
 
@@ -140,9 +142,17 @@ Each behavior-adding task followed a committed RED then GREEN cycle. No separate
 - **Verification:** Seven projection/ownership tests and all plan gates pass.
 - **Committed in:** `4771b2f`
 
+**5. [Rule 1 - Typing defect] Narrowed the optional Chroma client**
+- **Found during:** Independent post-wave Python typecheck
+- **Issue:** Pyright retained the defensive `Any | None` type after `PersistentClient` construction and rejected `create_collection` as a possible access on `None`.
+- **Fix:** Added an explicit unavailable-client guard before collection creation, preserving the existing cleanup path and storage error contract.
+- **Files modified:** `aura_backend/storage/projection.py`
+- **Verification:** Eight focused projection/ownership tests pass; project-wide Pyright reports zero errors; focused Ruff and diff hygiene pass.
+- **Committed in:** `8b78eba`
+
 ---
 
-**Total deviations:** 4 auto-fixed (3 missing-critical/security controls, 1 test correction).
+**Total deviations:** 5 auto-fixed (3 missing-critical/security controls, 1 test correction, 1 typing correction).
 **Impact on plan:** Every deviation was necessary to satisfy the declared immutable-source, typed-fragment, containment, or locked-Chroma behavior. No dependency, manifest, lock, production route, or real data operation was added.
 
 ## Issues Encountered
@@ -163,6 +173,7 @@ Each behavior-adding task followed a committed RED then GREEN cycle. No separate
 - Plan storage gate: `53 passed` across projection, migration, ownership, atomic ledger, and provenance/supersession.
 - Complete storage suite: `91 passed` before the final nested-symlink hardening; the affected focused and plan gates were rerun afterward.
 - Complete deterministic non-live suite after final code: `604 passed, 2 skipped, 1 deselected` in 31.40s.
+- Post-wave focused projection/ownership gate: `8 passed`; project-wide Python typecheck: `0 errors, 0 warnings, 0 informations`.
 - Ruff and `git diff --check`: pass for every changed implementation and test file.
 - Dependency hygiene: every Python/test command used `uv run --locked --no-sync`; no package manifest or lock file changed.
 - Data safety: every Chroma root used by new tests was created and copied beneath pytest temporary directories. No real historical Chroma root, durable backup, archive, profile, Memvid store, or data store was passed to Chroma or migration code.
@@ -188,9 +199,9 @@ None - no dependency, credential, model, external service, or system configurati
 ## Self-Check: PASSED
 
 - All five declared created files and both modified storage-owner files exist.
-- All five RED/GREEN/hardening commits resolve in Git history in the required order.
+- All five RED/GREEN/hardening commits and post-wave typing repair resolve in Git history in the required order.
 - Every task acceptance command, the plan-level combined gate, Ruff, diff hygiene, and the complete deterministic non-live suite pass.
-- Only the summary is untracked before its metadata commit; no generated database, WAL, manifest, lock, profile, export, or runtime artifact is present in Git status.
+- No generated database, WAL, manifest, lock, profile, export, or runtime artifact is present in Git status.
 
 ---
 *Phase: 03-memory-integrity-and-data-lifecycle*
