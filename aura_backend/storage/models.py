@@ -127,3 +127,71 @@ class DerivedMemory:
     source_event_ids: tuple[str, ...]
     created_at: str
     content_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalGate:
+    """One content-free admission decision for a considered candidate."""
+
+    name: str
+    passed: bool
+    reason_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalTrace:
+    """Content-free evidence explaining one neutral retrieval decision."""
+
+    run_id: str
+    query_sha256: str
+    config_sha256: str
+    sqlite_schema: int
+    projection_generation: str
+    origin_id: str
+    origin_kind: str
+    scope_id: str | None
+    content_sha256: str | None
+    observed_at: str | None
+    lexical_rank: int | None
+    lexical_raw_value: float | None
+    vector_rank: int | None
+    vector_raw_distance: float | None
+    vector_similarity: float | None
+    lexical_rrf: float
+    vector_rrf: float
+    neutral_score: float
+    exact_match: bool
+    gates: tuple[RetrievalGate, ...]
+    rejection_code: str | None
+    contributor_ids: tuple[str, ...]
+    provenance_event_ids: tuple[str, ...]
+    selected_rank: int | None
+    salience_score: float = 0.0
+    remembered_text: None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalItem:
+    """One eligible memory item returned through the public retrieval boundary."""
+
+    origin_id: str
+    origin_kind: str
+    scope_id: str
+    content: str
+    content_sha256: str
+    observed_at: str
+    provenance_event_ids: tuple[str, ...]
+    contributor_ids: tuple[str, ...]
+    neutral_score: float
+    exact_match: bool
+    selected_rank: int
+    salience_score: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalResult:
+    """A complete affect-neutral result before cursor pagination is applied."""
+
+    run_id: str
+    items: tuple[RetrievalItem, ...]
+    traces: tuple[RetrievalTrace, ...]
