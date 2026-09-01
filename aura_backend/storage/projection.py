@@ -313,6 +313,10 @@ class ProjectionAdapter:
         try:
             self.projection_root.mkdir(parents=True, exist_ok=True)
             client = chromadb.PersistentClient(path=str(path))
+            if client is None:
+                raise StorageFailure(
+                    "projection_client_unavailable", identifier=generation_id
+                )
             collection = client.create_collection(
                 self.collection_name,
                 configuration={"hnsw": {"space": self.metric}},
