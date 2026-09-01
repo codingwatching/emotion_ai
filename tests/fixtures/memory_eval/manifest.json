@@ -1,0 +1,26 @@
+{
+  "admission_thresholds": {},
+  "arms": {},
+  "benchmark_code_commit": "plan-03-02-red",
+  "candidate_caps": {},
+  "case_ids": [
+    "direct-01"
+  ],
+  "controls": [],
+  "corpus_sha256": "",
+  "corpus_version": "memory-eval-v1",
+  "embedding_fingerprint_slot": "not-measured-phase-03-02",
+  "fts_tokenizer": "unicode61 remove_diacritics 2",
+  "gates": {},
+  "hardware_label": "popos-rtx3060-cpu-correctness",
+  "load_event_count": 0,
+  "load_seed": 3202,
+  "max_corpus_bytes": 4000000,
+  "max_records": 10100,
+  "page_bounds": {},
+  "rrf_k": 60,
+  "runtime_label": "python-3.12-locked-no-sync",
+  "schema_version": 1,
+  "timing_repetitions": 3,
+  "vector_metric": "cosine"
+}
