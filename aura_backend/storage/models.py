@@ -111,3 +111,19 @@ class IdempotencyConflict:
     idempotency_key: str
     existing_turn_id: str
     code: str = "idempotency_conflict"
+
+
+@dataclass(frozen=True, slots=True)
+class DerivedMemory:
+    """Persisted, provenance-bearing interpretation returned to callers."""
+
+    memory_id: str
+    scope_id: str
+    kind: MemoryKind
+    canonical_text: str
+    confidence: float
+    epistemic_status: EpistemicStatus
+    primary_source_event_id: str
+    source_event_ids: tuple[str, ...]
+    created_at: str
+    content_sha256: str

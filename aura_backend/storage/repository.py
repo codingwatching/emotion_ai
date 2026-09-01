@@ -11,6 +11,7 @@ from pathlib import Path
 
 from aura_backend.storage.connection import FaultHook, append_turn_atomic, open_database
 from aura_backend.storage.models import (
+    DerivedMemory,
     IdempotencyConflict,
     PersistedTurn,
     StorageFailure,
@@ -132,6 +133,68 @@ class StorageRepository:
                 return stored
             finally:
                 connection.close()
+
+    def current_memories(self, scope_id: str) -> tuple[DerivedMemory, ...]:
+        """Return active provenance-bearing memories for one scope."""
+        del scope_id
+        raise StorageFailure("not_implemented")
+
+    def supersede_memory(
+        self,
+        scope_id: str,
+        *,
+        old_memory_id: str,
+        new_memory_id: str,
+        basis_event_id: str,
+        reason: str,
+        created_at: str,
+    ) -> None:
+        """Append one scope-local acyclic supersession edge."""
+        del (
+            scope_id,
+            old_memory_id,
+            new_memory_id,
+            basis_event_id,
+            reason,
+            created_at,
+        )
+        raise StorageFailure("not_implemented")
+
+    def correct_memory(
+        self,
+        scope_id: str,
+        command: TurnCommand,
+        *,
+        old_memory_id: str,
+        new_memory_id: str,
+        basis_event_id: str,
+        reason: str,
+        created_at: str,
+    ) -> DerivedMemory:
+        """Atomically append correction evidence, derivation, and edge."""
+        del (
+            scope_id,
+            command,
+            old_memory_id,
+            new_memory_id,
+            basis_event_id,
+            reason,
+            created_at,
+        )
+        raise StorageFailure("not_implemented")
+
+    def retract_memory(
+        self,
+        scope_id: str,
+        *,
+        memory_id: str,
+        basis_event_id: str,
+        reason: str,
+        created_at: str,
+    ) -> None:
+        """Append an explicit scope-local retraction edge."""
+        del scope_id, memory_id, basis_event_id, reason, created_at
+        raise StorageFailure("not_implemented")
 
     @staticmethod
     def _run_provider_callback(
