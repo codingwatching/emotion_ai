@@ -84,3 +84,24 @@ header.bin
 length.bin
 link_lists.bin
 .chromadb.lock
+
+# Phase 3 lifecycle outputs (generated/private; existing tracked files stay grandfathered)
+aura_data_v2/
+**/aura_data_v2/
+**/projection-generations/
+aura_snapshots/
+aura_backups/
+aura_exports/
+aura_profiles/
+aura_traces/
+aura_logs/
+aura_secrets/
+memvid_videos/
+**/memvid_videos/
+*.mv2
+*.backup
+*.export.json
+*.profile.json
+*.trace.json
+*.secret
+*.secrets.json

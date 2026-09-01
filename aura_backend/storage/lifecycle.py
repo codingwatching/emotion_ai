@@ -1,9 +1,8 @@
 """Truthful snapshot, restore, export, and deletion ownership for Aura storage.
 
-Only the snapshot and restore boundary is implemented in this first TDD slice.
-Every filesystem operation is explicit, contained, mode restricted, and suitable
-for synthetic or separately authorized roots; this module never discovers or
-opens historical Aura stores on its own.
+Every filesystem or destructive target is explicit, contained, and suitable for
+synthetic or separately authorized roots. This module never discovers or opens
+historical Aura stores, backups, or archives on its own.
 """
 
 from __future__ import annotations
@@ -24,11 +23,16 @@ from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
+from aura_backend.storage.connection import open_database
 from aura_backend.storage.models import StorageFailure
 from aura_backend.storage.projection import ProjectionAdapter
 from aura_backend.storage.repository import StorageRepository
 from aura_backend.storage.schema import rebuild_fts
-from aura_backend.runtime_security import StoragePathError, safe_export_format, safe_storage_component
+from aura_backend.runtime_security import (
+    StoragePathError,
+    safe_export_format,
+    safe_storage_component,
+)
 
 
 class SnapshotStatus(str, Enum):
@@ -47,6 +51,25 @@ class ExportStatus(str, Enum):
     """Publication state for a complete versioned scope export."""
 
     PUBLISHED = "published"
+
+
+class DeletionAction(str, Enum):
+    """Only destructive action names accepted by the lifecycle boundary."""
+
+    SESSION = "session"
+    SCOPE = "scope"
+    GENERATED_EXPORT = "generated_export"
+    PROJECTION_GENERATION = "projection_generation"
+    ARCHIVE = "archive"
+    BACKUP_GENERATION = "backup_generation"
+
+
+class DeletionStatus(str, Enum):
+    """Truthful final state after exact post-execution verification."""
+
+    BLOCKED = "blocked"
+    COMPLETE = "complete"
+    INCOMPLETE = "incomplete"
 
 
 class ProjectionFactory(Protocol):
@@ -116,6 +139,105 @@ class ExportVerification:
     record_hashes: dict[str, str]
 
 
+DeletionInventory = Callable[[DeletionAction, str, str | None], Mapping[str, str]]
+DeletionCallback = Callable[[tuple[str, ...]], None]
+DeletionRemaining = Callable[[tuple[str, ...]], Mapping[str, str]]
+
+
+@dataclass(frozen=True, slots=True)
+class DeletionTarget:
+    """Injected active target with exact content-free inventory operations."""
+
+    name: str
+    kind: str
+    inventory: DeletionInventory
+    delete: DeletionCallback
+    remaining: DeletionRemaining
+    reconcile: Callable[[], None] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResidualCopy:
+    """Content-free retained copy which normal active deletion never opens."""
+
+    kind: str
+    alias: str
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreProof:
+    """Independent exact restore evidence required for retained-copy purge."""
+
+    generation_id: str
+    manifest_sha256: str
+    checks: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DeletionItem:
+    """One exact approved canonical, FTS, or injected active-target identity."""
+
+    target: str
+    identity: str
+    content_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class DeletionPlan:
+    """Expiring HMAC-bound inventory; possessing it is not confirmation."""
+
+    plan_id: str
+    action: DeletionAction
+    scope_id: str
+    target_id: str | None
+    policy_version: int
+    created_at: float
+    expires_at: float
+    inventory_digest: str
+    counts: dict[str, int]
+    items: tuple[DeletionItem, ...]
+    retained_copies: tuple[ResidualCopy, ...]
+    restore_proof_generation: str | None
+    challenge: str
+
+
+@dataclass(frozen=True, slots=True)
+class DeletionConfirmation:
+    """Short-lived single-use confirmation bound to one immutable plan."""
+
+    confirmation_id: str
+    plan_digest: str
+    expires_at: float
+
+
+@dataclass(frozen=True, slots=True)
+class DeletionExecution:
+    """Content-free execution receipt awaiting exact verification."""
+
+    execution_id: str
+    plan_digest: str
+    canonical_committed: bool
+    attempted_targets: tuple[str, ...]
+    failed_targets: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DeletionResult:
+    """Verified application deletion truth without forensic-erasure claims."""
+
+    status: DeletionStatus
+    action: DeletionAction
+    scope_id: str
+    inventory_digest: str
+    deleted_counts: dict[str, int]
+    failed_targets: tuple[str, ...]
+    retry_targets: tuple[str, ...]
+    retained_copies: tuple[ResidualCopy, ...]
+    application_level_deletion: bool
+    physical_purge: str
+    forensic_erasure: bool
+
+
 _SAFE_OPERATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _CHUNK_BYTES = 1024 * 1024
 _SNAPSHOT_FORMAT_VERSION = 1
@@ -163,6 +285,45 @@ _PRIVATE_PROFILE_KEYS = {
     "secret",
     "token",
 }
+_DELETION_POLICY_VERSION = 1
+_DELETION_MAX_TTL_SECONDS = 15 * 60
+_ACTIVE_DELETION_KINDS = {"projection", "cache", "generated_export"}
+_TARGET_ACTION_KIND = {
+    DeletionAction.GENERATED_EXPORT: "generated_export",
+    DeletionAction.PROJECTION_GENERATION: "projection_generation",
+    DeletionAction.ARCHIVE: "archive",
+    DeletionAction.BACKUP_GENERATION: "backup_generation",
+}
+_CANONICAL_DELETE_ORDER = (
+    "retrieval_candidates",
+    "retrieval_runs",
+    "memory_supersessions",
+    "memory_retractions",
+    "memory_sources",
+    "legacy_sources",
+    "derived_memories",
+    "events",
+    "turns",
+    "sessions",
+    "profile_versions",
+    "legacy_fragments",
+    "memory_scopes",
+)
+_DELETION_PRIMARY_KEYS = {
+    "memory_scopes": ("scope_id",),
+    "sessions": ("session_id",),
+    "turns": ("turn_id",),
+    "events": ("event_id",),
+    "derived_memories": ("memory_id",),
+    "memory_sources": ("memory_id", "event_id"),
+    "memory_supersessions": ("old_memory_id", "new_memory_id"),
+    "memory_retractions": ("memory_id",),
+    "profile_versions": ("scope_id", "profile_version"),
+    "legacy_sources": ("root_fingerprint", "collection_name", "legacy_id"),
+    "retrieval_runs": ("run_id",),
+    "retrieval_candidates": ("run_id", "origin_id"),
+    "legacy_fragments": ("fragment_id",),
+}
 
 
 class LifecycleService:
@@ -196,6 +357,10 @@ class LifecycleService:
         projection_factory: ProjectionFactory,
         fixture_verifier: FixtureVerifier,
         tool_commit: str,
+        deletion_secret: bytes | None = None,
+        deletion_clock: Callable[[], float] | None = None,
+        deletion_targets: tuple[DeletionTarget, ...] = (),
+        retained_copies: tuple[ResidualCopy, ...] = (),
     ) -> None:
         if not repository.database_path.is_absolute():
             raise StorageFailure("absolute_path_required")
@@ -205,6 +370,43 @@ class LifecycleService:
         self.projection_factory = projection_factory
         self.fixture_verifier = fixture_verifier
         self.tool_commit = tool_commit
+        secret = deletion_secret if deletion_secret is not None else os.urandom(32)
+        if len(secret) < 16:
+            raise StorageFailure("deletion_secret_too_short")
+        names = tuple(target.name for target in deletion_targets)
+        if len(names) != len(set(names)) or any(
+            not _SAFE_OPERATION_ID.fullmatch(name) for name in names
+        ):
+            raise StorageFailure("deletion_target_invalid")
+        if any(
+            target.kind
+            not in {
+                *_ACTIVE_DELETION_KINDS,
+                "projection_generation",
+                "archive",
+                "backup_generation",
+            }
+            for target in deletion_targets
+        ):
+            raise StorageFailure("deletion_target_kind_invalid")
+        if any(
+            not copy.kind
+            or not copy.alias
+            or len(copy.kind) > 128
+            or len(copy.alias) > 512
+            for copy in retained_copies
+        ):
+            raise StorageFailure("deletion_residual_invalid")
+        self._deletion_secret = secret
+        self._deletion_clock = deletion_clock or time.monotonic
+        self._deletion_targets = tuple(
+            sorted(deletion_targets, key=lambda target: target.name)
+        )
+        self._retained_copies = tuple(
+            sorted(retained_copies, key=lambda copy: (copy.kind, copy.alias))
+        )
+        self._confirmed_deletions: dict[str, str] = {}
+        self._consumed_confirmations: set[str] = set()
 
     def create_snapshot(
         self,
@@ -271,7 +473,9 @@ class LifecycleService:
                     if monotonic() - started > timeout_seconds:
                         raise StorageFailure("snapshot_timeout", identifier=snapshot_id)
                     if total < 0 or remaining < 0 or remaining > total:
-                        raise StorageFailure("snapshot_incomplete", identifier=snapshot_id)
+                        raise StorageFailure(
+                            "snapshot_incomplete", identifier=snapshot_id
+                        )
                     if total * 4096 > max_database_bytes:
                         raise StorageFailure(
                             "snapshot_resource_limit", identifier=snapshot_id
@@ -328,7 +532,9 @@ class LifecycleService:
         except (OSError, sqlite3.Error) as error:
             for path in (*published, staging_database, staging_manifest):
                 _unlink_owned_file(path)
-            raise StorageFailure("snapshot_io_failed", identifier=snapshot_id) from error
+            raise StorageFailure(
+                "snapshot_io_failed", identifier=snapshot_id
+            ) from error
 
     def restore_snapshot(
         self,
@@ -360,11 +566,8 @@ class LifecycleService:
         ):
             raise StorageFailure("restore_check_set_invalid")
         expected_database_sha256 = manifest.get("database_sha256")
-        if (
-            not isinstance(expected_database_sha256, str)
-            or not hmac.compare_digest(
-                _file_sha256(database), expected_database_sha256
-            )
+        if not isinstance(expected_database_sha256, str) or not hmac.compare_digest(
+            _file_sha256(database), expected_database_sha256
         ):
             raise StorageFailure("restore_database_hash_mismatch")
 
@@ -384,9 +587,7 @@ class LifecycleService:
                 )
                 if integrity != ("ok",):
                     raise StorageFailure("restore_integrity_failed")
-                foreign_keys = connection.execute(
-                    "PRAGMA foreign_key_check"
-                ).fetchall()
+                foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchall()
                 if foreign_keys:
                     raise StorageFailure("restore_foreign_key_failed")
                 schema_version = int(
@@ -482,7 +683,9 @@ class LifecycleService:
         root = _resolve_directory(output_root, "export_destination")
         final_path = root / f"{export_id}.json"
         staging_path = root / f".{export_id}.json.partial"
-        if any(path.exists() or path.is_symlink() for path in (final_path, staging_path)):
+        if any(
+            path.exists() or path.is_symlink() for path in (final_path, staging_path)
+        ):
             raise StorageFailure("export_target_exists", identifier=export_id)
 
         records = self._collect_export_records(scope_id)
@@ -536,26 +739,34 @@ class LifecycleService:
             payload = json.loads(payload_bytes)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise StorageFailure("export_manifest_invalid") from error
-        if not isinstance(payload, dict) or payload.get("scope_id") != expected_scope_id:
+        if (
+            not isinstance(payload, dict)
+            or payload.get("scope_id") != expected_scope_id
+        ):
             raise StorageFailure("export_scope_mismatch")
         supplied_manifest = payload.pop("manifest_sha256", None)
         if not isinstance(supplied_manifest, str) or not hmac.compare_digest(
-            hashlib.sha256(_canonical_json_bytes(payload)).hexdigest(), supplied_manifest
+            hashlib.sha256(_canonical_json_bytes(payload)).hexdigest(),
+            supplied_manifest,
         ):
             raise StorageFailure("export_manifest_hash_mismatch")
         records_value = payload.get("records")
         if (
             not isinstance(records_value, dict)
             or set(records_value) != set(_EXPORT_RECORDS)
-            or any(not isinstance(records_value[name], list) for name in _EXPORT_RECORDS)
+            or any(
+                not isinstance(records_value[name], list) for name in _EXPORT_RECORDS
+            )
         ):
             raise StorageFailure("export_record_shape_invalid")
-        exported_records = {
-            name: list(records_value[name]) for name in _EXPORT_RECORDS
+        exported_records = {name: list(records_value[name]) for name in _EXPORT_RECORDS}
+        exported_counts = {
+            name: len(exported_records[name]) for name in _EXPORT_RECORDS
         }
-        exported_counts = {name: len(exported_records[name]) for name in _EXPORT_RECORDS}
         exported_hashes = {
-            name: hashlib.sha256(_canonical_json_bytes(exported_records[name])).hexdigest()
+            name: hashlib.sha256(
+                _canonical_json_bytes(exported_records[name])
+            ).hexdigest()
             for name in _EXPORT_RECORDS
         }
         if exported_counts != _string_int_map(payload.get("counts")):
@@ -565,7 +776,9 @@ class LifecycleService:
         current_records = self._collect_export_records(expected_scope_id)
         current_counts = {name: len(current_records[name]) for name in _EXPORT_RECORDS}
         current_hashes = {
-            name: hashlib.sha256(_canonical_json_bytes(current_records[name])).hexdigest()
+            name: hashlib.sha256(
+                _canonical_json_bytes(current_records[name])
+            ).hexdigest()
             for name in _EXPORT_RECORDS
         }
         if exported_counts != current_counts or exported_hashes != current_hashes:
@@ -576,7 +789,649 @@ class LifecycleService:
             record_hashes=exported_hashes,
         )
 
-    def _collect_export_records(self, scope_id: str) -> dict[str, list[dict[str, object]]]:
+    def plan_deletion(
+        self,
+        *,
+        action: str,
+        scope_id: str,
+        target_id: str | None = None,
+        ttl_seconds: float = 300.0,
+        restore_proof: RestoreProof | None = None,
+    ) -> DeletionPlan:
+        """Inventory one exact destructive action without mutating any target."""
+        try:
+            deletion_action = DeletionAction(action)
+        except ValueError as error:
+            raise StorageFailure("deletion_action_invalid") from error
+        try:
+            safe_storage_component(scope_id)
+        except StoragePathError as error:
+            raise StorageFailure("deletion_scope_invalid") from error
+        if target_id is not None:
+            try:
+                safe_storage_component(target_id)
+            except StoragePathError as error:
+                raise StorageFailure("deletion_target_id_invalid") from error
+        if deletion_action is DeletionAction.SESSION and target_id is None:
+            raise StorageFailure("deletion_session_required")
+        if deletion_action in _TARGET_ACTION_KIND and target_id is None:
+            raise StorageFailure("deletion_target_id_required")
+        if deletion_action in {
+            DeletionAction.ARCHIVE,
+            DeletionAction.BACKUP_GENERATION,
+        }:
+            if not _valid_restore_proof(restore_proof, self.REQUIRED_RESTORE_CHECKS):
+                raise StorageFailure("deletion_restore_proof_required")
+        elif restore_proof is not None:
+            raise StorageFailure("deletion_restore_proof_unexpected")
+        if not 0 < ttl_seconds <= _DELETION_MAX_TTL_SECONDS:
+            raise StorageFailure("deletion_ttl_invalid")
+
+        canonical_items = self._canonical_deletion_inventory(
+            deletion_action, scope_id, target_id
+        )
+        target_items = self._active_deletion_inventory(
+            deletion_action, scope_id, target_id
+        )
+        items = tuple(
+            sorted(
+                (*canonical_items, *target_items),
+                key=lambda item: (item.target, item.identity, item.content_sha256),
+            )
+        )
+        if deletion_action in _TARGET_ACTION_KIND and not target_items:
+            raise StorageFailure("deletion_target_unavailable", identifier=target_id)
+        counts = _deletion_counts(items)
+        inventory_digest = _deletion_inventory_digest(items)
+        now = float(self._deletion_clock())
+        base = {
+            "plan_id": os.urandom(16).hex(),
+            "action": deletion_action.value,
+            "scope_id": scope_id,
+            "target_id": target_id,
+            "policy_version": _DELETION_POLICY_VERSION,
+            "created_at": now,
+            "expires_at": now + ttl_seconds,
+            "inventory_digest": inventory_digest,
+            "counts": counts,
+            "items": [_deletion_item_payload(item) for item in items],
+            "retained_copies": [
+                {"kind": copy.kind, "alias": copy.alias}
+                for copy in self._retained_copies
+            ],
+            "restore_proof_generation": (
+                restore_proof.generation_id if restore_proof is not None else None
+            ),
+        }
+        challenge = _deletion_hmac(self._deletion_secret, base)
+        return DeletionPlan(
+            plan_id=str(base["plan_id"]),
+            action=deletion_action,
+            scope_id=scope_id,
+            target_id=target_id,
+            policy_version=_DELETION_POLICY_VERSION,
+            created_at=now,
+            expires_at=now + ttl_seconds,
+            inventory_digest=inventory_digest,
+            counts=counts,
+            items=items,
+            retained_copies=self._retained_copies,
+            restore_proof_generation=base["restore_proof_generation"],
+            challenge=challenge,
+        )
+
+    def confirm_deletion(
+        self,
+        plan: DeletionPlan,
+        *,
+        challenge: str,
+        scope_id: str,
+    ) -> DeletionConfirmation:
+        """Confirm one unexpired untampered plan without executing it."""
+        plan_digest = self._validate_deletion_plan(plan, check_expiry=True)
+        if scope_id != plan.scope_id:
+            raise StorageFailure("deletion_scope_mismatch")
+        if not hmac.compare_digest(challenge, plan.challenge):
+            raise StorageFailure("deletion_confirmation_invalid")
+        confirmation_id = _deletion_hmac(
+            self._deletion_secret,
+            {
+                "kind": "confirmed-deletion",
+                "plan_digest": plan_digest,
+                "expires_at": plan.expires_at,
+            },
+        )
+        if confirmation_id in self._consumed_confirmations:
+            raise StorageFailure("deletion_confirmation_replayed")
+        self._confirmed_deletions[confirmation_id] = plan_digest
+        return DeletionConfirmation(
+            confirmation_id=confirmation_id,
+            plan_digest=plan_digest,
+            expires_at=plan.expires_at,
+        )
+
+    def execute_deletion(
+        self,
+        plan: DeletionPlan,
+        confirmation: DeletionConfirmation,
+    ) -> DeletionExecution:
+        """Consume confirmation, commit exact SQLite rows, then active targets."""
+        plan_digest = self._validate_deletion_plan(plan, check_expiry=True)
+        if confirmation.confirmation_id in self._consumed_confirmations:
+            raise StorageFailure("deletion_confirmation_replayed")
+        expected_confirmation = self._confirmed_deletions.get(
+            confirmation.confirmation_id
+        )
+        if (
+            expected_confirmation is None
+            or expected_confirmation != plan_digest
+            or confirmation.plan_digest != plan_digest
+            or confirmation.expires_at != plan.expires_at
+        ):
+            raise StorageFailure("deletion_confirmation_invalid")
+        self._consumed_confirmations.add(confirmation.confirmation_id)
+        self._confirmed_deletions.pop(confirmation.confirmation_id, None)
+
+        planned_canonical = tuple(
+            item for item in plan.items if item.target.startswith("sqlite:")
+        )
+        planned_targets = tuple(
+            item for item in plan.items if not item.target.startswith("sqlite:")
+        )
+        current_targets = self._active_deletion_inventory(
+            plan.action, plan.scope_id, plan.target_id
+        )
+        if current_targets != planned_targets:
+            raise StorageFailure("deletion_inventory_changed")
+
+        connection = open_database(self.repository.database_path)
+        canonical_committed = False
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            current_canonical = self._canonical_deletion_inventory(
+                plan.action,
+                plan.scope_id,
+                plan.target_id,
+                connection=connection,
+            )
+            if current_canonical != planned_canonical:
+                raise StorageFailure("deletion_inventory_changed")
+            self._delete_canonical_items(connection, planned_canonical)
+            if connection.execute("PRAGMA foreign_key_check").fetchall():
+                raise StorageFailure("deletion_foreign_key_failed")
+            connection.commit()
+            canonical_committed = True
+        except StorageFailure:
+            connection.rollback()
+            raise
+        except sqlite3.Error as error:
+            connection.rollback()
+            raise StorageFailure("deletion_sqlite_failed") from error
+        finally:
+            connection.close()
+
+        attempted: list[str] = []
+        failed: list[str] = []
+        for target in self._selected_deletion_targets(
+            plan.action, plan.scope_id, plan.target_id
+        ):
+            identities = tuple(
+                item.identity for item in planned_targets if item.target == target.name
+            )
+            if not identities:
+                continue
+            attempted.append(target.name)
+            try:
+                target.delete(identities)
+                if target.kind == "projection" and target.reconcile is not None:
+                    target.reconcile()
+            except Exception:
+                failed.append(target.name)
+        attempted_tuple = tuple(sorted(attempted))
+        failed_tuple = tuple(sorted(failed))
+        execution_id = _deletion_hmac(
+            self._deletion_secret,
+            {
+                "kind": "deletion-execution",
+                "plan_digest": plan_digest,
+                "canonical_committed": canonical_committed,
+                "attempted_targets": attempted_tuple,
+                "failed_targets": failed_tuple,
+            },
+        )
+        return DeletionExecution(
+            execution_id=execution_id,
+            plan_digest=plan_digest,
+            canonical_committed=canonical_committed,
+            attempted_targets=attempted_tuple,
+            failed_targets=failed_tuple,
+        )
+
+    def verify_deletion(
+        self,
+        plan: DeletionPlan,
+        execution: DeletionExecution,
+    ) -> DeletionResult:
+        """Re-query every approved exact identity and report all residual truth."""
+        plan_digest = self._validate_deletion_plan(plan, check_expiry=False)
+        expected_execution_id = _deletion_hmac(
+            self._deletion_secret,
+            {
+                "kind": "deletion-execution",
+                "plan_digest": plan_digest,
+                "canonical_committed": execution.canonical_committed,
+                "attempted_targets": execution.attempted_targets,
+                "failed_targets": execution.failed_targets,
+            },
+        )
+        if execution.plan_digest != plan_digest or not hmac.compare_digest(
+            execution.execution_id, expected_execution_id
+        ):
+            raise StorageFailure("deletion_execution_tampered")
+
+        planned_canonical = tuple(
+            item for item in plan.items if item.target.startswith("sqlite:")
+        )
+        remaining_canonical = self._remaining_canonical_items(planned_canonical)
+        retry_targets: set[str] = set()
+        remaining_counts = _deletion_counts(remaining_canonical)
+        if remaining_canonical or not execution.canonical_committed:
+            retry_targets.add("canonical_sqlite")
+
+        targets_by_name = {
+            target.name: target
+            for target in self._selected_deletion_targets(
+                plan.action, plan.scope_id, plan.target_id
+            )
+        }
+        failed_targets = set(execution.failed_targets)
+        for target_name in sorted(
+            {
+                item.target
+                for item in plan.items
+                if not item.target.startswith("sqlite:")
+            }
+        ):
+            identities = tuple(
+                item.identity for item in plan.items if item.target == target_name
+            )
+            target = targets_by_name.get(target_name)
+            if target is None:
+                failed_targets.add(target_name)
+                retry_targets.add(target_name)
+                remaining_counts[target_name] = len(identities)
+                continue
+            try:
+                remaining = dict(target.remaining(identities))
+            except Exception:
+                failed_targets.add(target_name)
+                retry_targets.add(target_name)
+                remaining_counts[target_name] = len(identities)
+                continue
+            unexpected = set(remaining) - set(identities)
+            if unexpected or any(
+                not _valid_content_digest(identity, digest)
+                for identity, digest in remaining.items()
+            ):
+                failed_targets.add(target_name)
+                retry_targets.add(target_name)
+                remaining_counts[target_name] = len(identities)
+                continue
+            if remaining:
+                retry_targets.add(target_name)
+                remaining_counts[target_name] = len(remaining)
+
+        retry_targets.update(failed_targets)
+        deleted_counts = {
+            target: max(0, count - remaining_counts.get(target, 0))
+            for target, count in plan.counts.items()
+        }
+        complete = (
+            execution.canonical_committed and not failed_targets and not retry_targets
+        )
+        return DeletionResult(
+            status=(DeletionStatus.COMPLETE if complete else DeletionStatus.INCOMPLETE),
+            action=plan.action,
+            scope_id=plan.scope_id,
+            inventory_digest=plan.inventory_digest,
+            deleted_counts=deleted_counts,
+            failed_targets=tuple(sorted(failed_targets)),
+            retry_targets=tuple(sorted(retry_targets)),
+            retained_copies=self._retained_after_action(plan),
+            application_level_deletion=execution.canonical_committed,
+            physical_purge="best_effort",
+            forensic_erasure=False,
+        )
+
+    def _validate_deletion_plan(self, plan: DeletionPlan, *, check_expiry: bool) -> str:
+        if plan.policy_version != _DELETION_POLICY_VERSION:
+            raise StorageFailure("deletion_plan_tampered")
+        if plan.counts != _deletion_counts(plan.items) or not hmac.compare_digest(
+            plan.inventory_digest, _deletion_inventory_digest(plan.items)
+        ):
+            raise StorageFailure("deletion_plan_tampered")
+        plan_digest = _deletion_hmac(
+            self._deletion_secret, _deletion_plan_payload(plan)
+        )
+        if not hmac.compare_digest(plan.challenge, plan_digest):
+            raise StorageFailure("deletion_plan_tampered")
+        if check_expiry and float(self._deletion_clock()) > plan.expires_at:
+            raise StorageFailure("deletion_plan_expired")
+        return plan_digest
+
+    def _selected_deletion_targets(
+        self,
+        action: DeletionAction,
+        scope_id: str,
+        target_id: str | None,
+    ) -> tuple[DeletionTarget, ...]:
+        del scope_id, target_id
+        if action in {DeletionAction.SCOPE, DeletionAction.SESSION}:
+            return tuple(
+                target
+                for target in self._deletion_targets
+                if target.kind in _ACTIVE_DELETION_KINDS
+            )
+        required_kind = _TARGET_ACTION_KIND.get(action)
+        return tuple(
+            target for target in self._deletion_targets if target.kind == required_kind
+        )
+
+    def _active_deletion_inventory(
+        self,
+        action: DeletionAction,
+        scope_id: str,
+        target_id: str | None,
+    ) -> tuple[DeletionItem, ...]:
+        items: list[DeletionItem] = []
+        for target in self._selected_deletion_targets(action, scope_id, target_id):
+            try:
+                inventory = dict(target.inventory(action, scope_id, target_id))
+            except Exception as error:
+                raise StorageFailure(
+                    "deletion_inventory_failed", identifier=target.name
+                ) from error
+            for identity, digest in sorted(inventory.items()):
+                if not _valid_content_digest(identity, digest):
+                    raise StorageFailure(
+                        "deletion_inventory_invalid", identifier=target.name
+                    )
+                items.append(DeletionItem(target.name, identity, digest))
+        return tuple(sorted(items, key=lambda item: (item.target, item.identity)))
+
+    def _canonical_deletion_inventory(
+        self,
+        action: DeletionAction,
+        scope_id: str,
+        target_id: str | None,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> tuple[DeletionItem, ...]:
+        """Return exact SQLite and external-content FTS rows for one action."""
+        if action not in {DeletionAction.SCOPE, DeletionAction.SESSION}:
+            return ()
+        owns_connection = connection is None
+        if connection is None:
+            connection = sqlite3.connect(
+                f"file:{self.repository.database_path.as_posix()}?mode=ro",
+                uri=True,
+                isolation_level=None,
+            )
+        previous_factory = connection.row_factory
+        connection.row_factory = sqlite3.Row
+        try:
+            items: dict[tuple[str, str], DeletionItem] = {}
+
+            def add_rows(
+                table: str,
+                statement: str,
+                parameters: tuple[object, ...],
+                *,
+                primary_keys: tuple[str, ...] | None = None,
+            ) -> tuple[sqlite3.Row, ...]:
+                rows = tuple(connection.execute(statement, parameters).fetchall())
+                keys = primary_keys or _DELETION_PRIMARY_KEYS[table]
+                for row in rows:
+                    item = _deletion_item_from_row(table, keys, row)
+                    items[(item.target, item.identity)] = item
+                return rows
+
+            if action is DeletionAction.SCOPE:
+                scoped_tables = (
+                    "memory_scopes",
+                    "sessions",
+                    "turns",
+                    "events",
+                    "derived_memories",
+                    "memory_sources",
+                    "memory_supersessions",
+                    "memory_retractions",
+                    "profile_versions",
+                    "retrieval_runs",
+                    "legacy_fragments",
+                )
+                for table in scoped_tables:
+                    add_rows(
+                        table,
+                        f'SELECT * FROM "{table}" WHERE scope_id=?',
+                        (scope_id,),
+                    )
+                add_rows(
+                    "retrieval_candidates",
+                    "SELECT candidate.* FROM retrieval_candidates AS candidate "
+                    "JOIN retrieval_runs AS run ON run.run_id=candidate.run_id "
+                    "WHERE run.scope_id=?",
+                    (scope_id,),
+                )
+                add_rows(
+                    "event_fts",
+                    "SELECT fts.rowid,fts.content FROM event_fts AS fts "
+                    "JOIN events AS event ON event.event_pk=fts.rowid "
+                    "WHERE event.scope_id=?",
+                    (scope_id,),
+                    primary_keys=("rowid",),
+                )
+                add_rows(
+                    "memory_fts",
+                    "SELECT fts.rowid,fts.canonical_text FROM memory_fts AS fts "
+                    "JOIN derived_memories AS memory ON memory.memory_pk=fts.rowid "
+                    "WHERE memory.scope_id=?",
+                    (scope_id,),
+                    primary_keys=("rowid",),
+                )
+                origin_rows = connection.execute(
+                    "SELECT event_id AS origin_id FROM events WHERE scope_id=? "
+                    "UNION SELECT memory_id FROM derived_memories WHERE scope_id=?",
+                    (scope_id, scope_id),
+                ).fetchall()
+            else:
+                assert target_id is not None
+                session_rows = add_rows(
+                    "sessions",
+                    "SELECT * FROM sessions WHERE scope_id=? AND session_id=?",
+                    (scope_id, target_id),
+                )
+                if not session_rows:
+                    raise StorageFailure(
+                        "deletion_target_not_found", identifier=target_id
+                    )
+                add_rows(
+                    "turns",
+                    "SELECT * FROM turns WHERE scope_id=? AND session_id=?",
+                    (scope_id, target_id),
+                )
+                add_rows(
+                    "events",
+                    "SELECT event.* FROM events AS event JOIN turns AS turn "
+                    "ON turn.turn_id=event.turn_id AND turn.scope_id=event.scope_id "
+                    "WHERE turn.scope_id=? AND turn.session_id=?",
+                    (scope_id, target_id),
+                )
+                memory_predicate = (
+                    "memory.scope_id=? AND (EXISTS (SELECT 1 FROM events AS primary_event "
+                    "JOIN turns AS primary_turn ON primary_turn.turn_id=primary_event.turn_id "
+                    "AND primary_turn.scope_id=primary_event.scope_id "
+                    "WHERE primary_event.event_id=memory.primary_source_event_id "
+                    "AND primary_event.scope_id=memory.scope_id "
+                    "AND primary_turn.session_id=?) OR EXISTS (SELECT 1 FROM memory_sources AS source "
+                    "JOIN events AS source_event ON source_event.event_id=source.event_id "
+                    "AND source_event.scope_id=source.scope_id JOIN turns AS source_turn "
+                    "ON source_turn.turn_id=source_event.turn_id "
+                    "AND source_turn.scope_id=source_event.scope_id "
+                    "WHERE source.memory_id=memory.memory_id AND source.scope_id=memory.scope_id "
+                    "AND source_turn.session_id=?))"
+                )
+                memory_rows = add_rows(
+                    "derived_memories",
+                    f"SELECT memory.* FROM derived_memories AS memory WHERE {memory_predicate}",
+                    (scope_id, target_id, target_id),
+                )
+                event_rows = connection.execute(
+                    "SELECT event.event_id,event.event_pk FROM events AS event "
+                    "JOIN turns AS turn ON turn.turn_id=event.turn_id "
+                    "AND turn.scope_id=event.scope_id "
+                    "WHERE turn.scope_id=? AND turn.session_id=?",
+                    (scope_id, target_id),
+                ).fetchall()
+                event_ids = {str(row["event_id"]) for row in event_rows}
+                memory_ids = {str(row["memory_id"]) for row in memory_rows}
+                for memory_id in sorted(memory_ids):
+                    add_rows(
+                        "memory_sources",
+                        "SELECT * FROM memory_sources WHERE scope_id=? AND memory_id=?",
+                        (scope_id, memory_id),
+                    )
+                    add_rows(
+                        "memory_supersessions",
+                        "SELECT * FROM memory_supersessions WHERE scope_id=? "
+                        "AND (old_memory_id=? OR new_memory_id=?)",
+                        (scope_id, memory_id, memory_id),
+                    )
+                    add_rows(
+                        "memory_retractions",
+                        "SELECT * FROM memory_retractions WHERE scope_id=? AND memory_id=?",
+                        (scope_id, memory_id),
+                    )
+                for event_id in sorted(event_ids):
+                    add_rows(
+                        "memory_supersessions",
+                        "SELECT * FROM memory_supersessions WHERE scope_id=? "
+                        "AND basis_event_id=?",
+                        (scope_id, event_id),
+                    )
+                    add_rows(
+                        "memory_retractions",
+                        "SELECT * FROM memory_retractions WHERE scope_id=? "
+                        "AND basis_event_id=?",
+                        (scope_id, event_id),
+                    )
+                for row in event_rows:
+                    add_rows(
+                        "event_fts",
+                        "SELECT rowid,content FROM event_fts WHERE rowid=?",
+                        (int(row["event_pk"]),),
+                        primary_keys=("rowid",),
+                    )
+                for row in memory_rows:
+                    add_rows(
+                        "memory_fts",
+                        "SELECT rowid,canonical_text FROM memory_fts WHERE rowid=?",
+                        (int(row["memory_pk"]),),
+                        primary_keys=("rowid",),
+                    )
+                origin_rows = tuple(
+                    {"origin_id": identity}
+                    for identity in sorted(event_ids | memory_ids)
+                )
+
+            for row in origin_rows:
+                origin_id = str(row["origin_id"])
+                for candidate in (
+                    origin_id,
+                    f"event:{origin_id}",
+                    f"memory:{origin_id}",
+                ):
+                    add_rows(
+                        "legacy_sources",
+                        "SELECT * FROM legacy_sources WHERE imported_origin_id=?",
+                        (candidate,),
+                    )
+            return tuple(
+                sorted(items.values(), key=lambda item: (item.target, item.identity))
+            )
+        except sqlite3.Error as error:
+            raise StorageFailure("deletion_inventory_failed") from error
+        finally:
+            connection.row_factory = previous_factory
+            if owns_connection:
+                connection.close()
+
+    def _delete_canonical_items(
+        self,
+        connection: sqlite3.Connection,
+        items: tuple[DeletionItem, ...],
+    ) -> None:
+        by_table: dict[str, list[DeletionItem]] = {}
+        for item in items:
+            table = item.target.removeprefix("sqlite:")
+            if table in _FTS_TABLES:
+                continue
+            if table not in _DELETION_PRIMARY_KEYS:
+                raise StorageFailure("deletion_plan_tampered")
+            by_table.setdefault(table, []).append(item)
+        for table in _CANONICAL_DELETE_ORDER:
+            keys = _DELETION_PRIMARY_KEYS[table]
+            where = " AND ".join(f'"{key}"=?' for key in keys)
+            for item in by_table.get(table, []):
+                values = _deletion_identity_values(item.identity, len(keys))
+                cursor = connection.execute(
+                    f'DELETE FROM "{table}" WHERE {where}', values
+                )
+                if cursor.rowcount != 1:
+                    raise StorageFailure("deletion_inventory_changed")
+
+    def _remaining_canonical_items(
+        self, items: tuple[DeletionItem, ...]
+    ) -> tuple[DeletionItem, ...]:
+        connection = sqlite3.connect(
+            f"file:{self.repository.database_path.as_posix()}?mode=ro",
+            uri=True,
+            isolation_level=None,
+        )
+        connection.row_factory = sqlite3.Row
+        remaining: list[DeletionItem] = []
+        try:
+            for item in items:
+                table = item.target.removeprefix("sqlite:")
+                keys = (
+                    ("rowid",)
+                    if table in _FTS_TABLES
+                    else _DELETION_PRIMARY_KEYS.get(table)
+                )
+                if keys is None:
+                    raise StorageFailure("deletion_plan_tampered")
+                values = _deletion_identity_values(item.identity, len(keys))
+                where = " AND ".join(f'"{key}"=?' for key in keys)
+                row = connection.execute(
+                    f'SELECT * FROM "{table}" WHERE {where}', values
+                ).fetchone()
+                if row is not None:
+                    remaining.append(_deletion_item_from_row(table, keys, row))
+            return tuple(
+                sorted(remaining, key=lambda item: (item.target, item.identity))
+            )
+        except sqlite3.Error as error:
+            raise StorageFailure("deletion_verification_failed") from error
+        finally:
+            connection.close()
+
+    def _retained_after_action(self, plan: DeletionPlan) -> tuple[ResidualCopy, ...]:
+        """Report every configured copy; this plan never infers physical purge."""
+        return plan.retained_copies
+
+    def _collect_export_records(
+        self, scope_id: str
+    ) -> dict[str, list[dict[str, object]]]:
         connection = sqlite3.connect(
             f"file:{self.repository.database_path.as_posix()}?mode=ro",
             uri=True,
@@ -650,7 +1505,9 @@ class LifecycleService:
         try:
             integrity = connection.execute("PRAGMA integrity_check").fetchall()
             if tuple(str(row[0]) for row in integrity) != ("ok",):
-                raise StorageFailure("snapshot_integrity_failed", identifier=snapshot_id)
+                raise StorageFailure(
+                    "snapshot_integrity_failed", identifier=snapshot_id
+                )
             counts, digests = _canonical_table_facts(connection)
             fts_counts, fts_digests = _fts_facts(connection)
             schema_version = int(
@@ -667,7 +1524,7 @@ class LifecycleService:
                 ).fetchone()[0]
             )
             projection_row = connection.execute(
-                "SELECT generation_id,embedding_model,config_sha256,metric," 
+                "SELECT generation_id,embedding_model,config_sha256,metric,"
                 "sqlite_watermark FROM projection_generations "
                 "WHERE build_status='ready' "
                 "ORDER BY completed_at DESC,generation_id DESC LIMIT 1"
@@ -730,10 +1587,7 @@ class LifecycleService:
         if not target.parent.is_dir():
             raise StorageFailure("restore_parent_missing")
         active = self.repository.database_path.resolve(strict=True)
-        if any(
-            _paths_overlap(target, path)
-            for path in (database, manifest, active)
-        ):
+        if any(_paths_overlap(target, path) for path in (database, manifest, active)):
             raise StorageFailure("restore_path_overlap")
         return database, manifest, target
 
@@ -868,6 +1722,98 @@ def _sanitize_profile_value(value: object) -> object:
     raise StorageFailure("export_payload_type_invalid")
 
 
+def _valid_restore_proof(
+    proof: RestoreProof | None, required_checks: tuple[str, ...]
+) -> bool:
+    return bool(
+        proof is not None
+        and _SAFE_OPERATION_ID.fullmatch(proof.generation_id)
+        and re.fullmatch(r"[0-9a-f]{64}", proof.manifest_sha256)
+        and proof.checks == required_checks
+    )
+
+
+def _valid_content_digest(identity: object, digest: object) -> bool:
+    return bool(
+        isinstance(identity, str)
+        and identity
+        and len(identity) <= 2048
+        and "\x00" not in identity
+        and isinstance(digest, str)
+        and re.fullmatch(r"[0-9a-f]{64}", digest)
+    )
+
+
+def _deletion_item_from_row(
+    table: str,
+    primary_keys: tuple[str, ...],
+    row: sqlite3.Row,
+) -> DeletionItem:
+    identity = _canonical_json_bytes([row[key] for key in primary_keys]).decode("utf-8")
+    content_sha256 = hashlib.sha256(_canonical_json_bytes(dict(row))).hexdigest()
+    return DeletionItem(
+        target=f"sqlite:{table}",
+        identity=identity,
+        content_sha256=content_sha256,
+    )
+
+
+def _deletion_identity_values(identity: str, expected: int) -> tuple[object, ...]:
+    try:
+        values = json.loads(identity)
+    except json.JSONDecodeError as error:
+        raise StorageFailure("deletion_plan_tampered") from error
+    if not isinstance(values, list) or len(values) != expected:
+        raise StorageFailure("deletion_plan_tampered")
+    if any(value is None or isinstance(value, (dict, list, bool)) for value in values):
+        raise StorageFailure("deletion_plan_tampered")
+    return tuple(values)
+
+
+def _deletion_item_payload(item: DeletionItem) -> dict[str, str]:
+    return {
+        "target": item.target,
+        "identity": item.identity,
+        "content_sha256": item.content_sha256,
+    }
+
+
+def _deletion_counts(items: tuple[DeletionItem, ...]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        counts[item.target] = counts.get(item.target, 0) + 1
+    return {target: counts[target] for target in sorted(counts)}
+
+
+def _deletion_inventory_digest(items: tuple[DeletionItem, ...]) -> str:
+    return hashlib.sha256(
+        _canonical_json_bytes([_deletion_item_payload(item) for item in items])
+    ).hexdigest()
+
+
+def _deletion_plan_payload(plan: DeletionPlan) -> dict[str, object]:
+    return {
+        "plan_id": plan.plan_id,
+        "action": plan.action.value,
+        "scope_id": plan.scope_id,
+        "target_id": plan.target_id,
+        "policy_version": plan.policy_version,
+        "created_at": plan.created_at,
+        "expires_at": plan.expires_at,
+        "inventory_digest": plan.inventory_digest,
+        "counts": plan.counts,
+        "items": [_deletion_item_payload(item) for item in plan.items],
+        "retained_copies": [
+            {"kind": copy.kind, "alias": copy.alias} for copy in plan.retained_copies
+        ],
+        "restore_proof_generation": plan.restore_proof_generation,
+    }
+
+
+def _deletion_hmac(secret: bytes, payload: object) -> str:
+    return hmac.new(secret, _canonical_json_bytes(payload), hashlib.sha256).hexdigest()
+
+
 def _canonical_json_bytes(value: object) -> bytes:
     return json.dumps(
         value,
@@ -973,17 +1919,18 @@ def _write_private_file(path: Path, payload: bytes) -> None:
 
 def _copy_private_file(source: Path, destination: Path) -> None:
     _claim_private_file(destination)
-    read_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
-        os, "O_NOFOLLOW", 0
+    read_flags = (
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     )
-    write_flags = os.O_WRONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
-        os, "O_NOFOLLOW", 0
+    write_flags = (
+        os.O_WRONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     )
     source_descriptor = os.open(source, read_flags)
     destination_descriptor = os.open(destination, write_flags)
-    with os.fdopen(source_descriptor, "rb") as source_stream, os.fdopen(
-        destination_descriptor, "wb"
-    ) as destination_stream:
+    with (
+        os.fdopen(source_descriptor, "rb") as source_stream,
+        os.fdopen(destination_descriptor, "wb") as destination_stream,
+    ):
         shutil.copyfileobj(source_stream, destination_stream, length=_CHUNK_BYTES)
         destination_stream.flush()
         os.fsync(destination_stream.fileno())
@@ -994,18 +1941,14 @@ def _read_regular_file(path: Path, *, max_bytes: int) -> bytes:
     information = path.stat()
     if information.st_size > max_bytes:
         raise StorageFailure("restore_manifest_too_large")
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
-        os, "O_NOFOLLOW", 0
-    )
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(path, flags)
     with os.fdopen(descriptor, "rb") as stream:
         return stream.read(max_bytes + 1)
 
 
 def _file_sha256(path: Path) -> str:
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
-        os, "O_NOFOLLOW", 0
-    )
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(path, flags)
     with os.fdopen(descriptor, "rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()

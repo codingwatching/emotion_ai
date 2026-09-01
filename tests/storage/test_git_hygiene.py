@@ -82,7 +82,9 @@ def test_synthetic_force_staged_phase3_artifact_is_rejected(tmp_path: Path) -> N
     _git(root, "commit", "-qm", "synthetic baseline")
     baseline = set(_git(root, "ls-files").splitlines())
 
-    artifact = root / "aura_data_v2" / "projection-generations" / "gen-001" / "chroma.sqlite3"
+    artifact = (
+        root / "aura_data_v2" / "projection-generations" / "gen-001" / "chroma.sqlite3"
+    )
     artifact.parent.mkdir(parents=True)
     artifact.write_bytes(b"synthetic disposable bytes")
     _git(root, "add", "-f", artifact.relative_to(root).as_posix())

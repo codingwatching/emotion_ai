@@ -491,12 +491,18 @@ def test_scope_deletion_is_planned_confirmed_executed_and_exactly_verified(
 
     connection = open_database(ledger_path)
     try:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM memory_scopes WHERE scope_id=?", (scope,)
-        ).fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT COUNT(*) FROM memory_scopes WHERE scope_id='scope-other'"
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM memory_scopes WHERE scope_id=?", (scope,)
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM memory_scopes WHERE scope_id='scope-other'"
+            ).fetchone()[0]
+            == 1
+        )
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         connection.close()
@@ -525,9 +531,7 @@ def test_deletion_rejects_vague_tampered_expired_replayed_and_wrong_scope_intent
             scope_id="scope-other",
         )
     with pytest.raises(StorageFailure, match="deletion_scope_mismatch"):
-        service.confirm_deletion(
-            plan, challenge=plan.challenge, scope_id="scope-other"
-        )
+        service.confirm_deletion(plan, challenge=plan.challenge, scope_id="scope-other")
     with pytest.raises(StorageFailure, match="deletion_confirmation_invalid"):
         service.confirm_deletion(
             plan, challenge="0" * 64, scope_id=turn_command.scope_id
@@ -550,7 +554,10 @@ def test_deletion_rejects_vague_tampered_expired_replayed_and_wrong_scope_intent
         scope_id=turn_command.scope_id,
     )
     execution = service.execute_deletion(replay_plan, confirmation)
-    assert service.verify_deletion(replay_plan, execution).status is DeletionStatus.COMPLETE
+    assert (
+        service.verify_deletion(replay_plan, execution).status
+        is DeletionStatus.COMPLETE
+    )
     with pytest.raises(StorageFailure, match="deletion_confirmation_replayed"):
         service.execute_deletion(replay_plan, confirmation)
 
@@ -611,9 +618,7 @@ def test_verification_detects_target_that_claims_delete_but_retains_exact_record
     confirmation = service.confirm_deletion(
         plan, challenge=plan.challenge, scope_id=scope
     )
-    result = service.verify_deletion(
-        plan, service.execute_deletion(plan, confirmation)
-    )
+    result = service.verify_deletion(plan, service.execute_deletion(plan, confirmation))
     assert result.status is DeletionStatus.INCOMPLETE
     assert result.failed_targets == ()
     assert result.retry_targets == ("provider-cache",)
