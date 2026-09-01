@@ -215,6 +215,8 @@ class FakeRetriever:
 
     def __init__(self, mode: str = "faithful") -> None:
         self.mode = mode
+        self.storage_bytes = 1_000_000
+        self.restore_pass = True
         controls = set(json.loads(MANIFEST_PATH.read_text())["controls"])
         if mode == "missing_control":
             controls.remove("scope_leak_detected")
@@ -237,17 +239,34 @@ class FakeRetriever:
         origin_ids = query.expected_origin_ids
         if self.mode == "scope_free" and query.case_id == "cross-scope-01":
             origin_ids = (*origin_ids, "evt-cross-scope-b")
+        elif self.mode == "scope_spoof" and query.case_id == "cross-scope-01":
+            origin_ids = ("evt-cross-scope-b",)
         elif self.mode == "stale" and query.case_id == "correction-01":
             origin_ids = ("mem-correction-old",)
+        elif self.mode == "unknown_origin" and query.case_id == "distractor-01":
+            origin_ids = ("evt-not-in-corpus",)
 
         candidates: list[RetrievedCandidate] = []
         for origin_id in origin_ids:
             scope_id = (
                 "scope-synthetic-b"
-                if origin_id == "evt-cross-scope-b"
+                if origin_id == "evt-cross-scope-b" and self.mode != "scope_spoof"
                 else query.scope_id
             )
-            provenance = () if self.mode == "provenance_free" else (origin_id,)
+            source_by_memory = {
+                "mem-correction-new": "evt-correction-new",
+                "mem-correction-old": "evt-correction-old",
+                "mem-provenance-01": "evt-provenance-source",
+            }
+            provenance = (
+                ()
+                if self.mode == "provenance_free"
+                else (
+                    "evt-not-in-corpus",
+                )
+                if self.mode == "forged_provenance"
+                else (source_by_memory.get(origin_id, origin_id),)
+            )
             candidates.append(
                 RetrievedCandidate(
                     origin_id=origin_id,
@@ -273,6 +292,7 @@ def test_faithful_retriever_clears_every_predeclared_gate() -> None:
     assert report.metrics.critical_absent_abstention == 1.0
     assert report.metrics.cross_scope_leaks == 0
     assert report.metrics.selected_without_provenance == 0
+    assert report.metrics.invalid_candidates == 0
     assert report.metrics.stale_selected == 0
     assert report.metrics.warmed_local_p95_ms < 250.0
     assert len(report.evidence) == 33
@@ -282,8 +302,11 @@ def test_faithful_retriever_clears_every_predeclared_gate() -> None:
     ("mode", "status", "code"),
     [
         ("scope_free", OutcomeStatus.FAIL, "cross_scope_leak"),
+        ("scope_spoof", OutcomeStatus.FAIL, "cross_scope_leak"),
         ("stale", OutcomeStatus.FAIL, "stale_fact_preference"),
         ("provenance_free", OutcomeStatus.FAIL, "provenance_missing"),
+        ("forged_provenance", OutcomeStatus.FAIL, "provenance_missing"),
+        ("unknown_origin", OutcomeStatus.FAIL, "unknown_origin"),
         ("truncated_search", OutcomeStatus.INCONCLUSIVE, "truncated_search"),
         ("timeout", OutcomeStatus.INCONCLUSIVE, "timeout"),
         ("resource_limit", OutcomeStatus.INCONCLUSIVE, "resource_limit"),
@@ -363,12 +386,24 @@ def test_alternative_adoption_requires_fixed_gain_without_regression() -> None:
         quality_gain,
         metrics=replace(quality_gain.metrics, explicit_update_accuracy=0.80),
     )
+    recall_regressed_for_latency = replace(
+        latency_gain,
+        metrics=replace(
+            latency_gain.metrics,
+            direct_paraphrase_recall_at_5=0.80,
+        ),
+    )
 
     assert evaluate_alternative(baseline, quality_gain, cycles_used=1).status is OutcomeStatus.PASS
     assert evaluate_alternative(baseline, latency_gain, cycles_used=1).status is OutcomeStatus.PASS
     regression = evaluate_alternative(baseline, regressed, cycles_used=1)
     assert regression.status is OutcomeStatus.FAIL
     assert regression.code == "correctness_regression"
+    recall_regression = evaluate_alternative(
+        baseline, recall_regressed_for_latency, cycles_used=1
+    )
+    assert recall_regression.status is OutcomeStatus.FAIL
+    assert recall_regression.code == "correctness_regression"
 
 
 def test_alternative_stops_after_bound_and_inconclusive_cannot_adopt() -> None:

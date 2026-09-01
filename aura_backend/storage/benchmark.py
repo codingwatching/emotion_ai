@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+import math
+from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol
@@ -135,6 +136,8 @@ class BenchmarkRetriever(Protocol):
     """Minimal injected retrieval boundary used by the instrument."""
 
     controls: frozenset[str]
+    storage_bytes: int
+    restore_pass: bool
 
     def retrieve(
         self, query: BenchmarkQuery, *, repetition: int
@@ -152,6 +155,7 @@ class BenchmarkMetrics:
     critical_absent_abstention: float
     cross_scope_leaks: int
     selected_without_provenance: int
+    invalid_candidates: int
     stale_selected: int
     duplicate_selected: int
     warmed_local_p95_ms: float
@@ -184,7 +188,15 @@ class BenchmarkReport:
 
     def to_public_dict(self) -> dict[str, Any]:
         """Return only IDs, counts, timings, codes, and the corpus hash."""
-        raise BenchmarkAbort("not_implemented")
+        return {
+            "status": self.status.value,
+            "code": self.code,
+            "arm_name": self.arm_name,
+            "salience_contribution": self.salience_contribution,
+            "corpus_sha256": self.corpus_sha256,
+            "metrics": asdict(self.metrics) if self.metrics is not None else None,
+            "evidence": [asdict(item) for item in self.evidence],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,7 +214,85 @@ def run_benchmark(
     arm_name: str = "neutral",
 ) -> BenchmarkReport:
     """Evaluate a retriever against fixed cases and resource semantics."""
-    raise BenchmarkAbort("not_implemented")
+    arm = instrument.manifest["arms"].get(arm_name)
+    if arm is None:
+        return _inconclusive_report(instrument, arm_name, "arm_missing")
+    if set(retriever.controls) != set(instrument.manifest["controls"]):
+        return _inconclusive_report(instrument, arm_name, "missing_control")
+    storage_bytes = getattr(retriever, "storage_bytes", None)
+    restore_pass = getattr(retriever, "restore_pass", None)
+    if (
+        not isinstance(storage_bytes, int)
+        or storage_bytes <= 0
+        or not isinstance(restore_pass, bool)
+    ):
+        return _inconclusive_report(instrument, arm_name, "measurement_missing")
+
+    queries = _benchmark_queries(instrument)
+    origins = {
+        str(record["origin_id"]): record
+        for record in instrument.records
+        if record["record_type"] in {"event", "memory"}
+    }
+    event_origins = {
+        str(record["origin_id"]): record
+        for record in instrument.records
+        if record["record_type"] == "event"
+    }
+    evidence: list[CaseEvidence] = []
+    responses: list[tuple[BenchmarkQuery, RetrievalResponse, tuple[str, ...]]] = []
+    for repetition in range(instrument.manifest["timing_repetitions"]):
+        for query in queries:
+            try:
+                response = retriever.retrieve(query, repetition=repetition)
+            except BenchmarkAbort as error:
+                return _inconclusive_report(
+                    instrument, arm_name, error.code, evidence=tuple(evidence)
+                )
+            if not response.complete:
+                return _inconclusive_report(
+                    instrument,
+                    arm_name,
+                    response.condition_code or "incomplete_search",
+                    evidence=tuple(evidence),
+                )
+            if len(response.candidates) > 5 or response.elapsed_ms < 0:
+                return _inconclusive_report(
+                    instrument,
+                    arm_name,
+                    "measurement_invalid",
+                    evidence=tuple(evidence),
+                )
+
+            codes = _candidate_codes(query, response, origins, event_origins)
+            evidence.append(
+                CaseEvidence(
+                    case_id=query.case_id,
+                    repetition=repetition,
+                    selected_origin_ids=tuple(
+                        candidate.origin_id for candidate in response.candidates
+                    ),
+                    elapsed_ms=response.elapsed_ms,
+                    codes=codes,
+                )
+            )
+            responses.append((query, response, codes))
+
+    metrics = _aggregate_metrics(
+        responses,
+        storage_bytes=storage_bytes,
+        restore_pass=restore_pass,
+    )
+    status, code = _evaluate_competence(metrics, instrument.manifest["gates"])
+    return BenchmarkReport(
+        status=status,
+        code=code,
+        arm_name=arm_name,
+        salience_contribution=float(arm["salience_contribution"]),
+        corpus_sha256=str(instrument.manifest["corpus_sha256"]),
+        metrics=metrics,
+        evidence=tuple(evidence),
+    )
 
 
 def evaluate_alternative(
@@ -213,7 +303,216 @@ def evaluate_alternative(
     elapsed_work_seconds: int = 0,
 ) -> GateOutcome:
     """Apply the fixed improvement and bounded-cycle adoption rule."""
-    raise BenchmarkAbort("not_implemented")
+    if (
+        baseline.status is not OutcomeStatus.PASS
+        or alternative.status is OutcomeStatus.INCONCLUSIVE
+        or baseline.metrics is None
+        or alternative.metrics is None
+    ):
+        return GateOutcome(OutcomeStatus.INCONCLUSIVE, "nonpass_input")
+    if alternative.status is not OutcomeStatus.PASS:
+        return GateOutcome(OutcomeStatus.FAIL, "alternative_gate_failed")
+
+    base = baseline.metrics
+    candidate = alternative.metrics
+    if (
+        candidate.explicit_update_accuracy < base.explicit_update_accuracy
+        or candidate.direct_paraphrase_recall_at_5
+        < base.direct_paraphrase_recall_at_5
+        or candidate.critical_absent_abstention < base.critical_absent_abstention
+        or candidate.cross_scope_leaks != 0
+        or candidate.selected_without_provenance != 0
+        or candidate.invalid_candidates != 0
+        or candidate.stale_selected > base.stale_selected
+        or candidate.duplicate_selected > base.duplicate_selected
+        or not candidate.restore_pass
+    ):
+        return GateOutcome(OutcomeStatus.FAIL, "correctness_regression")
+
+    quality_gain = (
+        candidate.direct_paraphrase_recall_at_5
+        - base.direct_paraphrase_recall_at_5
+    )
+    latency_gain = _relative_reduction(
+        base.warmed_local_p95_ms, candidate.warmed_local_p95_ms
+    )
+    storage_gain = _relative_reduction(base.storage_bytes, candidate.storage_bytes)
+    if quality_gain >= 0.05 - 1e-12 or latency_gain >= 0.30 or storage_gain >= 0.30:
+        return GateOutcome(OutcomeStatus.PASS, "adoption_gate_passed")
+    if cycles_used >= 3 or elapsed_work_seconds >= 8 * 60 * 60:
+        return GateOutcome(OutcomeStatus.FAIL, "bounded_cycle_stop")
+    return GateOutcome(OutcomeStatus.FAIL, "adoption_threshold_not_met")
+
+
+def _inconclusive_report(
+    instrument: LoadedInstrument,
+    arm_name: str,
+    code: str,
+    *,
+    evidence: tuple[CaseEvidence, ...] = (),
+) -> BenchmarkReport:
+    """Create a non-pass report without fabricating incomplete metrics."""
+    arm = instrument.manifest["arms"].get(arm_name, {})
+    return BenchmarkReport(
+        status=OutcomeStatus.INCONCLUSIVE,
+        code=code,
+        arm_name=arm_name,
+        salience_contribution=float(arm.get("salience_contribution", 0.0)),
+        corpus_sha256=str(instrument.manifest["corpus_sha256"]),
+        metrics=None,
+        evidence=evidence,
+    )
+
+
+def _benchmark_queries(instrument: LoadedInstrument) -> tuple[BenchmarkQuery, ...]:
+    """Build content-free query identities in frozen manifest order."""
+    by_case = {
+        str(record["case_id"]): record
+        for record in instrument.records
+        if record["record_type"] == "query"
+    }
+    return tuple(
+        BenchmarkQuery(
+            case_id=case_id,
+            case_class=str(by_case[case_id]["case_class"]),
+            scope_id=str(by_case[case_id]["scope_id"]),
+            expected_origin_ids=tuple(instrument.manifest["expected_origins"][case_id]),
+        )
+        for case_id in instrument.manifest["case_ids"]
+    )
+
+
+def _candidate_codes(
+    query: BenchmarkQuery,
+    response: RetrievalResponse,
+    origins: dict[str, dict[str, Any]],
+    event_origins: dict[str, dict[str, Any]],
+) -> tuple[str, ...]:
+    """Label candidate integrity failures using fixed content-free codes."""
+    codes: set[str] = set()
+    seen_hashes: set[str] = set()
+    for candidate in response.candidates:
+        origin = origins.get(candidate.origin_id)
+        if origin is None:
+            codes.add("unknown_origin")
+            continue
+        if candidate.scope_id != query.scope_id or origin["scope_id"] != query.scope_id:
+            codes.add("cross_scope_leak")
+        valid_provenance = bool(candidate.provenance_event_ids) and all(
+            source_id in event_origins
+            and event_origins[source_id]["scope_id"] == candidate.scope_id
+            for source_id in candidate.provenance_event_ids
+        )
+        if not valid_provenance:
+            codes.add("provenance_missing")
+        if not candidate.active or origin.get("active") is False:
+            codes.add("stale_fact_preference")
+        if candidate.content_hash in seen_hashes:
+            codes.add("duplicate_selected")
+        seen_hashes.add(candidate.content_hash)
+    return tuple(sorted(codes))
+
+
+def _aggregate_metrics(
+    responses: list[tuple[BenchmarkQuery, RetrievalResponse, tuple[str, ...]]],
+    *,
+    storage_bytes: int,
+    restore_pass: bool,
+) -> BenchmarkMetrics:
+    """Derive all metrics from fixed expected IDs and candidate facts."""
+    recall_hits = 0
+    recall_total = 0
+    correction_hits = 0
+    correction_total = 0
+    absent_hits = 0
+    absent_total = 0
+    cross_scope_leaks = 0
+    without_provenance = 0
+    invalid_candidates = 0
+    stale_selected = 0
+    duplicate_selected = 0
+    timings: list[float] = []
+    for query, response, codes in responses:
+        selected = tuple(candidate.origin_id for candidate in response.candidates)
+        if query.case_class in {"direct_recall", "paraphrased_recall"}:
+            recall_total += 1
+            recall_hits += int(any(origin in selected for origin in query.expected_origin_ids))
+        if query.case_class == "correction":
+            correction_total += 1
+            correction_hits += int(
+                tuple(selected) == query.expected_origin_ids
+                and all(candidate.active for candidate in response.candidates)
+            )
+        if query.case_class == "absent_fact":
+            absent_total += 1
+            absent_hits += int(not selected)
+        cross_scope_leaks += int("cross_scope_leak" in codes)
+        without_provenance += int("provenance_missing" in codes)
+        invalid_candidates += int("unknown_origin" in codes)
+        stale_selected += int("stale_fact_preference" in codes)
+        duplicate_selected += int("duplicate_selected" in codes)
+        timings.append(response.elapsed_ms)
+
+    return BenchmarkMetrics(
+        direct_paraphrase_recall_at_5=_ratio(recall_hits, recall_total),
+        explicit_update_accuracy=_ratio(correction_hits, correction_total),
+        critical_absent_abstention=_ratio(absent_hits, absent_total),
+        cross_scope_leaks=cross_scope_leaks,
+        selected_without_provenance=without_provenance,
+        invalid_candidates=invalid_candidates,
+        stale_selected=stale_selected,
+        duplicate_selected=duplicate_selected,
+        warmed_local_p95_ms=_nearest_rank_p95(timings),
+        storage_bytes=storage_bytes,
+        restore_pass=restore_pass,
+    )
+
+
+def _evaluate_competence(
+    metrics: BenchmarkMetrics, gates: dict[str, Any]
+) -> tuple[OutcomeStatus, str]:
+    """Apply containment gates before competence/latency thresholds."""
+    if metrics.cross_scope_leaks != gates["cross_scope_leaks"]:
+        return OutcomeStatus.FAIL, "cross_scope_leak"
+    if metrics.selected_without_provenance != gates["selected_without_provenance"]:
+        return OutcomeStatus.FAIL, "provenance_missing"
+    if metrics.stale_selected:
+        return OutcomeStatus.FAIL, "stale_fact_preference"
+    if metrics.invalid_candidates:
+        return OutcomeStatus.FAIL, "unknown_origin"
+    if metrics.direct_paraphrase_recall_at_5 < gates["direct_paraphrase_recall_at_5"]:
+        return OutcomeStatus.FAIL, "recall_gate_failed"
+    if metrics.explicit_update_accuracy < gates["explicit_update_accuracy"]:
+        return OutcomeStatus.FAIL, "correction_gate_failed"
+    if metrics.critical_absent_abstention != gates["critical_absent_abstention"]:
+        return OutcomeStatus.FAIL, "abstention_gate_failed"
+    if metrics.warmed_local_p95_ms >= gates["max_warmed_local_p95_ms"]:
+        return OutcomeStatus.FAIL, "latency_gate_failed"
+    if not metrics.restore_pass:
+        return OutcomeStatus.FAIL, "restore_gate_failed"
+    return OutcomeStatus.PASS, "all_gates_passed"
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    """Return a ratio only for a non-vacuous required control."""
+    if denominator == 0:
+        raise BenchmarkAbort("missing_control")
+    return numerator / denominator
+
+
+def _nearest_rank_p95(values: list[float]) -> float:
+    """Return deterministic nearest-rank p95 from complete repetitions."""
+    if not values:
+        raise BenchmarkAbort("incomplete_repetitions")
+    ordered = sorted(values)
+    return ordered[math.ceil(0.95 * len(ordered)) - 1]
+
+
+def _relative_reduction(baseline: float, candidate: float) -> float:
+    """Calculate bounded relative reduction without division by zero."""
+    if baseline <= 0 or candidate < 0:
+        return 0.0
+    return (baseline - candidate) / baseline
 
 
 def load_instrument(corpus_path: Path, manifest_path: Path) -> LoadedInstrument:
