@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 _MANIFEST_KEYS = {
     "admission_thresholds",
@@ -73,6 +74,22 @@ class InstrumentValidationError(ValueError):
         super().__init__(f"benchmark instrument invalid: code={code}{detail}")
 
 
+class OutcomeStatus(str, Enum):
+    """Truthful disposition of a benchmark or adoption gate."""
+
+    PASS = "pass"
+    FAIL = "fail"
+    INCONCLUSIVE = "inconclusive"
+
+
+class BenchmarkAbort(RuntimeError):
+    """Typed resource/timeout termination raised by an injected retriever."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(f"benchmark aborted: code={code}")
+
+
 @dataclass(frozen=True, slots=True)
 class LoadedInstrument:
     """Validated immutable benchmark inputs."""
@@ -81,6 +98,122 @@ class LoadedInstrument:
     records: tuple[dict[str, Any], ...]
     case_ids: tuple[str, ...]
     load_event_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkQuery:
+    """Content-free query identity passed to an injected retriever."""
+
+    case_id: str
+    case_class: str
+    scope_id: str
+    expected_origin_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievedCandidate:
+    """Candidate facts needed to evaluate scope, provenance, and freshness."""
+
+    origin_id: str
+    scope_id: str
+    provenance_event_ids: tuple[str, ...]
+    active: bool
+    content_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalResponse:
+    """One bounded retrieval observation."""
+
+    candidates: tuple[RetrievedCandidate, ...]
+    elapsed_ms: float
+    complete: bool = True
+    condition_code: str | None = None
+
+
+class BenchmarkRetriever(Protocol):
+    """Minimal injected retrieval boundary used by the instrument."""
+
+    controls: frozenset[str]
+
+    def retrieve(
+        self, query: BenchmarkQuery, *, repetition: int
+    ) -> RetrievalResponse:
+        """Return at most five ranked candidates for one fixed case."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkMetrics:
+    """Pre-registered aggregate measurements only."""
+
+    direct_paraphrase_recall_at_5: float
+    explicit_update_accuracy: float
+    critical_absent_abstention: float
+    cross_scope_leaks: int
+    selected_without_provenance: int
+    stale_selected: int
+    duplicate_selected: int
+    warmed_local_p95_ms: float
+    storage_bytes: int
+    restore_pass: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CaseEvidence:
+    """Content-free evidence for one case/repetition."""
+
+    case_id: str
+    repetition: int
+    selected_origin_ids: tuple[str, ...]
+    elapsed_ms: float
+    codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkReport:
+    """Content-free report for one neutral benchmark arm."""
+
+    status: OutcomeStatus
+    code: str
+    arm_name: str
+    salience_contribution: float
+    corpus_sha256: str
+    metrics: BenchmarkMetrics | None
+    evidence: tuple[CaseEvidence, ...]
+
+    def to_public_dict(self) -> dict[str, Any]:
+        """Return only IDs, counts, timings, codes, and the corpus hash."""
+        raise BenchmarkAbort("not_implemented")
+
+
+@dataclass(frozen=True, slots=True)
+class GateOutcome:
+    """Outcome of a pre-registered alternative-adoption decision."""
+
+    status: OutcomeStatus
+    code: str
+
+
+def run_benchmark(
+    instrument: LoadedInstrument,
+    retriever: BenchmarkRetriever,
+    *,
+    arm_name: str = "neutral",
+) -> BenchmarkReport:
+    """Evaluate a retriever against fixed cases and resource semantics."""
+    raise BenchmarkAbort("not_implemented")
+
+
+def evaluate_alternative(
+    baseline: BenchmarkReport,
+    alternative: BenchmarkReport,
+    *,
+    cycles_used: int,
+    elapsed_work_seconds: int = 0,
+) -> GateOutcome:
+    """Apply the fixed improvement and bounded-cycle adoption rule."""
+    raise BenchmarkAbort("not_implemented")
 
 
 def load_instrument(corpus_path: Path, manifest_path: Path) -> LoadedInstrument:
