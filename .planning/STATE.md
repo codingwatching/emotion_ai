@@ -2,7 +2,7 @@
 
 **Updated:** 2026-09-01
 **Active phase:** Phase 3 — Memory Integrity and Data Lifecycle
-**Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 through 03-03 complete (3/9 plans)
+**Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 through 03-04 complete (4/9 plans)
 
 ## Verified So Far
 
@@ -37,17 +37,26 @@
   authorized disposable restores.
 - The complete deterministic non-live suite passes at 604 tests with 2 expected
   skips and 1 live deselection after Plan 03-03.
+- Neutral retrieval now applies fixed 50-plus-50 FTS5/cosine caps, normalized
+  RRF, and SQLite-authoritative scope/provenance/freshness/relevance gates.
+- Retrieval cursors page stored frozen runs; history cursors use an event-PK
+  watermark plus the `(observed_at,event_id)` keyset; both fail closed on tamper.
+- Candidate traces are content-free, prompt retrieval remains untrusted data,
+  and the shipped Phase 3 salience seam accepts only exact zero.
+- The complete deterministic non-live suite passes at 616 tests with 2 expected
+  skips and 1 live deselection after Plan 03-04.
 
 ## Current Position
 
 Phase 1 is independently verified at 30/30 and Phase 2 at 16/16. Phase 3 now has
-the SQLite truth owner, independent measurement instrument, and rebuildable
-cosine projection/import boundary. Complete turns converge, derived memories
-remain sourced and supersedable, projection loss cannot alter truth, and legacy
-records retain exact origin and uncertainty without guessed pairs. No production
-retriever has been benchmarked or promoted. No historical store has been opened,
-migrated, repaired, or deleted. The retained eight-row FK anomalies remain gated
-work before any authorized real import, read switch, cleanup, or deletion.
+the SQLite truth owner, independent measurement instrument, rebuildable cosine
+projection/import boundary, and a bounded affect-neutral retrieval/history
+service. Retrieval eligibility cannot be weakened by caller filters or salience;
+frozen synthetic benchmark controls and explicit failed-gate outcomes are wired
+through the public page contract. No real conversation-quality benchmark has
+been run, and no historical store has been opened, migrated, repaired, or
+deleted. The retained eight-row FK anomalies remain gated work before any
+authorized real import, read switch, cleanup, or deletion.
 
 ## Locked Decisions
 
@@ -75,6 +84,10 @@ work before any authorized real import, read switch, cleanup, or deletion.
   source itself because ordinary Chroma access may mutate its internal files.
 - Preserve every legacy source triple independently as a typed fragment when
   pair, timestamp, scope, or semantic structure is not directly evidenced.
+- Keep raw BM25/cosine values as trace facts only; use fixed normalized RRF and
+  SQLite-authoritative gates to form the affect-neutral eligible set.
+- Bind opaque cursors to frozen run/history state, exact scope/query/config/
+  generation, expiry, and stable ordering boundaries; reject non-zero salience.
 
 ## Execution Metrics
 
@@ -83,10 +96,11 @@ work before any authorized real import, read switch, cleanup, or deletion.
 | 03-01 | 15 min | 3 | 9 | 555 passed, 2 skipped, 1 deselected |
 | 03-02 | 13h 3m | 2 | 4 | 585 passed, 2 skipped, 1 deselected |
 | 03-03 | 19 min | 2 | 7 | 604 passed, 2 skipped, 1 deselected |
+| 03-04 | 4h 39m | 2 | 6 | 616 passed, 2 skipped, 1 deselected |
 
 ## Last Session
 
-**Stopped at:** Completed 03-03-PLAN.md
+**Stopped at:** Completed 03-04-PLAN.md
 **Resume file:** None
 
 ## Working Tree Note
