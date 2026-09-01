@@ -9,8 +9,6 @@ import sqlite3
 import threading
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
-
 import pytest
 
 from aura_backend.storage.lifecycle import (
