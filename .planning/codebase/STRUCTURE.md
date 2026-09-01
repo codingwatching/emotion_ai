@@ -68,9 +68,9 @@ emotion_ai/
 - Key files: `aura_backend/providers/base.py`, `aura_backend/providers/factory.py`, `aura_backend/providers/gemini.py`
 
 **`aura_backend/storage/`:**
-- Purpose: Own the explicit-path SQLite event ledger, provenance transitions, and fail-closed retrieval benchmark contracts.
-- Contains: Frozen domain models, schema/connection/repository boundaries, and the injected sanitized benchmark runner.
-- Key files: `aura_backend/storage/repository.py`, `aura_backend/storage/benchmark.py`
+- Purpose: Own the explicit-path SQLite event ledger, provenance transitions, rebuildable vector projection, bounded legacy import, and fail-closed retrieval benchmark contracts.
+- Contains: Frozen domain models, schema/connection/repository boundaries, injected projection/migration adapters, and the sanitized benchmark runner.
+- Key files: `aura_backend/storage/repository.py`, `aura_backend/storage/projection.py`, `aura_backend/storage/migration.py`, `aura_backend/storage/benchmark.py`
 
 **`tests/`:**
 - Purpose: Provide the authoritative deterministic pytest surface established during rehabilitation.

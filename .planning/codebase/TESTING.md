@@ -5,9 +5,10 @@
 ## Rehabilitation Update — 2026-09-01
 
 - `pyproject.toml` now makes root `tests/` the authoritative pytest collection surface with strict markers/configuration; historical diagnostics under `aura_backend/tests/` are not part of the deterministic gate.
-- The current complete non-live command is `uv run --locked --no-sync python -m pytest tests -q -m 'not live'`; after Phase 3 Plan 03-02 it reports 585 passed, 2 expected skips, and 1 live deselection.
+- The current complete non-live command is `uv run --locked --no-sync python -m pytest tests -q -m 'not live'`; after Phase 3 Plan 03-03 it reports 604 passed, 2 expected skips, and 1 live deselection.
 - Storage tests live under `tests/storage/` and use temporary/invented inputs. `tests/fixtures/memory_eval/` is a committed, hash-bound synthetic retrieval corpus; it must never be populated from personal or runtime stores.
 - New behavior-adding storage work follows committed RED then GREEN cycles. Timeout, truncation, resource limits, missing controls, or incomplete results are non-pass outcomes.
+- Projection and legacy-import tests use only pytest-temporary SQLite and Chroma roots. Legacy tests copy synthetic sources into authorized restore descendants, then require the importer to open another operation-owned copy so the authorized source remains byte-identical.
 
 The original 2026-08-19 map below records the pre-rehabilitation test reality and remains useful historical context for legacy diagnostics.
 

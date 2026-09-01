@@ -2,7 +2,7 @@
 
 **Updated:** 2026-09-01
 **Active phase:** Phase 3 — Memory Integrity and Data Lifecycle
-**Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 and 03-02 complete (2/9 plans)
+**Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 through 03-03 complete (3/9 plans)
 
 ## Verified So Far
 
@@ -28,17 +28,26 @@
   privacy, provenance, scope, stale-fact, resource, and adoption controls.
 - The complete deterministic non-live suite passes at 585 tests with 2 expected
   skips and 1 live deselection after Plan 03-02.
+- Chroma 1.5.9 is now a stable-ID cosine projection whose candidates must match
+  active SQLite scope, origin, content hash, schema, generation, model, and config.
+- Fresh projection generations switch only after exact count/ID/hash/config and
+  deterministic fixture parity; post-commit and partial-upsert faults reconcile.
+- The legacy importer rejects unauthorized paths before Chroma opens, preserves
+  exact source triples and typed fragments, and reads only operation copies of
+  authorized disposable restores.
+- The complete deterministic non-live suite passes at 604 tests with 2 expected
+  skips and 1 live deselection after Plan 03-03.
 
 ## Current Position
 
 Phase 1 is independently verified at 30/30 and Phase 2 at 16/16. Phase 3 now has
-both the explicit SQLite truth owner and the independent measurement instrument:
-complete turns converge, derived memories remain sourced and supersedable, and
-an invented hash-bound 10,000-event corpus distinguishes faithful retrieval from
-leaks, stale facts, forged provenance, and inconclusive resource outcomes. No
-production retriever has been measured or promoted. No historical store has been
-opened, migrated, repaired, or deleted. Projection ownership and the retained
-eight-row FK anomalies remain gated Phase 3 work before migration or cleanup.
+the SQLite truth owner, independent measurement instrument, and rebuildable
+cosine projection/import boundary. Complete turns converge, derived memories
+remain sourced and supersedable, projection loss cannot alter truth, and legacy
+records retain exact origin and uncertainty without guessed pairs. No production
+retriever has been benchmarked or promoted. No historical store has been opened,
+migrated, repaired, or deleted. The retained eight-row FK anomalies remain gated
+work before any authorized real import, read switch, cleanup, or deletion.
 
 ## Locked Decisions
 
@@ -61,6 +70,11 @@ eight-row FK anomalies remain gated Phase 3 work before migration or cleanup.
 - Keep neutral and constant-salience arms separately named with zero salience
   contribution throughout Phase 3.
 - Remote Git-history rewriting requires separate explicit approval.
+- Open legacy Chroma only from an operation-owned temporary copy of an exact,
+  fingerprint-bound authorized disposable restore; never open the authorized
+  source itself because ordinary Chroma access may mutate its internal files.
+- Preserve every legacy source triple independently as a typed fragment when
+  pair, timestamp, scope, or semantic structure is not directly evidenced.
 
 ## Execution Metrics
 
@@ -68,10 +82,11 @@ eight-row FK anomalies remain gated Phase 3 work before migration or cleanup.
 |---|---:|---:|---:|---|
 | 03-01 | 15 min | 3 | 9 | 555 passed, 2 skipped, 1 deselected |
 | 03-02 | 13h 3m | 2 | 4 | 585 passed, 2 skipped, 1 deselected |
+| 03-03 | 19 min | 2 | 7 | 604 passed, 2 skipped, 1 deselected |
 
 ## Last Session
 
-**Stopped at:** Completed 03-02-PLAN.md
+**Stopped at:** Completed 03-03-PLAN.md
 **Resume file:** None
 
 ## Working Tree Note

@@ -66,7 +66,7 @@ and recoverable through one storage boundary.
 **Depends on:** Phase 1, Phase 2
 **Requirements:** TEST-03, DATA-01, DATA-02, DATA-03, DATA-04, DATA-05,
 DATA-06, DATA-09, PRES-04
-**Status:** In Progress (2/9 plans complete)
+**Status:** In Progress (3/9 plans complete)
 
 - Characterize and consolidate active persistence implementations.
 - Establish one append-only typed event ledger as the source of truth; keep
