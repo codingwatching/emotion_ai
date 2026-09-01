@@ -3,6 +3,7 @@
 from aura_backend.storage.connection import open_database
 from aura_backend.storage.models import (
     DerivedMemoryInput,
+    DerivedMemory,
     EpistemicStatus,
     EventInput,
     IdempotencyConflict,
@@ -16,6 +17,7 @@ from aura_backend.storage.repository import StorageRepository, canonical_request
 
 __all__ = [
     "DerivedMemoryInput",
+    "DerivedMemory",
     "EpistemicStatus",
     "EventInput",
     "IdempotencyConflict",

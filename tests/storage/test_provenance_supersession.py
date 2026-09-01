@@ -39,6 +39,20 @@ def _snapshot_memory(path: Path, memory_id: str) -> tuple[object, ...]:
     return (*row, tuple(sources))
 
 
+def _snapshot_event(path: Path, event_id: str) -> tuple[object, ...]:
+    with sqlite3.connect(path) as connection:
+        row = connection.execute(
+            """
+            SELECT event_id, scope_id, turn_id, ordinal, actor, observed_at,
+                   content, payload_json, content_sha256, source_kind
+            FROM events WHERE event_id = ?
+            """,
+            (event_id,),
+        ).fetchone()
+    assert row is not None
+    return row
+
+
 def _correction_command(original: TurnCommand) -> TurnCommand:
     user_event = replace(
         original.user_event,
@@ -118,6 +132,14 @@ def test_every_memory_kind_requires_complete_typed_provenance(
         ),
         lambda memory, command: replace(memory, confidence=-0.01),
         lambda memory, command: replace(memory, confidence=1.01),
+        lambda memory, command: replace(memory, confidence=float("nan")),
+        lambda memory, command: replace(
+            memory,
+            source_event_ids=(
+                command.user_event.event_id,
+                command.user_event.event_id,
+            ),
+        ),
         lambda memory, command: replace(memory, kind="unsupported"),
         lambda memory, command: replace(memory, epistemic_status="unsupported"),
     ),
@@ -144,12 +166,50 @@ def test_invalid_or_aura_authored_derivation_fails_without_partial_rows(
     assert counts == (0, 0, 0, 0)
 
 
+def test_cross_scope_derivation_source_fails_without_mutating_either_scope(
+    ledger_path: Path, turn_command: TurnCommand
+) -> None:
+    repository = StorageRepository(ledger_path)
+    other = replace(
+        turn_command,
+        scope_id="scope-beta",
+        session_id="session-beta",
+        turn_id="turn-beta",
+        idempotency_key="request-beta",
+        request_hash="6" * 64,
+        response_hash="7" * 64,
+        user_event=replace(turn_command.user_event, event_id="event-beta-user"),
+        aura_event=replace(turn_command.aura_event, event_id="event-beta-aura"),
+        derived_memories=(),
+    )
+    repository.append_turn(other.scope_id, other)
+    invalid = replace(
+        turn_command.derived_memories[0],
+        primary_source_event_id=other.user_event.event_id,
+        source_event_ids=(other.user_event.event_id,),
+    )
+
+    with pytest.raises(StorageFailure):
+        repository.append_turn(
+            turn_command.scope_id,
+            replace(turn_command, derived_memories=(invalid,)),
+        )
+
+    with sqlite3.connect(ledger_path) as connection:
+        assert connection.execute("SELECT count(*) FROM turns").fetchone()[0] == 1
+        assert connection.execute("SELECT count(*) FROM events").fetchone()[0] == 2
+        assert connection.execute(
+            "SELECT count(*) FROM derived_memories"
+        ).fetchone()[0] == 0
+
+
 def test_correction_appends_evidence_and_preserves_original_bytes(
     ledger_path: Path, turn_command: TurnCommand
 ) -> None:
     repository = StorageRepository(ledger_path)
     repository.append_turn(turn_command.scope_id, turn_command)
     before = _snapshot_memory(ledger_path, "memory-001")
+    event_before = _snapshot_event(ledger_path, turn_command.user_event.event_id)
     correction = _correction_command(turn_command)
 
     created = repository.correct_memory(
@@ -164,6 +224,7 @@ def test_correction_appends_evidence_and_preserves_original_bytes(
 
     assert created.memory_id == "memory-002"
     assert _snapshot_memory(ledger_path, "memory-001") == before
+    assert _snapshot_event(ledger_path, turn_command.user_event.event_id) == event_before
     assert tuple(memory.memory_id for memory in repository.current_memories(
         turn_command.scope_id
     )) == ("memory-002",)

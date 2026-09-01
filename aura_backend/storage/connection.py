@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import sqlite3
 import hashlib
+import math
 from collections.abc import Callable
 from pathlib import Path
 
-from aura_backend.storage.models import StorageFailure, TurnCommand
+from aura_backend.storage.models import (
+    EpistemicStatus,
+    MemoryKind,
+    StorageFailure,
+    TurnCommand,
+)
 from aura_backend.storage.schema import apply_migrations
 
 FaultHook = Callable[[str], None]
+TransactionHook = Callable[[sqlite3.Connection], None]
 
 
 def open_database(path: Path, *, busy_timeout_ms: int = 5_000) -> sqlite3.Connection:
@@ -49,11 +56,46 @@ def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def _validate_memory_provenance(
+    connection: sqlite3.Connection,
+    command: TurnCommand,
+    memory_index: int,
+) -> None:
+    memory = command.derived_memories[memory_index]
+    if not isinstance(memory.kind, MemoryKind) or not isinstance(
+        memory.epistemic_status, EpistemicStatus
+    ):
+        raise StorageFailure("invalid_memory_type", identifier=memory.memory_id)
+    if not math.isfinite(memory.confidence) or not 0.0 <= memory.confidence <= 1.0:
+        raise StorageFailure("invalid_confidence", identifier=memory.memory_id)
+    if (
+        not memory.source_event_ids
+        or len(set(memory.source_event_ids)) != len(memory.source_event_ids)
+        or memory.primary_source_event_id not in memory.source_event_ids
+    ):
+        raise StorageFailure("incomplete_provenance", identifier=memory.memory_id)
+
+    primary = connection.execute(
+        "SELECT actor FROM events WHERE event_id = ? AND scope_id = ?",
+        (memory.primary_source_event_id, command.scope_id),
+    ).fetchone()
+    if primary is None or primary[0] != "user":
+        raise StorageFailure("invalid_primary_source", identifier=memory.memory_id)
+    for event_id in memory.source_event_ids:
+        source = connection.execute(
+            "SELECT 1 FROM events WHERE event_id = ? AND scope_id = ?",
+            (event_id, command.scope_id),
+        ).fetchone()
+        if source is None:
+            raise StorageFailure("cross_scope_source", identifier=memory.memory_id)
+
+
 def append_turn_atomic(
     connection: sqlite3.Connection,
     command: TurnCommand,
     *,
     fault_hook: FaultHook | None = None,
+    before_commit: TransactionHook | None = None,
 ) -> None:
     """Persist a complete turn or roll back every durable row."""
     try:
@@ -116,6 +158,7 @@ def append_turn_atomic(
             _fault(fault_hook, f"after_event_{ordinal}")
 
         for memory_index, memory in enumerate(command.derived_memories):
+            _validate_memory_provenance(connection, command, memory_index)
             connection.execute(
                 """
                 INSERT INTO derived_memories(
@@ -147,6 +190,8 @@ def append_turn_atomic(
                 )
                 _fault(fault_hook, f"after_source_{memory_index}_{source_index}")
 
+        if before_commit is not None:
+            before_commit(connection)
         _fault(fault_hook, "before_commit")
         connection.commit()
     except StorageFailure:
