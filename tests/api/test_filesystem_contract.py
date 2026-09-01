@@ -165,6 +165,25 @@ def test_existing_profile_file_symlink_cannot_redirect_the_final_candidate(
     assert list(outside_path.iterdir()) == []
 
 
+def test_existing_export_file_symlink_cannot_redirect_the_final_candidate(
+    tmp_path: Path,
+) -> None:
+    """The export filename itself cannot be a symlink to an outside file."""
+    exports_path = tmp_path / "exports"
+    outside_path = tmp_path / "outside"
+    exports_path.mkdir()
+    outside_path.mkdir()
+    os.symlink(
+        outside_path / "export.json",
+        exports_path / "conversation_export_ty-local_01_20260819_120000.json",
+    )
+
+    with pytest.raises(StoragePathError, match="outside configured Aura data root"):
+        safe_export_path(tmp_path, "ty-local_01", "20260819_120000", "json")
+
+    assert list(outside_path.iterdir()) == []
+
+
 def _run_filesystem_probe(scenario: str, tmp_path: Path) -> dict[str, Any]:
     """Run production filesystem behavior in a bounded disposable child."""
     completed = subprocess.run(
