@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import importlib
+import os
 import sqlite3
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -14,6 +16,8 @@ from aura_backend.storage.models import StorageFailure, TurnCommand
 from aura_backend.storage.schema import SCHEMA_VERSION, rebuild_fts
 
 _CANONICAL_TABLES = (
+    "memory_scopes",
+    "sessions",
     "turns",
     "events",
     "derived_memories",
@@ -48,16 +52,28 @@ def test_open_requires_absolute_path_and_configures_owned_database(
 
 
 def test_importing_storage_modules_performs_no_io(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    monkeypatch.chdir(tmp_path)
     before = tuple(tmp_path.iterdir())
-    for module in (
-        "aura_backend.storage.models",
-        "aura_backend.storage.schema",
-        "aura_backend.storage.connection",
-    ):
-        importlib.reload(importlib.import_module(module))
+    repository = Path(__file__).resolve().parents[2]
+    environment = {**os.environ, "PYTHONPATH": str(repository)}
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import aura_backend.storage.models; "
+                "import aura_backend.storage.schema; "
+                "import aura_backend.storage.connection"
+            ),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
     assert tuple(tmp_path.iterdir()) == before
 
 
@@ -100,6 +116,8 @@ def test_success_commits_complete_ordered_turn_provenance_and_fts(
     try:
         append_turn_atomic(connection, turn_command)
         assert _counts(connection) == {
+            "memory_scopes": 1,
+            "sessions": 1,
             "turns": 1,
             "events": 2,
             "derived_memories": 1,
@@ -131,7 +149,7 @@ def test_fts_triggers_and_explicit_rebuild_align_existing_rows(
             (turn_command.user_event.event_id,),
         ).fetchone()[0]
         assert connection.execute(
-            "SELECT rowid FROM event_fts WHERE event_fts MATCH ?", ("Synthetic",)
+            "SELECT rowid FROM event_fts WHERE event_fts MATCH ?", ("preference",)
         ).fetchall() == [(event_pk,)]
 
         connection.execute(
@@ -143,8 +161,10 @@ def test_fts_triggers_and_explicit_rebuild_align_existing_rows(
             "SELECT rowid FROM event_fts WHERE event_fts MATCH ?", ("Updated",)
         ).fetchall() == [(event_pk,)]
 
-        connection.execute("DELETE FROM event_fts")
-        assert connection.execute("SELECT count(*) FROM event_fts").fetchone()[0] == 0
+        connection.execute("INSERT INTO event_fts(event_fts) VALUES ('delete-all')")
+        assert connection.execute(
+            "SELECT rowid FROM event_fts WHERE event_fts MATCH ?", ("Updated",)
+        ).fetchall() == []
         rebuild_fts(connection)
         assert connection.execute("SELECT count(*) FROM event_fts").fetchone()[0] == 2
 
