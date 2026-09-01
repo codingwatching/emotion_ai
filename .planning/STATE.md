@@ -2,7 +2,7 @@
 
 **Updated:** 2026-09-01
 **Active phase:** Phase 3 — Memory Integrity and Data Lifecycle
-**Status:** Phase 2 verified 16/16; Phase 3 Plan 03-01 complete (1/9 plans)
+**Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 and 03-02 complete (2/9 plans)
 
 ## Verified So Far
 
@@ -24,18 +24,21 @@
 - Phase 3's new SQLite ledger gate passes 43 focused storage tests: atomic
   rollback, idempotency, concurrency, canonical hashes, provenance, correction,
   retraction, and cycle rejection.
-- The complete deterministic non-live suite passes at 555 tests with 2 expected
-  skips and 1 live deselection after Plan 03-01.
+- The sanitized memory instrument passes 30 focused tests across exact corpus,
+  privacy, provenance, scope, stale-fact, resource, and adoption controls.
+- The complete deterministic non-live suite passes at 585 tests with 2 expected
+  skips and 1 live deselection after Plan 03-02.
 
 ## Current Position
 
-Phase 1 is independently verified at 30/30 and Phase 2 at 16/16. Phase 3 Plan
-03-01 now provides the explicit SQLite truth owner: complete turns commit once,
-canonical retries converge, and derived memories remain sourced and explicitly
-supersedable/retractable. Plan 03-02 can build the sanitized memory benchmark on
-these identities. No historical store has been opened, migrated, repaired, or
-deleted. Root ownership and the retained eight-row FK anomalies remain gated
-Phase 3 work before any migration or cleanup.
+Phase 1 is independently verified at 30/30 and Phase 2 at 16/16. Phase 3 now has
+both the explicit SQLite truth owner and the independent measurement instrument:
+complete turns converge, derived memories remain sourced and supersedable, and
+an invented hash-bound 10,000-event corpus distinguishes faithful retrieval from
+leaks, stale facts, forged provenance, and inconclusive resource outcomes. No
+production retriever has been measured or promoted. No historical store has been
+opened, migrated, repaired, or deleted. Projection ownership and the retained
+eight-row FK anomalies remain gated Phase 3 work before migration or cleanup.
 
 ## Locked Decisions
 
@@ -52,6 +55,11 @@ Phase 3 work before any migration or cleanup.
   durable write or side effects; bind response/event hashes to exact stored text.
 - Derive current memories from provenance, supersession, and retraction edges;
   never mutate a drifting current-state flag.
+- Freeze invented benchmark inputs and exact kill gates before retrieval
+  optimization; timeout, truncation, resource limits, and missing controls are
+  inconclusive non-pass outcomes.
+- Keep neutral and constant-salience arms separately named with zero salience
+  contribution throughout Phase 3.
 - Remote Git-history rewriting requires separate explicit approval.
 
 ## Execution Metrics
@@ -59,10 +67,11 @@ Phase 3 work before any migration or cleanup.
 | Plan | Duration | Tasks | Files | Result |
 |---|---:|---:|---:|---|
 | 03-01 | 15 min | 3 | 9 | 555 passed, 2 skipped, 1 deselected |
+| 03-02 | 13h 3m | 2 | 4 | 585 passed, 2 skipped, 1 deselected |
 
 ## Last Session
 
-**Stopped at:** Completed 03-01-PLAN.md
+**Stopped at:** Completed 03-02-PLAN.md
 **Resume file:** None
 
 ## Working Tree Note

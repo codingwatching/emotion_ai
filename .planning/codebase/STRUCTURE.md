@@ -15,6 +15,7 @@ emotion_ai/
 ├── aura_backend/
 │   ├── main.py                   # FastAPI composition root and primary API
 │   ├── providers/                # Model-provider abstraction/adapters
+│   ├── storage/                  # Typed SQLite truth and benchmark contracts
 │   ├── tests/                    # Active backend test suite and test artifacts
 │   ├── scripts/                  # Setup, cleanup, recovery, and wrapper scripts
 │   ├── db_protection/            # Standalone backup/health utilities
@@ -32,6 +33,7 @@ emotion_ai/
 ├── memvid_data/                  # Root-level archive data directory
 ├── memvid_videos/                # Root-level archive binary directory
 ├── docs/                         # Current and archived operational documents/code
+├── tests/                        # Authoritative deterministic pytest suite/fixtures
 ├── archive/                      # Retired frontend source
 ├── scratch/                      # Ad hoc workspace
 ├── .planning/                    # GSD project state, plans, and codebase maps
@@ -64,6 +66,16 @@ emotion_ai/
 - Purpose: Keep model-vendor implementations behind one normalized contract.
 - Contains: Abstract DTO/provider definitions, factory, and Gemini/Ollama/OpenRouter adapters.
 - Key files: `aura_backend/providers/base.py`, `aura_backend/providers/factory.py`, `aura_backend/providers/gemini.py`
+
+**`aura_backend/storage/`:**
+- Purpose: Own the explicit-path SQLite event ledger, provenance transitions, and fail-closed retrieval benchmark contracts.
+- Contains: Frozen domain models, schema/connection/repository boundaries, and the injected sanitized benchmark runner.
+- Key files: `aura_backend/storage/repository.py`, `aura_backend/storage/benchmark.py`
+
+**`tests/`:**
+- Purpose: Provide the authoritative deterministic pytest surface established during rehabilitation.
+- Contains: API/runtime/characterization/storage suites plus versioned invented fixtures under `tests/fixtures/`.
+- Key files: `tests/storage/test_atomic_ledger.py`, `tests/storage/test_memory_benchmark.py`, `tests/fixtures/memory_eval/manifest.json`
 
 **`aura_backend/tests/`:**
 - Purpose: Exercise API, MCP, vector database, embeddings, serialization, setup, and regression fixes.
@@ -120,8 +132,10 @@ emotion_ai/
 - `aura_backend/mcp_system.py`: Active MCP startup facade.
 - `aura_backend/aura_autonomic_system.py`: Optional background task subsystem.
 - `aura_backend/memvid_archival_service.py`: Archive queue/service.
+- `aura_backend/storage/`: SQLite durable-truth and retrieval-instrument boundary.
 
 **Testing:**
+- `tests/`: Authoritative deterministic pytest suite and sanitized fixtures.
 - `aura_backend/tests/`: Primary test location.
 - `aura_backend/scratch/test_memvid_v2.py`: Experimental Memvid test outside the main suite.
 - `aura_backend/archive_unused/test_*.py`: Archived tests; do not treat as the active suite.
@@ -166,6 +180,7 @@ emotion_ai/
 - Tests: `aura_backend/tests/test_<tool_subject>.py` or the existing `aura_backend/tests/test_tool_improvements.py` when extending that behavior.
 
 **New persistence capability:**
+- Durable event/memory truth and retrieval measurement: add focused modules under `aura_backend/storage/` with deterministic tests under `tests/storage/`.
 - Conversation orchestration: `aura_backend/conversation_persistence_service.py`.
 - Chroma-specific operations: `aura_backend/robust_vector_db.py`.
 - File-based durable state: extract a shared module from `AuraFileSystem` in `aura_backend/main.py` before extending it, so HTTP and MCP entry points can share it.
