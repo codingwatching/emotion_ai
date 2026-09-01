@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import sqlite3
 import threading
@@ -67,6 +68,7 @@ class StorageRepository:
         """Append or replay one idempotent complete turn."""
         if scope_id != command.scope_id:
             raise StorageFailure("scope_mismatch", identifier=scope_id)
+        self._validate_command_hashes(command)
 
         with self._writer_lock:
             connection = open_database(self.database_path)
@@ -215,6 +217,7 @@ class StorageRepository:
         """Atomically append correction evidence, derivation, and edge."""
         if scope_id != command.scope_id:
             raise StorageFailure("scope_mismatch", identifier=scope_id)
+        self._validate_command_hashes(command)
         if sum(
             memory.memory_id == new_memory_id
             for memory in command.derived_memories
@@ -409,6 +412,37 @@ class StorageRepository:
             raise StorageFailure(
                 "provider_callback_failed", identifier=turn_id
             ) from error
+
+    @staticmethod
+    def _validate_command_hashes(command: TurnCommand) -> None:
+        expected_request = canonical_request_hash(
+            command.scope_id,
+            command.session_id,
+            command.user_event.content,
+            version=command.request_hash_version,
+        )
+        expected_response = hashlib.sha256(
+            command.aura_event.content.encode("utf-8")
+        ).hexdigest()
+        expected_user_event = hashlib.sha256(
+            command.user_event.content.encode("utf-8")
+        ).hexdigest()
+        expected_aura_event = hashlib.sha256(
+            command.aura_event.content.encode("utf-8")
+        ).hexdigest()
+        supplied_and_expected = (
+            (command.request_hash, expected_request),
+            (command.response_hash, expected_response),
+            (command.user_event.content_sha256, expected_user_event),
+            (command.aura_event.content_sha256, expected_aura_event),
+        )
+        if command.request_hash_version <= 0 or any(
+            not hmac.compare_digest(supplied, expected)
+            for supplied, expected in supplied_and_expected
+        ):
+            raise StorageFailure(
+                "command_hash_mismatch", identifier=command.idempotency_key
+            )
 
     @staticmethod
     def _run_turn_callback(
