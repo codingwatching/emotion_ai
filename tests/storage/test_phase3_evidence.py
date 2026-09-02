@@ -21,6 +21,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PROPOSAL_PATH = (
     REPOSITORY_ROOT / ".planning/evidence/phase-03/inventory-proposal.json"
 )
+REVISED_PROPOSAL_PATH = (
+    REPOSITORY_ROOT / ".planning/evidence/phase-03/inventory-proposal-02.json"
+)
 INVENTORY_SUMMARY_PATH = (
     REPOSITORY_ROOT / ".planning/evidence/phase-03/inventory-summary.json"
 )
@@ -110,6 +113,10 @@ def _proposal() -> dict[str, Any]:
     return json.loads(PROPOSAL_PATH.read_text(encoding="utf-8"))
 
 
+def _revised_proposal() -> dict[str, Any]:
+    return json.loads(REVISED_PROPOSAL_PATH.read_text(encoding="utf-8"))
+
+
 def _assert_exact_proposal(value: dict[str, Any]) -> None:
     """Reject incomplete, widened, observed, or path-drifting proposals."""
     assert set(value) == {
@@ -196,6 +203,80 @@ def _assert_observation_free(value: Any) -> None:
             _assert_observation_free(child)
 
 
+def _assert_exact_revised_proposal(value: dict[str, Any]) -> None:
+    """Require the second proposal's non-mutating method and distinct outputs."""
+    assert set(value) == {
+        "schema_version",
+        "proposal_id",
+        "run_id",
+        "operation",
+        "repository_root",
+        "backup_target",
+        "backup_destination",
+        "roots",
+        "conditional_rule",
+        "evidence_paths",
+        "phase1_evidence",
+        "sqlite_inspection_method",
+        "allowed_operations",
+        "prohibited_operations",
+        "approval_required",
+    }
+    assert value["schema_version"] == 2
+    assert value["proposal_id"] == "phase-03-inventory-preflight-proposal-02"
+    assert value["run_id"] == "phase-03-storage-gate-02"
+    assert value["operation"] == "metadata_inventory_preflight_only"
+    assert value["repository_root"] == "/home/ty/Repositories/ai_workspace/emotion_ai"
+    assert value["backup_target"] == "/backup/aura-phase-03"
+    assert value["backup_destination"] == (
+        "/backup/aura-phase-03/phase-03-storage-gate-02/backup"
+    )
+    assert tuple(
+        (root["alias"], root["role"], root["repository_relative_path"], root["required"])
+        for root in value["roots"]
+    ) == EXPECTED_ROOTS
+    assert value["evidence_paths"] == {
+        "public_inventory": ".planning/evidence/phase-03/inventory-summary-02.json",
+        "public_quiescence": ".planning/evidence/phase-03/quiescence-summary-02.json",
+        "private_inventory": (
+            "/backup/aura-phase-03/phase-03-storage-gate-02/"
+            "inventory.private.json"
+        ),
+        "private_quiescence_pattern": (
+            "/backup/aura-phase-03/phase-03-storage-gate-02/"
+            "quiescence.<ticket-id>.private.json"
+        ),
+    }
+    assert value["sqlite_inspection_method"] == {
+        "name": "isolated_stable_sqlite_bundle_copy",
+        "source_components": [
+            "database",
+            "wal_if_present",
+            "shm_if_present",
+            "rollback_journal_if_present",
+        ],
+        "source_sqlite_open": False,
+        "inspection_location": "operation_owned_temporary_directory",
+        "inspection_uri": "mode=ro",
+        "immutable_mode_used": False,
+        "required_gates": [
+            "source_membership_before_after_equal",
+            "source_version_before_after_equal",
+            "copy_byte_hash_parity",
+            "integrity_check_on_copy_only",
+            "foreign_key_check_on_copy_only",
+        ],
+    }
+    assert "sqlite_open_on_source" in value["prohibited_operations"]
+    assert "immutable_sqlite_open" in value["prohibited_operations"]
+    assert value["approval_required"] == {
+        "before_real_path_observation": True,
+        "approval_phrase": "approved",
+        "authority_granted": "exact_revised_metadata_inventory_preflight_only",
+    }
+    _assert_observation_free(value)
+
+
 def _canonical_sha256(value: Any) -> str:
     payload = json.dumps(value, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha256(payload).hexdigest()
@@ -251,7 +332,7 @@ def _assert_real_inventory_summary(value: dict[str, Any]) -> None:
 
 
 def _assert_real_quiescence_summary(
-    value: dict[str, Any], inventory_bytes: bytes
+    value: dict[str, Any], inventory_bytes: bytes, *, require_current: bool = True
 ) -> None:
     """Require a current, exact-source-set, all-pass preflight ticket."""
     inventory = json.loads(inventory_bytes)
@@ -283,7 +364,8 @@ def _assert_real_quiescence_summary(
     expires = datetime.fromisoformat(value["expires_at_utc"].replace("Z", "+00:00"))
     assert issued < expires
     assert (expires - issued).total_seconds() == 900
-    assert datetime.now(UTC) < expires
+    if require_current:
+        assert datetime.now(UTC) < expires
 
 
 def _assert_private_pointer(backup_root: Path, relative_path: str, digest: str) -> None:
@@ -350,6 +432,10 @@ def _run_synthetic_inventory(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 def test_inventory_proposal_is_exact_and_observation_free() -> None:
     _assert_exact_proposal(_proposal())
+
+
+def test_revised_inventory_proposal_is_exact_distinct_and_observation_free() -> None:
+    _assert_exact_revised_proposal(_revised_proposal())
 
 
 @pytest.mark.parametrize("mutation", ["absent", "incomplete", "widened", "observed"])
@@ -557,10 +643,10 @@ def test_inventory_summary_rejects_absent_incomplete_or_forged_evidence(
         _assert_real_inventory_summary(inventory)
 
 
-def test_quiescence_summary_is_current_exact_and_private_safe() -> None:
+def test_failed_quiescence_summary_was_exact_and_remains_private_safe() -> None:
     inventory_bytes = INVENTORY_SUMMARY_PATH.read_bytes()
     quiescence = json.loads(QUIESCENCE_SUMMARY_PATH.read_bytes())
-    _assert_real_quiescence_summary(quiescence, inventory_bytes)
+    _assert_real_quiescence_summary(quiescence, inventory_bytes, require_current=False)
     _assert_private_pointer(
         Path("/backup/aura-phase-03"),
         quiescence["private_ticket_relpath"],
@@ -581,11 +667,13 @@ def test_quiescence_summary_rejects_absent_incomplete_or_forged_evidence(
     else:
         quiescence["inventory_summary_sha256"] = "0" * 64
     with pytest.raises((AssertionError, KeyError)):
-        _assert_real_quiescence_summary(quiescence, inventory_bytes)
+        _assert_real_quiescence_summary(
+            quiescence, inventory_bytes, require_current=False
+        )
 
 
-def test_inventory_bound_backup_has_exact_source_destination_and_binding_parity() -> None:
-    """The one approved copy is complete, source-invariant, and evidence-bound."""
+def test_failed_inventory_bound_backup_is_detectably_out_of_scope() -> None:
+    """The preserved first copy remains exact internally but not inventory-exact."""
     inventory_bytes = INVENTORY_SUMMARY_PATH.read_bytes()
     quiescence_bytes = QUIESCENCE_SUMMARY_PATH.read_bytes()
     inventory = json.loads(inventory_bytes)
@@ -629,12 +717,46 @@ def test_inventory_bound_backup_has_exact_source_destination_and_binding_parity(
     assert stat.S_IMODE(BACKUP_RESULT_PATH.stat().st_mode) == 0o600
     assert backup["source_before"] == backup["source_after"]
     assert backup["source_before"] == backup["destination_manifest"]
-    assert len(backup["source_before"]["files"]) == inventory["totals"]["file_count"]
-    assert sum(
-        file_record["byte_size"] for file_record in backup["source_before"]["files"]
-    ) == inventory["totals"]["byte_total"]
+    inventory_private = json.loads(
+        (BACKUP_ROOT / inventory["private_artifact_relpath"]).read_bytes()
+    )
+    inventoried = {
+        (root["alias"], file_record["relative_path"])
+        for root in inventory_private["roots"]
+        for file_record in root["files"]
+    }
+    copied = {
+        (file_record["root_alias"], file_record["relative_path"])
+        for file_record in backup["source_before"]["files"]
+    }
+    added = copied - inventoried
+    assert len(copied) == len(inventoried) + 4
+    assert not (inventoried - copied)
+    assert sum(path.endswith("-wal") for _, path in added) == 2
+    assert sum(path.endswith("-shm") for _, path in added) == 2
     assert [check["name"] for check in backup["checks"]] == [
         "source_unchanged",
         "destination_parity",
     ]
     assert all(check["status"] == "pass" for check in backup["checks"])
+
+
+def test_failed_run_evidence_remains_byte_identical() -> None:
+    """Repair work cannot rewrite the first proposal, evidence, or backup receipt."""
+    expected = {
+        PROPOSAL_PATH: "bfe6e64e75405244d70e216126855d3802d64e7f1c96da34f804055838814140",
+        INVENTORY_SUMMARY_PATH: "f45d25dd0a994841cbe107a8a52bab31cbc7c1b48efb513920c254ce6c80d6d8",
+        QUIESCENCE_SUMMARY_PATH: "2abdea85e068da8cadac305d65ec57e06442ed150a9a73a679af3e6564cacc5c",
+        BACKUP_ROOT / "phase-03-storage-gate-01/inventory.private.json": (
+            "4768ca2b3a33ce17eeaeaca2eefd26ea7d6b72aa3a3583496cd6043a1aacfd8d"
+        ),
+        BACKUP_ROOT
+        / "phase-03-storage-gate-01/quiescence.3814b334659b430593d4eee0188b10cf.private.json": (
+            "aab730de384c2cae2b750b341cdc4c0ee72a79bd00ee5b6cba5c5ec87db99f99"
+        ),
+        BACKUP_RESULT_PATH: (
+            "75906b2cbe4e93437a5283caa7344793b7324adc0b2c437f25f1e6ce851bc1e8"
+        ),
+    }
+    for path, digest in expected.items():
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
