@@ -27,6 +27,8 @@ INVENTORY_SUMMARY_PATH = (
 QUIESCENCE_SUMMARY_PATH = (
     REPOSITORY_ROOT / ".planning/evidence/phase-03/quiescence-summary.json"
 )
+BACKUP_ROOT = Path("/backup/aura-phase-03")
+BACKUP_RESULT_PATH = BACKUP_ROOT / "phase-03-storage-gate-01/backup.private.json"
 PHASE1_ARTIFACTS = {
     REPOSITORY_ROOT / ".planning/evidence/phase-01/inventory-summary.json": (
         "debf25853a2301d4372ec8df210128cf31b8d0adb62d3509d1d3ccaabfbd43cc"
@@ -580,3 +582,59 @@ def test_quiescence_summary_rejects_absent_incomplete_or_forged_evidence(
         quiescence["inventory_summary_sha256"] = "0" * 64
     with pytest.raises((AssertionError, KeyError)):
         _assert_real_quiescence_summary(quiescence, inventory_bytes)
+
+
+def test_inventory_bound_backup_has_exact_source_destination_and_binding_parity() -> None:
+    """The one approved copy is complete, source-invariant, and evidence-bound."""
+    inventory_bytes = INVENTORY_SUMMARY_PATH.read_bytes()
+    quiescence_bytes = QUIESCENCE_SUMMARY_PATH.read_bytes()
+    inventory = json.loads(inventory_bytes)
+    quiescence = json.loads(quiescence_bytes)
+    backup = json.loads(BACKUP_RESULT_PATH.read_bytes())
+    assert set(backup) == {
+        "schema_version",
+        "command",
+        "run_id",
+        "status",
+        "source_set_sha256",
+        "checks",
+        "created_at_utc",
+        "tool_commit",
+        "inventory_summary_sha256",
+        "inventory_private_sha256",
+        "quiescence_summary_sha256",
+        "quiescence_ticket_sha256",
+        "destination",
+        "source_before",
+        "source_after",
+        "destination_manifest",
+    }
+    assert backup["schema_version"] == 1
+    assert backup["command"] == "backup-from-ticket"
+    assert backup["run_id"] == "phase-03-storage-gate-01"
+    assert backup["status"] == "pass"
+    assert backup["source_set_sha256"] == inventory["source_set_sha256"]
+    assert backup["inventory_summary_sha256"] == hashlib.sha256(
+        inventory_bytes
+    ).hexdigest()
+    assert backup["inventory_private_sha256"] == inventory["private_artifact_sha256"]
+    assert backup["quiescence_summary_sha256"] == hashlib.sha256(
+        quiescence_bytes
+    ).hexdigest()
+    assert backup["quiescence_ticket_sha256"] == quiescence["private_ticket_sha256"]
+    assert backup["destination"] == (
+        "/backup/aura-phase-03/phase-03-storage-gate-01/backup"
+    )
+    assert Path(backup["destination"]).is_dir()
+    assert stat.S_IMODE(BACKUP_RESULT_PATH.stat().st_mode) == 0o600
+    assert backup["source_before"] == backup["source_after"]
+    assert backup["source_before"] == backup["destination_manifest"]
+    assert len(backup["source_before"]["files"]) == inventory["totals"]["file_count"]
+    assert sum(
+        file_record["byte_size"] for file_record in backup["source_before"]["files"]
+    ) == inventory["totals"]["byte_total"]
+    assert [check["name"] for check in backup["checks"]] == [
+        "source_unchanged",
+        "destination_parity",
+    ]
+    assert all(check["status"] == "pass" for check in backup["checks"])
