@@ -1,8 +1,8 @@
 # Project State: Aura Rehabilitation
 
-**Updated:** 2026-09-01
+**Updated:** 2026-09-02
 **Active phase:** Phase 3 — Memory Integrity and Data Lifecycle
-**Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 through 03-05 complete (5/9 plans)
+**Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 through 03-06 complete (6/9 plans)
 
 ## Verified So Far
 
@@ -55,17 +55,27 @@
   retry truth, and explicit retained historical/archive/backup copies.
 - The complete deterministic non-live suite passes at 647 tests with 2 expected
   skips and 1 live deselection after Plan 03-05.
+- The active runtime now commits complete idempotent SQLite turns before lazy
+  Chroma projection; projection failure preserves durable truth and retry identity.
+- Search/history, JSON export, and deletion now cross the injected storage owner;
+  legacy reads remain explicit until a verified SQLite read-owner marker exists.
+- The operational CLI fails closed on absent human evidence, writes canonical
+  exclusive receipts, and requires the exact five deterministic current-SHA CI jobs.
+- The complete deterministic non-live suite passes at 665 tests with 2 expected
+  skips and 1 live deselection after Plan 03-06; Pyright reports zero errors.
 
 ## Current Position
 
 Phase 1 is independently verified at 30/30 and Phase 2 at 16/16. Phase 3 now has
 the SQLite truth owner, independent measurement instrument, rebuildable cosine
 projection/import boundary, bounded affect-neutral retrieval/history service,
-and a verified snapshot/restore/export/deletion lifecycle boundary. Retrieval
-eligibility cannot be weakened by caller filters or salience, and destructive
-authority cannot be inferred from vague, expired, replayed, tampered, or changed
-inventory. No real conversation-quality benchmark has been run, and no
-historical store has been opened, migrated, repaired, or deleted. The retained
+verified snapshot/restore/export/deletion lifecycle, and the live runtime/API/CLI
+storage boundary. Every new turn writes only SQLite durable truth; existing
+installations remain on explicit legacy reads until a later verified marker.
+Retrieval eligibility cannot be weakened by caller filters or salience, and
+destructive authority cannot be inferred from vague, expired, replayed, tampered,
+or changed inventory. No real conversation-quality benchmark has been run, and
+no historical store has been opened, migrated, repaired, or deleted. The retained
 eight-row FK anomalies remain gated work before any authorized real import, read
 switch, cleanup, or deletion.
 
@@ -104,6 +114,14 @@ switch, cleanup, or deletion.
 - Advertise JSON export only, and require exact plan-confirm-execute-verify
   deletion with one-use confirmation, failed-target retries, residual-copy truth,
   and no forensic-erasure claim.
+- Commit each complete turn to SQLite before projection and perform projection
+  reconciliation only after the repository writer boundary releases.
+- Default existing installations to legacy reads; SQLite reads require a verified
+  marker or explicit clean-install selection, while new writes remain SQLite-only.
+- Keep Chroma, embedding, retrieval, and lifecycle construction lazy so base-only
+  startup does not require optional SDKs or initialize a model/database at import.
+- Treat later-checkpoint refusal as an authorization gate: autonomous tasks cannot
+  infer real migration, snapshot, benchmark, publication, or CI authority.
 
 ## Execution Metrics
 
@@ -114,10 +132,11 @@ switch, cleanup, or deletion.
 | 03-03 | 19 min | 2 | 7 | 604 passed, 2 skipped, 1 deselected |
 | 03-04 | 4h 39m | 2 | 6 | 616 passed, 2 skipped, 1 deselected |
 | 03-05 | 22 min | 3 | 6 | 647 passed, 2 skipped, 1 deselected |
+| 03-06 | 6h 46m | 2 | 8 | 665 passed, 2 skipped, 1 deselected |
 
 ## Last Session
 
-**Stopped at:** Completed 03-05-PLAN.md
+**Stopped at:** Completed 03-06-PLAN.md
 **Resume file:** None
 
 ## Working Tree Note
