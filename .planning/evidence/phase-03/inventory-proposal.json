@@ -1,0 +1,145 @@
+{
+  "allowed_operations": [
+    "filesystem_metadata_and_sha256_inventory",
+    "read_only_sqlite_integrity_and_foreign_key_checks",
+    "writer_process_and_open_handle_scan",
+    "destination_capacity_and_path_containment_preflight",
+    "public_private_evidence_publication"
+  ],
+  "approval_required": {
+    "approval_phrase": "approved",
+    "authority_granted": "exact_metadata_inventory_preflight_only",
+    "before_real_path_observation": true
+  },
+  "backup_target": "/backup/aura-phase-03",
+  "conditional_rule": {
+    "absence_result": "record_not_run_without_widening_scope",
+    "alias": "active-07",
+    "repository_relative_path": "aura_data_v2",
+    "rule": "include_only_if_exists_when_approved_inventory_runs"
+  },
+  "evidence_paths": {
+    "private_inventory": "/backup/aura-phase-03/phase-03-storage-gate-01/inventory.private.json",
+    "private_quiescence_pattern": "/backup/aura-phase-03/phase-03-storage-gate-01/quiescence.<ticket-id>.private.json",
+    "public_inventory": ".planning/evidence/phase-03/inventory-summary.json",
+    "public_quiescence": ".planning/evidence/phase-03/quiescence-summary.json"
+  },
+  "operation": "metadata_inventory_preflight_only",
+  "phase1_evidence": [
+    ".planning/evidence/phase-01/inventory-summary.json",
+    ".planning/evidence/phase-01/restore-drill-summary.json"
+  ],
+  "prohibited_operations": [
+    "backup_copy",
+    "chroma_or_memvid_instantiation",
+    "content_or_metadata_value_read",
+    "deletion_or_cleanup",
+    "historical_root_repair",
+    "import_or_migration",
+    "read_owner_switch",
+    "restore",
+    "source_mutation"
+  ],
+  "proposal_id": "phase-03-inventory-preflight-proposal-01",
+  "repository_root": "/home/ty/Repositories/ai_workspace/emotion_ai",
+  "roots": [
+    {
+      "alias": "active-01",
+      "repository_relative_path": "aura_chroma_db",
+      "required": true,
+      "role": "active"
+    },
+    {
+      "alias": "active-02",
+      "repository_relative_path": "aura_backend/aura_chroma_db",
+      "required": true,
+      "role": "active"
+    },
+    {
+      "alias": "active-03",
+      "repository_relative_path": "aura_data",
+      "required": true,
+      "role": "active"
+    },
+    {
+      "alias": "active-04",
+      "repository_relative_path": "aura_backend/aura_data",
+      "required": true,
+      "role": "active"
+    },
+    {
+      "alias": "active-05",
+      "repository_relative_path": "memvid_data",
+      "required": true,
+      "role": "active"
+    },
+    {
+      "alias": "active-06",
+      "repository_relative_path": "aura_backend/memvid_data",
+      "required": true,
+      "role": "active"
+    },
+    {
+      "alias": "backup-01",
+      "repository_relative_path": "auto_backups",
+      "required": true,
+      "role": "backup"
+    },
+    {
+      "alias": "backup-02",
+      "repository_relative_path": "aura_backend/auto_backups",
+      "required": true,
+      "role": "backup"
+    },
+    {
+      "alias": "backup-03",
+      "repository_relative_path": "aura_backend/chromadb_backups",
+      "required": true,
+      "role": "backup"
+    },
+    {
+      "alias": "test-01",
+      "repository_relative_path": "aura_backend/test_chroma_db",
+      "required": true,
+      "role": "test"
+    },
+    {
+      "alias": "test-02",
+      "repository_relative_path": "aura_backend/tests/test_aura_chroma_db",
+      "required": true,
+      "role": "test"
+    },
+    {
+      "alias": "archive-01",
+      "repository_relative_path": "archive",
+      "required": true,
+      "role": "archive"
+    },
+    {
+      "alias": "archive-02",
+      "repository_relative_path": "aura_backend/archive_unused",
+      "required": true,
+      "role": "archive"
+    },
+    {
+      "alias": "archive-03",
+      "repository_relative_path": "aura_backend/aura_archives",
+      "required": true,
+      "role": "archive"
+    },
+    {
+      "alias": "archive-04",
+      "repository_relative_path": "aura_backend/memvid_videos",
+      "required": true,
+      "role": "archive"
+    },
+    {
+      "alias": "active-07",
+      "repository_relative_path": "aura_data_v2",
+      "required": false,
+      "role": "active"
+    }
+  ],
+  "run_id": "phase-03-storage-gate-01",
+  "schema_version": 1
+}
