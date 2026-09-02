@@ -66,10 +66,16 @@ def test_public_summary_uses_an_allowlist_and_leaks_no_private_sentinel(
 
     real_open = os.open
 
-    def refuse_sensitive_file(path: os.PathLike[str] | str, flags: int) -> int:
-        if Path(path) == sensitive_file:
+    def refuse_sensitive_file(
+        path: os.PathLike[str] | str,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if dir_fd is None and Path(path) == sensitive_file:
             raise PermissionError(f"private exception {SENTINEL}")
-        return real_open(path, flags)
+        return real_open(path, flags, mode, dir_fd=dir_fd)
 
     monkeypatch.setattr(os, "open", refuse_sensitive_file)
     manifest = inventory_roots(tmp_path, [_active_root()], hmac_key=b"h" * 32)

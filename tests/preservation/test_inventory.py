@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from aura_backend.preservation import inventory as inventory_module
 from aura_backend.preservation.inventory import inventory_roots
 from aura_backend.preservation.manifest import CheckStatus, RootDeclaration, RootRole
 
@@ -337,3 +338,44 @@ def test_wal_bundle_is_inspected_from_an_invariant_synthetic_source(
         assert _tree_hashes(data_root) == before
     finally:
         connection.close()
+
+
+@pytest.mark.parametrize("failure", ["membership_drift", "copy_parity"])
+def test_sqlite_bundle_instability_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """Unstable membership or failed copy parity cannot produce passing evidence."""
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    database = data_root / "fixture.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE fixture(id INTEGER PRIMARY KEY)")
+    real_copy = inventory_module._copy_stable_file
+
+    if failure == "membership_drift":
+
+        def drift_after_copy(
+            source: Path, destination: Path, before: os.stat_result
+        ) -> None:
+            real_copy(source, destination, before)
+            Path(f"{database}-wal").write_bytes(b"synthetic drift")
+
+        monkeypatch.setattr(inventory_module, "_copy_stable_file", drift_after_copy)
+    else:
+
+        def reject_copy(
+            _source: Path, _destination: Path, _before: os.stat_result
+        ) -> None:
+            raise OSError("synthetic copy parity failure")
+
+        monkeypatch.setattr(inventory_module, "_copy_stable_file", reject_copy)
+
+    manifest = inventory_roots(tmp_path, [_root("data")], hmac_key=b"w" * 32)
+
+    database_evidence = manifest.roots[0].databases[0]
+    assert manifest.status is CheckStatus.FAIL
+    assert database_evidence.integrity_status is CheckStatus.FAIL
+    assert database_evidence.foreign_key_status is CheckStatus.NOT_RUN
+    assert database_evidence.private_error_code == "sqlite_read_only_check_failed"

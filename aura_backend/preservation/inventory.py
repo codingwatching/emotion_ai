@@ -10,6 +10,7 @@ import secrets
 import sqlite3
 import stat
 import subprocess
+import tempfile
 import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -26,6 +27,7 @@ from aura_backend.preservation.manifest import (
 )
 
 _SQLITE_SUFFIXES = frozenset({".db", ".sqlite", ".sqlite3"})
+_SQLITE_BUNDLE_SUFFIXES = ("", "-wal", "-shm", "-journal")
 
 
 def inventory_roots(
@@ -283,23 +285,40 @@ def _inspect_sqlite(
     *,
     role: RootRole,
 ) -> DatabaseEvidence:
-    """Run full structural and FK checks through a read-only SQLite URI."""
+    """Run structural checks only on a stable isolated DB/WAL/SHM copy.
+
+    SQLite may create or update WAL-index sidecars even for ``mode=ro`` opens.
+    The source bundle is therefore copied with no-follow descriptors, checked for
+    before/after stability, and never passed to ``sqlite3.connect``.
+    """
     fingerprint = hmac.new(hmac_key, digestmod=hashlib.sha256)
     connection: sqlite3.Connection | None = None
     try:
-        uri = f"{path.absolute().as_uri()}?mode=ro"
-        connection = sqlite3.connect(uri, uri=True)
-        connection.execute("PRAGMA query_only = ON")
-        integrity_rows = tuple(
-            str(row[0]) for row in connection.execute("PRAGMA integrity_check")
-        )
-        foreign_key_count = 0
-        for row in connection.execute("PRAGMA foreign_key_check"):
-            fingerprint.update(
-                json.dumps(tuple(row), separators=(",", ":"), ensure_ascii=True).encode()
+        with tempfile.TemporaryDirectory(prefix="aura-sqlite-inventory-") as temporary:
+            copied_path, source_bundle = _copy_sqlite_bundle(
+                path, Path(temporary)
             )
-            fingerprint.update(b"\n")
-            foreign_key_count += 1
+            try:
+                uri = f"{copied_path.absolute().as_uri()}?mode=ro"
+                connection = sqlite3.connect(uri, uri=True)
+                connection.execute("PRAGMA query_only = ON")
+                integrity_rows = tuple(
+                    str(row[0]) for row in connection.execute("PRAGMA integrity_check")
+                )
+                foreign_key_count = 0
+                for row in connection.execute("PRAGMA foreign_key_check"):
+                    fingerprint.update(
+                        json.dumps(
+                            tuple(row), separators=(",", ":"), ensure_ascii=True
+                        ).encode()
+                    )
+                    fingerprint.update(b"\n")
+                    foreign_key_count += 1
+            finally:
+                if connection is not None:
+                    connection.close()
+                    connection = None
+                _assert_sqlite_bundle_unchanged(path, source_bundle)
     except (OSError, sqlite3.Error) as error:
         if (
             role is RootRole.ARCHIVE
@@ -339,6 +358,102 @@ def _inspect_sqlite(
         foreign_key_fingerprint=fingerprint.hexdigest(),
         private_integrity_results=integrity_rows,
     )
+
+
+def _capture_sqlite_bundle(path: Path) -> dict[str, os.stat_result | None]:
+    """Capture main database and recognized sidecars without following links."""
+    captured: dict[str, os.stat_result | None] = {}
+    for suffix in _SQLITE_BUNDLE_SUFFIXES:
+        candidate = Path(f"{path}{suffix}")
+        try:
+            candidate_stat = candidate.lstat()
+        except FileNotFoundError:
+            if not suffix:
+                raise
+            captured[suffix] = None
+            continue
+        if not stat.S_ISREG(candidate_stat.st_mode):
+            raise OSError("SQLite bundle contains a non-regular entry")
+        captured[suffix] = candidate_stat
+    return captured
+
+
+def _copy_sqlite_bundle(
+    source_path: Path, temporary_root: Path
+) -> tuple[Path, dict[str, os.stat_result | None]]:
+    """Copy one stable SQLite bundle and prove byte parity before inspection."""
+    before = _capture_sqlite_bundle(source_path)
+    copied_path = temporary_root / source_path.name
+    for suffix, source_stat in before.items():
+        if source_stat is None:
+            continue
+        source = Path(f"{source_path}{suffix}")
+        destination = Path(f"{copied_path}{suffix}")
+        _copy_stable_file(source, destination, source_stat)
+    _assert_sqlite_bundle_unchanged(source_path, before)
+    return copied_path, before
+
+
+def _copy_stable_file(
+    source: Path, destination: Path, before: os.stat_result
+) -> None:
+    """Exclusively copy one regular file and require source/destination parity."""
+    read_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+        os, "O_NOFOLLOW", 0
+    )
+    write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(
+        os, "O_CLOEXEC", 0
+    )
+    source_digest = hashlib.sha256()
+    try:
+        source_descriptor = os.open(source, read_flags)
+        destination_descriptor = os.open(destination, write_flags, 0o600)
+        with os.fdopen(source_descriptor, "rb") as source_stream, os.fdopen(
+            destination_descriptor, "wb"
+        ) as destination_stream:
+            opened = os.fstat(source_stream.fileno())
+            if not stat.S_ISREG(opened.st_mode) or not _same_identity(before, opened):
+                raise OSError("SQLite bundle entry changed before copy")
+            while chunk := source_stream.read(1024 * 1024):
+                source_digest.update(chunk)
+                destination_stream.write(chunk)
+            destination_stream.flush()
+            os.fsync(destination_stream.fileno())
+            after_descriptor = os.fstat(source_stream.fileno())
+        after_path = source.lstat()
+        destination_stat = destination.lstat()
+        with destination.open("rb") as destination_stream:
+            destination_digest = hashlib.file_digest(
+                destination_stream, "sha256"
+            ).hexdigest()
+    except OSError:
+        raise
+    if (
+        not _same_file_version(before, after_descriptor)
+        or not _same_file_version(before, after_path)
+        or not stat.S_ISREG(destination_stat.st_mode)
+        or destination_stat.st_size != before.st_size
+        or destination_digest != source_digest.hexdigest()
+    ):
+        raise OSError("SQLite bundle copy parity failed")
+
+
+def _assert_sqlite_bundle_unchanged(
+    path: Path, before: dict[str, os.stat_result | None]
+) -> None:
+    """Fail when any source bundle entry appears, disappears, or changes."""
+    after = _capture_sqlite_bundle(path)
+    if before.keys() != after.keys():
+        raise OSError("SQLite bundle membership changed")
+    for suffix in before:
+        left = before[suffix]
+        right = after[suffix]
+        if left is None or right is None:
+            if left is not right:
+                raise OSError("SQLite bundle membership changed")
+            continue
+        if not _same_file_version(left, right):
+            raise OSError("SQLite bundle changed during inspection")
 
 
 def _file_type(mode: int) -> str:
