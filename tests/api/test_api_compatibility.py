@@ -18,6 +18,7 @@ from aura_backend.conversation_persistence_service import (
 )
 from aura_backend.runtime import RuntimeConfigurationError, RuntimeSettings
 from aura_backend.storage.repository import StorageRepository
+from aura_backend.storage.models import RetrievalItem, RetrievalPage
 from tests.api.test_provider_compatibility import (
     ANSWER_SENTINEL,
     EXPECTED_RESPONSE_KEYS,
@@ -238,3 +239,64 @@ def test_base_storage_source_excludes_legacy_writer_and_live_backup() -> None:
     assert "StorageRepository" in source
     assert "ProjectionAdapter" in source
 
+
+class _RetrieverPageFake:
+    """Return one fixed neutral page while recording the hard API bound."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def retrieve(self, **kwargs: Any) -> RetrievalPage:
+        self.calls.append(kwargs)
+        item = RetrievalItem(
+            origin_id="event-synthetic",
+            origin_kind="event",
+            scope_id="scope-a",
+            content="synthetic memory",
+            content_sha256="a" * 64,
+            observed_at="2026-09-01T00:00:00Z",
+            provenance_event_ids=("event-synthetic",),
+            contributor_ids=("event-synthetic",),
+            neutral_score=0.0,
+            exact_match=True,
+            selected_rank=1,
+        )
+        return RetrievalPage(
+            items=(item,),
+            next_cursor="opaque-next",
+            has_more=True,
+            trace_id="trace-synthetic",
+            traces=(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_boundary_is_bounded_traceable_and_compatibility_shaped() -> None:
+    retriever = _RetrieverPageFake()
+
+    result = await main._search_storage_boundary(
+        retriever,
+        scope_id="scope-a",
+        query="synthetic",
+        page_size=100,
+        cursor=None,
+    )
+
+    assert retriever.calls == [
+        {
+            "scope_id": "scope-a",
+            "query": "synthetic",
+            "page_size": 100,
+            "cursor": None,
+        }
+    ]
+    assert result["results"][0]["content"] == "synthetic memory"
+    assert result["next_cursor"] == "opaque-next"
+    assert result["has_more"] is True
+    assert result["trace_id"] == "trace-synthetic"
+    assert result["includes_video_archives"] is False
+
+
+def test_search_request_rejects_unbounded_pages() -> None:
+    with pytest.raises(Exception):
+        main.SearchRequest(user_id="scope-a", query="synthetic", n_results=101)
