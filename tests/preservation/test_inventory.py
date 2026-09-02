@@ -265,3 +265,75 @@ def test_missing_roots_have_truthful_required_semantics(tmp_path: Path) -> None:
         CheckStatus.BLOCKED,
     ]
     assert required_manifest.status is CheckStatus.BLOCKED
+
+
+def _tree_hashes(root: Path) -> dict[str, str]:
+    """Return exact synthetic file membership and hashes without following links."""
+    return {
+        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and not path.is_symlink()
+    }
+
+
+def test_wal_mode_sqlite_inspection_never_creates_source_sidecars(
+    tmp_path: Path,
+) -> None:
+    """A quiescent WAL-mode database remains byte/file invariant after inventory."""
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    database = data_root / "fixture.sqlite3"
+    connection = sqlite3.connect(database)
+    try:
+        assert connection.execute("PRAGMA journal_mode = WAL").fetchone() == ("wal",)
+        connection.execute("CREATE TABLE fixture(id INTEGER PRIMARY KEY)")
+        connection.execute("INSERT INTO fixture(id) VALUES (1)")
+        connection.commit()
+    finally:
+        connection.close()
+    assert not Path(f"{database}-wal").exists()
+    assert not Path(f"{database}-shm").exists()
+    before = _tree_hashes(data_root)
+
+    manifest = inventory_roots(tmp_path, [_root("data")], hmac_key=b"w" * 32)
+
+    assert manifest.status is CheckStatus.PASS
+    assert _tree_hashes(data_root) == before
+
+
+def test_wal_bundle_is_inspected_from_an_invariant_synthetic_source(
+    tmp_path: Path,
+) -> None:
+    """Committed WAL frames remain visible when inspection runs on an isolated copy."""
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    database = data_root / "fixture.sqlite3"
+    connection = sqlite3.connect(database)
+    try:
+        assert connection.execute("PRAGMA journal_mode = WAL").fetchone() == ("wal",)
+        connection.execute("PRAGMA wal_autocheckpoint = 0")
+        connection.executescript(
+            """
+            PRAGMA foreign_keys = OFF;
+            CREATE TABLE parent(id INTEGER PRIMARY KEY);
+            CREATE TABLE child(
+                id INTEGER PRIMARY KEY,
+                parent_id INTEGER REFERENCES parent(id)
+            );
+            INSERT INTO child(id, parent_id) VALUES (1, 999);
+            """
+        )
+        connection.commit()
+        assert Path(f"{database}-wal").is_file()
+        assert Path(f"{database}-shm").is_file()
+        before = _tree_hashes(data_root)
+
+        manifest = inventory_roots(tmp_path, [_root("data")], hmac_key=b"w" * 32)
+
+        database_evidence = manifest.roots[0].databases[0]
+        assert manifest.status is CheckStatus.PASS
+        assert database_evidence.integrity_status is CheckStatus.PASS
+        assert database_evidence.foreign_key_violation_count == 1
+        assert _tree_hashes(data_root) == before
+    finally:
+        connection.close()
