@@ -20,6 +20,7 @@ from aura_backend.runtime_security import allowed_browser_origins, server_host
 
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _MAX_PREFLIGHT_TIMEOUT_SECONDS = 300.0
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 class RuntimeConfigurationError(ValueError):
@@ -129,6 +130,17 @@ def _strict_boolean(
     raise RuntimeConfigurationError(key)
 
 
+def _repository_path(path: Path) -> Path:
+    """Resolve a configured path for validation without creating it."""
+    candidate = path if path.is_absolute() else _REPOSITORY_ROOT / path
+    return candidate.resolve(strict=False)
+
+
+def _paths_overlap(left: Path, right: Path) -> bool:
+    """Return whether either resolved path contains the other."""
+    return left == right or left in right.parents or right in left.parents
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimeSettings:
     """Validated application settings with local-only defaults."""
@@ -137,6 +149,9 @@ class RuntimeSettings:
     port: int
     allowed_origins: tuple[str, ...]
     storage_root: Path
+    ledger_root: Path
+    ledger_database_path: Path
+    projection_root: Path
     preflight_timeout_seconds: float
     provider: ProviderSettings
     mcp_enabled: bool
@@ -171,6 +186,35 @@ class RuntimeSettings:
         )
         if "\x00" in storage_value:
             raise RuntimeConfigurationError("AURA_DATA_DIRECTORY")
+        storage_root = Path(storage_value)
+
+        ledger_value = _configured_text(
+            mapping,
+            "AURA_LEDGER_DIRECTORY",
+            str(_REPOSITORY_ROOT / "aura_data_v2"),
+        )
+        if "\x00" in ledger_value:
+            raise RuntimeConfigurationError("AURA_LEDGER_DIRECTORY")
+        ledger_root = Path(ledger_value)
+        if not ledger_root.is_absolute():
+            raise RuntimeConfigurationError("AURA_LEDGER_DIRECTORY")
+        ledger_root = ledger_root.resolve(strict=False)
+
+        historical_roots = [
+            _repository_path(storage_root),
+            _REPOSITORY_ROOT / "aura_chroma_db",
+        ]
+        configured_chroma = mapping.get("CHROMA_PERSIST_DIRECTORY")
+        if configured_chroma is not None:
+            if (
+                not isinstance(configured_chroma, str)
+                or not configured_chroma.strip()
+                or "\x00" in configured_chroma
+            ):
+                raise RuntimeConfigurationError("CHROMA_PERSIST_DIRECTORY")
+            historical_roots.append(_repository_path(Path(configured_chroma.strip())))
+        if any(_paths_overlap(ledger_root, root) for root in historical_roots):
+            raise RuntimeConfigurationError("AURA_LEDGER_DIRECTORY")
 
         try:
             provider = ProviderSettings.from_mapping(mapping)
@@ -189,7 +233,10 @@ class RuntimeSettings:
                 maximum=65535,
             ),
             allowed_origins=_validate_origins(origins),
-            storage_root=Path(storage_value),
+            storage_root=storage_root,
+            ledger_root=ledger_root,
+            ledger_database_path=ledger_root / "aura.sqlite3",
+            projection_root=ledger_root / "projections",
             preflight_timeout_seconds=_bounded_float(
                 mapping,
                 "AURA_PREFLIGHT_TIMEOUT_SECONDS",

@@ -560,6 +560,15 @@ class ConversationRequest(BaseModel):
     session_id: Annotated[
         Optional[str], Field(default=None, description="Optional session identifier")
     ] = None
+    idempotency_key: Annotated[
+        Optional[str],
+        Field(
+            default=None,
+            min_length=1,
+            max_length=256,
+            description="Optional stable retry identity for this exact request",
+        ),
+    ] = None
 
 
 class ConversationResponse(BaseModel):
@@ -854,10 +863,154 @@ archive never authorizes deleting or changing active records.
 # FastAPI application lifecycle and composition
 @dataclass(slots=True)
 class _LegacyRuntimeResources:
-    """Resources still consumed through compatibility globals during Phase 2."""
+    """Compatibility container for the lifespan-owned Phase 3 storage boundary."""
 
     mcp_router: Any
     tool_catalog: ToolCatalog | None = None
+    repository: Any = None
+    projection: Any = None
+    retriever: Any = None
+    lifecycle: Any = None
+    read_owner: str = "sqlite"
+
+
+class _RuntimeEmbeddingService:
+    """Keep model construction lazy while exposing a stable projection identity."""
+
+    def get_model_info(self) -> dict[str, Any]:
+        return {
+            "model_name": "all-MiniLM-L6-v2",
+            "runtime_contract": "phase-03",
+        }
+
+    def encode_batch(self, texts: list[str]) -> list[list[float]]:
+        from aura_backend.shared_embedding_service import get_embedding_service
+
+        return get_embedding_service().encode_batch(texts)
+
+
+class _RuntimeProjectionAdapter:
+    """Initialize the first disposable generation on first projection use."""
+
+    def __init__(
+        self,
+        *,
+        projection_root: Path,
+        repository: Any,
+        embedding_service: Any,
+    ) -> None:
+        self._projection_root = projection_root
+        self._repository = repository
+        self._embedding_service = embedding_service
+        self._adapter: Any = None
+
+    def _get_adapter(self) -> Any:
+        if self._adapter is None:
+            from aura_backend.storage.projection import ProjectionAdapter
+
+            self._adapter = ProjectionAdapter(
+                projection_root=self._projection_root,
+                repository=self._repository,
+                embedding_service=self._embedding_service,
+            )
+        return self._adapter
+
+    def _ensure_generation(self) -> Any:
+        from aura_backend.storage.models import StorageFailure
+
+        try:
+            return self._get_adapter().current_generation()
+        except StorageFailure as error:
+            if error.code != "projection_generation_unavailable":
+                raise
+        generation_id = f"runtime-{uuid.uuid4().hex}"
+        adapter = self._get_adapter()
+        adapter.rebuild(
+            generation_id=generation_id,
+            created_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        )
+        return adapter.current_generation()
+
+    def current_generation(self) -> Any:
+        return self._ensure_generation()
+
+    def upsert_committed(self, turn_id: str) -> int:
+        from aura_backend.storage.models import StorageFailure
+
+        try:
+            self._get_adapter().current_generation()
+        except StorageFailure as error:
+            if error.code != "projection_generation_unavailable":
+                raise
+            self._ensure_generation()
+            # The verified rebuild already projected every committed origin.
+            return len(self._repository.projection_origins(turn_id=turn_id))
+        return self._get_adapter().upsert_committed(turn_id)
+
+    def query_candidates(self, **kwargs: Any) -> Any:
+        self._ensure_generation()
+        return self._get_adapter().query_candidates(**kwargs)
+
+    def reconcile(self, **kwargs: Any) -> int:
+        self._ensure_generation()
+        return self._get_adapter().reconcile(**kwargs)
+
+
+class _RuntimeHybridRetriever:
+    """Defer projection-dependent retrieval imports until a bounded read."""
+
+    def __init__(self, repository: Any, projection: Any) -> None:
+        self._repository = repository
+        self._projection = projection
+        self._retriever: Any = None
+
+    def _get_retriever(self) -> Any:
+        if self._retriever is None:
+            from aura_backend.storage.retrieval import HybridRetriever
+
+            self._retriever = HybridRetriever(
+                repository=self._repository,
+                projection=self._projection,
+            )
+        return self._retriever
+
+    def retrieve(self, **kwargs: Any) -> Any:
+        return self._get_retriever().retrieve(**kwargs)
+
+    def history(self, **kwargs: Any) -> Any:
+        return self._get_retriever().history(**kwargs)
+
+
+class _RuntimeLifecycleService:
+    """Defer Chroma-dependent lifecycle imports until an explicit operation."""
+
+    def __init__(self, repository: Any, projection_root: Path) -> None:
+        self._repository = repository
+        self._projection_root = projection_root
+        self._service: Any = None
+
+    def _get_service(self) -> Any:
+        if self._service is None:
+            from aura_backend.storage.lifecycle import LifecycleService
+            from aura_backend.storage.projection import ProjectionAdapter
+
+            def projection_factory(root: Path, restored_repository: Any) -> Any:
+                return ProjectionAdapter(
+                    projection_root=root,
+                    repository=restored_repository,
+                    embedding_service=_RuntimeEmbeddingService(),
+                )
+
+            self._service = LifecycleService(
+                repository=self._repository,
+                projection_factory=projection_factory,
+                fixture_verifier=lambda _repository, _projection: {},
+                tool_commit="phase-03-runtime",
+            )
+        return self._service
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get_service(), name)
 
 
 def _clear_runtime_aliases() -> None:
@@ -892,34 +1045,51 @@ async def _start_legacy_resources() -> Any:
     return await _start_base_resources()
 
 
-async def _start_base_resources() -> Any:
+async def _start_base_resources(settings: Any | None = None) -> Any:
     """Construct only required base services after FastAPI enters lifespan."""
     global vector_db, aura_file_system, state_manager, aura_internal_tools
     global conversation_persistence, db_protection_service, embedding_service
 
     from aura_backend.aura_internal_tools import AuraInternalTools
-    from aura_backend.database_protection import get_protection_service
-    from aura_backend.robust_vector_db import RobustAuraVectorDB
     from aura_backend.runtime import StartedResource
-    from aura_backend.shared_embedding_service import get_embedding_service
+    from aura_backend.storage.repository import StorageRepository
 
     stack = AsyncExitStack()
     try:
-        db_protection_service = get_protection_service()
-        stack.callback(db_protection_service.stop_protection)
+        if settings is None:
+            from aura_backend.runtime import RuntimeSettings
 
-        vector_db = RobustAuraVectorDB()
-        stack.push_async_callback(vector_db.close)
-        aura_file_system = AuraFileSystem()
-        state_manager = AuraStateManager(vector_db, aura_file_system)
-        aura_internal_tools = AuraInternalTools(vector_db, aura_file_system)
-        embedding_service = get_embedding_service()
-
-        conversation_persistence = ConversationPersistenceService(
-            vector_db,
-            aura_file_system,
+            settings = RuntimeSettings.from_mapping({})
+        repository = StorageRepository(settings.ledger_database_path)
+        embedding_service = _RuntimeEmbeddingService()
+        projection = _RuntimeProjectionAdapter(
+            projection_root=settings.projection_root,
+            repository=repository,
+            embedding_service=embedding_service,
         )
-        resources = _LegacyRuntimeResources(mcp_router=None)
+        retriever = _RuntimeHybridRetriever(repository, projection)
+        lifecycle = _RuntimeLifecycleService(
+            repository,
+            settings.projection_root,
+        )
+        vector_db = None
+        aura_file_system = None
+        state_manager = None
+        db_protection_service = None
+        aura_internal_tools = AuraInternalTools(None, None)
+        conversation_persistence = ConversationPersistenceService(
+            repository,
+            projection,
+            legacy_reader=None,
+        )
+        resources = _LegacyRuntimeResources(
+            mcp_router=None,
+            repository=repository,
+            projection=projection,
+            retriever=retriever,
+            lifecycle=lifecycle,
+            read_owner="sqlite",
+        )
 
         async def close_resources() -> None:
             try:
@@ -1133,7 +1303,7 @@ def _build_application_runtime() -> Any:
         """Start base services and build an internal-only neutral tool surface."""
         nonlocal base_resources, tool_executor
 
-        started = await _start_base_resources()
+        started = await _start_base_resources(settings)
         try:
             catalog = await get_provider_tool_catalog(
                 internal_tools=aura_internal_tools,
@@ -2290,6 +2460,7 @@ async def process_conversation(
             ai_emotional_state=emotional_state_data,
             ai_cognitive_state=cognitive_state_data,
             session_id=session_id,
+            idempotency_key=request.idempotency_key,
         )
         stage = "persistence"
         await _persist_conversation_exchange(exchange, background_tasks)

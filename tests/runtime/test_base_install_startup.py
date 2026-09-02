@@ -60,7 +60,7 @@ def test_base_only_child_proves_complete_runtime_path() -> None:
         "status": "pass",
     }
     assert evidence["lifespan"] == {
-        "cleanup_events": ["provider", "legacy_services"],
+        "cleanup_events": ["provider"],
         "ready": True,
         "resource_states": {
             "autonomic": "not_configured",
