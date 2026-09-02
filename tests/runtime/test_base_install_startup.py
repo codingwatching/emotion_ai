@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 import subprocess
 import sys
 
 import pytest
 
 from aura_backend.runtime import RuntimeConfigurationError, RuntimeSettings
+import aura_backend.main as main
 from tests.support.main_subprocess_probe import ProbeFailure, run_probe
 
 
@@ -110,3 +112,15 @@ assert attempted == [], attempted
     )
 
     assert completed.returncode == 0, completed.stderr[-2000:]
+
+
+def test_base_storage_composition_is_lifespan_owned_and_has_no_live_backup() -> None:
+    """The required base stage constructs v2 owners, not legacy durable writers."""
+    source = inspect.getsource(main._start_base_resources)
+
+    assert "StorageRepository" in source
+    assert "ProjectionAdapter" in source
+    assert "HybridRetriever" in source
+    assert "LifecycleService" in source
+    assert "get_protection_service" not in source
+    assert "RobustAuraVectorDB" not in source
