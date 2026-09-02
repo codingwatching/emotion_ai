@@ -18,6 +18,7 @@ from aura_backend.conversation_persistence_service import (
 )
 from aura_backend.runtime import RuntimeConfigurationError, RuntimeSettings
 from aura_backend.storage.repository import StorageRepository
+from aura_backend.storage.lifecycle import DeletionAction, DeletionPlan
 from aura_backend.storage.models import RetrievalItem, RetrievalPage
 from tests.api.test_provider_compatibility import (
     ANSWER_SENTINEL,
@@ -300,3 +301,70 @@ async def test_search_boundary_is_bounded_traceable_and_compatibility_shaped() -
 def test_search_request_rejects_unbounded_pages() -> None:
     with pytest.raises(Exception):
         main.SearchRequest(user_id="scope-a", query="synthetic", n_results=101)
+
+
+class _LifecycleRouteFake:
+    def __init__(self, database_path: Path) -> None:
+        self.database_path = database_path
+        self.export_calls: list[dict[str, Any]] = []
+        self.plan_calls: list[dict[str, Any]] = []
+
+    def export_scope_json(self, output_root: Path, **kwargs: Any) -> Any:
+        self.export_calls.append({"output_root": output_root, **kwargs})
+        path = output_root / "synthetic-export.json"
+        path.write_text('{"records":{}}', encoding="utf-8")
+        return SimpleNamespace(
+            path=path,
+            manifest_sha256="e" * 64,
+            counts={"events": 0},
+        )
+
+    def plan_deletion(self, **kwargs: Any) -> DeletionPlan:
+        self.plan_calls.append(kwargs)
+        return DeletionPlan(
+            plan_id="plan-synthetic",
+            action=DeletionAction.SESSION,
+            scope_id=str(kwargs["scope_id"]),
+            target_id=str(kwargs["target_id"]),
+            policy_version=1,
+            created_at=1.0,
+            expires_at=2.0,
+            inventory_digest="f" * 64,
+            counts={},
+            items=(),
+            retained_copies=(),
+            restore_proof_generation=None,
+            challenge="challenge-synthetic",
+        )
+
+
+@pytest.mark.asyncio
+async def test_export_and_legacy_delete_route_through_lifecycle_without_vague_mutation(
+    tmp_path: Path,
+) -> None:
+    lifecycle = _LifecycleRouteFake(tmp_path / "ledger" / "aura.sqlite3")
+    boundary = SimpleNamespace(
+        read_owner="sqlite",
+        repository=SimpleNamespace(database_path=lifecycle.database_path),
+        lifecycle=lifecycle,
+        deletion_plans={},
+    )
+    previous = main.storage_boundary
+    main.storage_boundary = boundary
+    try:
+        with pytest.raises(Exception):
+            await main.export_user_data("scope-a", "csv")
+        assert not (tmp_path / "ledger").exists()
+
+        exported = await main.export_user_data("scope-a", "json")
+        deletion = await main.delete_chat_session("scope-a", "session-a")
+    finally:
+        main.storage_boundary = previous
+
+    assert Path(exported["export_path"]).is_file()
+    assert exported["manifest_sha256"] == "e" * 64
+    assert deletion["status"] == "confirmation_required"
+    assert deletion["deleted_count"] == 0
+    assert lifecycle.plan_calls == [
+        {"action": "session", "scope_id": "scope-a", "target_id": "session-a"}
+    ]

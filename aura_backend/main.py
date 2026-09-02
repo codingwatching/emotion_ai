@@ -23,7 +23,7 @@ import sqlite3
 import sys
 import uuid
 from contextlib import AsyncExitStack, asynccontextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional, Tuple
@@ -86,6 +86,7 @@ from aura_backend.runtime_security import (  # noqa: E402
     StoragePathError,
     allowed_browser_origins,
     safe_export_path,
+    safe_export_format,
     safe_profile_path,
     server_host,
 )
@@ -620,8 +621,33 @@ class SearchRequest(BaseModel):
     user_id: Annotated[str, Field(description="Unique identifier for the user")]
     query: Annotated[str, Field(description="Search query string")]
     n_results: Annotated[
-        int, Field(default=5000, description="Number of results to return")
-    ] = 5000
+        int, Field(default=20, ge=1, le=100, description="Bounded page size")
+    ] = 20
+    cursor: Annotated[
+        str | None, Field(default=None, max_length=512, description="Opaque cursor")
+    ] = None
+
+
+class DeletionPlanRequest(BaseModel):
+    action: str
+    scope_id: str
+    target_id: str | None = None
+
+
+class DeletionConfirmRequest(BaseModel):
+    plan_id: str
+    challenge: str
+    scope_id: str
+
+
+class DeletionExecuteRequest(BaseModel):
+    plan_id: str
+    confirmation_id: str
+
+
+class DeletionVerifyRequest(BaseModel):
+    plan_id: str
+    execution_id: str
 
 
 class ExecuteToolRequest(BaseModel):
@@ -691,6 +717,7 @@ aura_file_system: Optional[AuraFileSystem] = None
 state_manager: Optional[AuraStateManager] = None
 aura_internal_tools: Any = None
 conversation_persistence: Optional[ConversationPersistenceService] = None
+storage_boundary: Any = None
 memvid_archival: Any = None
 mcp_gemini_bridge: Any = None
 autonomic_system: Any = None
@@ -872,6 +899,9 @@ class _LegacyRuntimeResources:
     retriever: Any = None
     lifecycle: Any = None
     read_owner: str = "sqlite"
+    deletion_plans: dict[str, Any] = field(default_factory=dict)
+    deletion_confirmations: dict[str, Any] = field(default_factory=dict)
+    deletion_executions: dict[str, Any] = field(default_factory=dict)
 
 
 class _RuntimeEmbeddingService:
@@ -1019,6 +1049,7 @@ def _clear_runtime_aliases() -> None:
     global conversation_persistence, memvid_archival, mcp_gemini_bridge
     global autonomic_system, db_protection_service, thinking_processor, provider
     global client, embedding_service, execute_mcp_tool, get_all_available_tools
+    global storage_boundary
     global get_mcp_status, _mcp_provider_client
 
     vector_db = None
@@ -1026,6 +1057,7 @@ def _clear_runtime_aliases() -> None:
     state_manager = None
     aura_internal_tools = None
     conversation_persistence = None
+    storage_boundary = None
     memvid_archival = None
     mcp_gemini_bridge = None
     autonomic_system = None
@@ -1049,6 +1081,7 @@ async def _start_base_resources(settings: Any | None = None) -> Any:
     """Construct only required base services after FastAPI enters lifespan."""
     global vector_db, aura_file_system, state_manager, aura_internal_tools
     global conversation_persistence, db_protection_service, embedding_service
+    global storage_boundary
 
     from aura_backend.aura_internal_tools import AuraInternalTools
     from aura_backend.runtime import StartedResource
@@ -1076,7 +1109,19 @@ async def _start_base_resources(settings: Any | None = None) -> Any:
         aura_file_system = None
         state_manager = None
         db_protection_service = None
-        aura_internal_tools = AuraInternalTools(None, None)
+        from aura_backend.storage.cli import select_read_owner
+
+        read_owner = select_read_owner(
+            settings.ledger_root / "read-owner.json",
+            clean_install=os.getenv("AURA_CLEAN_INSTALL", "").strip().lower()
+            in {"1", "true", "yes"},
+        )
+        aura_internal_tools = AuraInternalTools(
+            None,
+            None,
+            retriever=retriever,
+            read_owner=read_owner,
+        )
         conversation_persistence = ConversationPersistenceService(
             repository,
             projection,
@@ -1088,8 +1133,9 @@ async def _start_base_resources(settings: Any | None = None) -> Any:
             projection=projection,
             retriever=retriever,
             lifecycle=lifecycle,
-            read_owner="sqlite",
+            read_owner=read_owner,
         )
+        storage_boundary = resources
 
         async def close_resources() -> None:
             try:
@@ -1303,7 +1349,13 @@ def _build_application_runtime() -> Any:
         """Start base services and build an internal-only neutral tool surface."""
         nonlocal base_resources, tool_executor
 
-        started = await _start_base_resources(settings)
+        base_start = _start_base_resources
+        if inspect.signature(base_start).parameters:
+            started = await base_start(settings)
+        else:
+            # Preserve the characterized zero-argument injection seam used by
+            # optional-integration lifecycle tests and external harnesses.
+            started = await base_start()
         try:
             catalog = await get_provider_tool_catalog(
                 internal_tools=aura_internal_tools,
@@ -2918,6 +2970,35 @@ async def _analyze_conversation_for_autonomic_tasks(
     return submitted_tasks
 
 
+async def _search_storage_boundary(
+    retriever: Any,
+    *,
+    scope_id: str,
+    query: str,
+    page_size: int,
+    cursor: str | None,
+) -> dict[str, Any]:
+    """Return one bounded neutral page in the characterized search envelope."""
+    page = await asyncio.to_thread(
+        retriever.retrieve,
+        scope_id=scope_id,
+        query=query,
+        page_size=page_size,
+        cursor=cursor,
+    )
+    results = [asdict(item) for item in page.items]
+    return {
+        "results": results,
+        "query": query,
+        "total_found": len(results),
+        "search_type": "sqlite_neutral",
+        "includes_video_archives": False,
+        "next_cursor": page.next_cursor,
+        "has_more": page.has_more,
+        "trace_id": page.trace_id,
+    }
+
+
 @api_router.post("/search")
 async def search_memories(request: SearchRequest) -> Dict[str, Any]:
     """
@@ -2986,6 +3067,14 @@ async def search_memories(request: SearchRequest) -> Dict[str, Any]:
         through multiple complementary search mechanisms.
     """
     try:
+        if storage_boundary is not None and storage_boundary.read_owner == "sqlite":
+            return await _search_storage_boundary(
+                storage_boundary.retriever,
+                scope_id=request.user_id,
+                query=request.query,
+                page_size=request.n_results,
+                cursor=request.cursor,
+            )
         # Use Aura's internal memory search tools for comprehensive search
         # This includes video archives and unified memory search capabilities
         if aura_internal_tools:
@@ -3321,6 +3410,23 @@ async def get_emotional_analysis(
 async def export_user_data(user_id: str, format_type: str = "json"):
     """Export user conversation history and patterns"""
     try:
+        if storage_boundary is not None and storage_boundary.read_owner == "sqlite":
+            safe_format = safe_export_format(format_type)
+            output_root = storage_boundary.repository.database_path.parent / "exports"
+            output_root.mkdir(parents=True, exist_ok=True)
+            result = await asyncio.to_thread(
+                storage_boundary.lifecycle.export_scope_json,
+                output_root,
+                scope_id=user_id,
+                export_id=f"scope-{uuid.uuid4().hex}",
+                output_format=safe_format,
+            )
+            return {
+                "export_path": str(result.path),
+                "message": "Export completed successfully",
+                "manifest_sha256": result.manifest_sha256,
+                "counts": result.counts,
+            }
         if not aura_file_system:
             raise HTTPException(
                 status_code=500, detail="File system not initialized"
@@ -3346,7 +3452,11 @@ async def export_user_data(user_id: str, format_type: str = "json"):
 
 
 @api_router.get("/chat-history/{user_id}")
-async def get_chat_history(user_id: str, limit: int = 5000) -> Dict[str, Any]:
+async def get_chat_history(
+    user_id: str,
+    limit: int = 20,
+    cursor: str | None = None,
+) -> Dict[str, Any]:
     """
     Retrieve comprehensive chat history for a user with thread-safe database access.
 
@@ -3415,6 +3525,32 @@ async def get_chat_history(user_id: str, limit: int = 5000) -> Dict[str, Any]:
         across sessions and devices.
     """
     try:
+        if not 1 <= limit <= 100:
+            raise HTTPException(status_code=400, detail="Invalid history limit")
+        if storage_boundary is not None and storage_boundary.read_owner == "sqlite":
+            page = await asyncio.to_thread(
+                storage_boundary.retriever.history,
+                scope_id=user_id,
+                page_size=limit,
+                cursor=cursor,
+            )
+            sessions = [
+                {
+                    "session_id": item.turn_id,
+                    "last_message": item.content,
+                    "message_count": 1,
+                    "timestamp": item.observed_at,
+                    "messages": [asdict(item)],
+                }
+                for item in page.items
+            ]
+            return {
+                "sessions": sessions,
+                "total_sessions": len(sessions),
+                "user_id": user_id,
+                "next_cursor": page.next_cursor,
+                "has_more": page.has_more,
+            }
         if not conversation_persistence:
             raise HTTPException(
                 status_code=500,
@@ -3462,7 +3598,12 @@ async def get_chat_history(user_id: str, limit: int = 5000) -> Dict[str, Any]:
 
 
 @api_router.get("/chat-history/{user_id}/{session_id}")
-async def get_session_messages(user_id: str, session_id: str) -> List[Dict[str, Any]]:
+async def get_session_messages(
+    user_id: str,
+    session_id: str,
+    limit: int = 20,
+    cursor: str | None = None,
+) -> List[Dict[str, Any]]:
     """
     Retrieve all messages for a specific chat session with comprehensive error handling.
 
@@ -3526,6 +3667,18 @@ async def get_session_messages(user_id: str, session_id: str) -> List[Dict[str, 
         to support graceful frontend handling and user experience optimization.
     """
     try:
+        if not 1 <= limit <= 100:
+            raise HTTPException(status_code=400, detail="Invalid history limit")
+        if storage_boundary is not None and storage_boundary.read_owner == "sqlite":
+            page = await asyncio.to_thread(
+                storage_boundary.retriever.history,
+                scope_id=user_id,
+                page_size=limit,
+                cursor=cursor,
+            )
+            return [
+                asdict(item) for item in page.items if item.turn_id == session_id
+            ]
         if not conversation_persistence:
             raise HTTPException(
                 status_code=500,
@@ -3553,10 +3706,112 @@ async def get_session_messages(user_id: str, session_id: str) -> List[Dict[str, 
         raise HTTPException(status_code=500, detail=str(e)) from None
 
 
+def _require_sqlite_lifecycle() -> Any:
+    if storage_boundary is None or storage_boundary.read_owner != "sqlite":
+        raise HTTPException(status_code=503, detail="SQLite lifecycle unavailable")
+    return storage_boundary.lifecycle
+
+
+@api_router.post("/storage/deletions/plan")
+async def plan_storage_deletion(request: DeletionPlanRequest) -> dict[str, Any]:
+    """Inventory an exact action without mutating canonical or derived data."""
+    lifecycle = _require_sqlite_lifecycle()
+    try:
+        plan = await asyncio.to_thread(
+            lifecycle.plan_deletion,
+            action=request.action,
+            scope_id=request.scope_id,
+            target_id=request.target_id,
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid deletion plan") from None
+    storage_boundary.deletion_plans[plan.plan_id] = plan
+    return {"status": "confirmation_required", "plan": asdict(plan)}
+
+
+@api_router.post("/storage/deletions/confirm")
+async def confirm_storage_deletion(
+    request: DeletionConfirmRequest,
+) -> dict[str, Any]:
+    """Bind a short-lived confirmation to one exact immutable plan."""
+    lifecycle = _require_sqlite_lifecycle()
+    plan = storage_boundary.deletion_plans.get(request.plan_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Deletion plan not found")
+    try:
+        confirmation = await asyncio.to_thread(
+            lifecycle.confirm_deletion,
+            plan,
+            challenge=request.challenge,
+            scope_id=request.scope_id,
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid deletion confirmation") from None
+    storage_boundary.deletion_confirmations[confirmation.confirmation_id] = confirmation
+    return {"status": "confirmed", "confirmation": asdict(confirmation)}
+
+
+@api_router.post("/storage/deletions/execute")
+async def execute_storage_deletion(
+    request: DeletionExecuteRequest,
+) -> dict[str, Any]:
+    """Consume one exact confirmation; replays and vague intent are rejected."""
+    lifecycle = _require_sqlite_lifecycle()
+    plan = storage_boundary.deletion_plans.get(request.plan_id)
+    confirmation = storage_boundary.deletion_confirmations.get(
+        request.confirmation_id
+    )
+    if plan is None or confirmation is None:
+        raise HTTPException(status_code=404, detail="Deletion authorization not found")
+    try:
+        execution = await asyncio.to_thread(
+            lifecycle.execute_deletion,
+            plan,
+            confirmation,
+        )
+    except Exception:
+        raise HTTPException(status_code=409, detail="Deletion execution rejected") from None
+    storage_boundary.deletion_executions[execution.execution_id] = execution
+    return {"status": "verification_required", "execution": asdict(execution)}
+
+
+@api_router.post("/storage/deletions/verify")
+async def verify_storage_deletion(request: DeletionVerifyRequest) -> dict[str, Any]:
+    """Return complete, incomplete, or blocked only after exact re-query."""
+    lifecycle = _require_sqlite_lifecycle()
+    plan = storage_boundary.deletion_plans.get(request.plan_id)
+    execution = storage_boundary.deletion_executions.get(request.execution_id)
+    if plan is None or execution is None:
+        raise HTTPException(status_code=404, detail="Deletion execution not found")
+    try:
+        result = await asyncio.to_thread(
+            lifecycle.verify_deletion,
+            plan,
+            execution,
+        )
+    except Exception:
+        raise HTTPException(status_code=409, detail="Deletion verification failed") from None
+    return {"status": result.status.value, "result": asdict(result)}
+
+
 @api_router.delete("/chat-history/{user_id}/{session_id}")
 async def delete_chat_session(user_id: str, session_id: str):
     """Delete a specific chat session using enhanced database operations"""
     try:
+        if storage_boundary is not None and storage_boundary.read_owner == "sqlite":
+            plan = await asyncio.to_thread(
+                storage_boundary.lifecycle.plan_deletion,
+                action="session",
+                scope_id=user_id,
+                target_id=session_id,
+            )
+            storage_boundary.deletion_plans[plan.plan_id] = plan
+            return {
+                "message": "Deletion confirmation required",
+                "deleted_count": 0,
+                "status": "confirmation_required",
+                "plan": asdict(plan),
+            }
         if not vector_db or not vector_db.conversations:
             raise HTTPException(
                 status_code=500, detail="Vector database not properly initialized"

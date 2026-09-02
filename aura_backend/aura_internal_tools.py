@@ -6,7 +6,9 @@ This module integrates Aura's internal capabilities directly into the main API,
 eliminating the need for a separate MCP server process.
 """
 
+import asyncio
 import logging
+from dataclasses import asdict
 from typing import Any, Dict, List
 
 # Import memvid internal tools
@@ -34,15 +36,25 @@ logger = logging.getLogger(__name__)
 class AuraInternalTools:
     """Direct integration of Aura's internal tool capabilities"""
 
-    def __init__(self, vector_db, file_system):
+    def __init__(
+        self,
+        vector_db: Any = None,
+        file_system: Any = None,
+        *,
+        retriever: Any = None,
+        read_owner: str = "legacy",
+    ) -> None:
         self.vector_db = vector_db
         self.file_system = file_system
+        self.retriever = retriever
+        self.read_owner = read_owner
 
         # Initialize memvid tools if available
         self.memvid_tools = None
         self.intelligent_memory = None
         if (
-            MEMVID_TOOLS_AVAILABLE
+            vector_db is not None
+            and MEMVID_TOOLS_AVAILABLE
             and get_aura_internal_memvid_tools is not None
             and get_intelligent_memory_manager is not None
         ):
@@ -371,6 +383,26 @@ class AuraInternalTools:
             Dict containing search results with status, query info, and memories
         """
         try:
+            page_size = min(max(int(n_results), 1), 100)
+            if self.read_owner == "sqlite" and self.retriever is not None:
+                page = await asyncio.to_thread(
+                    self.retriever.retrieve,
+                    scope_id=user_id,
+                    query=query,
+                    page_size=page_size,
+                    cursor=None,
+                )
+                memories = [asdict(item) for item in page.items]
+                return {
+                    "status": "success",
+                    "query": query,
+                    "user_id": user_id,
+                    "results_count": len(memories),
+                    "memories": memories,
+                    "next_cursor": page.next_cursor,
+                    "has_more": page.has_more,
+                    "trace_id": page.trace_id,
+                }
             logger.info("🔍 Searching memories for user %s with query: %s", user_id, query)
 
             # Verify vector_db connection
