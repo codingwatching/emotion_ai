@@ -1024,17 +1024,21 @@ class _RuntimeLifecycleService:
             from aura_backend.storage.lifecycle import LifecycleService
             from aura_backend.storage.projection import ProjectionAdapter
 
-            def projection_factory(root: Path, restored_repository: Any) -> Any:
+            def projection_factory(root: Path, repository: Any) -> Any:
                 return ProjectionAdapter(
                     projection_root=root,
-                    repository=restored_repository,
+                    repository=repository,
                     embedding_service=_RuntimeEmbeddingService(),
                 )
+
+            def fixture_verifier(repository: Any, adapter: Any) -> dict[str, bool]:
+                del repository, adapter
+                return {}
 
             self._service = LifecycleService(
                 repository=self._repository,
                 projection_factory=projection_factory,
-                fixture_verifier=lambda _repository, _projection: {},
+                fixture_verifier=fixture_verifier,
                 tool_commit="phase-03-runtime",
             )
         return self._service
