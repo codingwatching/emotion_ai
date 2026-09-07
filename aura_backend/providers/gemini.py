@@ -39,7 +39,7 @@ _NORMAL_FINISH_REASONS = {"STOP", "FINISH_REASON_UNSPECIFIED", ""}
 _RESOURCE_FINISH_REASONS = {"MAX_TOKENS", "RECITATION"}
 
 
-def _default_client_factory(**kwargs: object) -> Any:
+def _default_client_factory(**kwargs: Any) -> Any:
     """Import and construct the optional SDK only after Gemini is selected."""
     from google import genai  # type: ignore[import-untyped,import-not-found]
 

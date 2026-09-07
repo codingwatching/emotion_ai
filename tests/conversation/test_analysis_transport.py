@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -41,8 +42,26 @@ async def test_all_analyses_use_typed_requests_and_preserve_domain_mappings() ->
     )
 
     generate: Generate = _RecordingGenerate(
-        ProviderResult(content="Excited (High)"),
-        ProviderResult(content="Curiosity (Low)"),
+        ProviderResult(
+            content=json.dumps(
+                {
+                    "emotion": "Excited",
+                    "intensity": "High",
+                    "evidence": ["synthetic user message"],
+                    "abstention_reason": None,
+                }
+            )
+        ),
+        ProviderResult(
+            content=json.dumps(
+                {
+                    "emotion": "Curiosity",
+                    "intensity": "Low",
+                    "evidence": ["synthetic conversation"],
+                    "abstention_reason": None,
+                }
+            )
+        ),
         ProviderResult(content="KI"),
     )
 
@@ -59,10 +78,15 @@ async def test_all_analyses_use_typed_requests_and_preserve_domain_mappings() ->
     assert user_state is not None
     assert user_state.name == "Excited"
     assert user_state.intensity is EmotionalIntensity.HIGH
-    assert user_state.brainwave == "Beta"
+    assert user_state.brainwave == user_state.neurotransmitter == ""
+    assert user_state.assessment is not None
+    assert user_state.assessment.status == "inferred"
     assert aura_state is not None
     assert aura_state.name == "Curiosity"
     assert aura_state.intensity is EmotionalIntensity.LOW
+    assert aura_state.brainwave == "Beta"
+    assert aura_state.assessment is not None
+    assert aura_state.assessment.status == "simulated"
     assert cognitive_state is not None
     assert cognitive_state.focus is AsekeComponent.KI
     assert len(generate.requests) == 3  # type: ignore[attr-defined]
@@ -73,7 +97,9 @@ async def test_all_analyses_use_typed_requests_and_preserve_domain_mappings() ->
 
 
 @pytest.mark.asyncio
-async def test_malformed_analysis_content_keeps_existing_safe_defaults() -> None:
+async def test_malformed_emotion_is_unknown_while_cognitive_default_is_preserved() -> (
+    None
+):
     from aura_backend.conversation.analysis import (
         AsekeComponent,
         EmotionalIntensity,
@@ -95,11 +121,14 @@ async def test_malformed_analysis_content_keeps_existing_safe_defaults() -> None
     )
 
     assert user_state is not None
-    assert user_state.name == "Normal"
-    assert user_state.intensity is EmotionalIntensity.MEDIUM
+    assert user_state.name == "Unknown"
+    assert user_state.intensity is EmotionalIntensity.UNKNOWN
+    assert user_state.assessment is not None
+    assert user_state.assessment.status == "invalid"
     assert aura_state is not None
-    assert aura_state.name == "Normal"
-    assert aura_state.intensity is EmotionalIntensity.MEDIUM
+    assert aura_state.name == "Unknown"
+    assert aura_state.intensity is EmotionalIntensity.UNKNOWN
+    assert aura_state.brainwave == aura_state.neurotransmitter == ""
     assert cognitive_state is not None
     assert cognitive_state.focus is AsekeComponent.LEARNING
     assert cognitive_state.context == "Default cognitive focus"
@@ -110,7 +139,7 @@ async def test_malformed_analysis_content_keeps_existing_safe_defaults() -> None
     "analysis_name",
     ("detect_user_emotion", "detect_aura_emotion", "detect_aura_cognitive_focus"),
 )
-async def test_analysis_failure_returns_none_without_source_content_in_logs(
+async def test_analysis_failure_stays_unknown_without_source_content_in_logs(
     analysis_name: str,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -124,7 +153,11 @@ async def test_analysis_failure_returns_none_without_source_content_in_logs(
     with caplog.at_level(logging.WARNING):
         result = await function(prompt_sentinel, "private-user", generate=generate)
 
-    assert result is None
+    if analysis_name == "detect_aura_cognitive_focus":
+        assert result is None
+    else:
+        assert result.name == "Unknown"
+        assert result.assessment.status == "unavailable"
     rendered_logs = "\n".join(record.getMessage() for record in caplog.records)
     assert source_sentinel not in rendered_logs
     assert prompt_sentinel not in rendered_logs

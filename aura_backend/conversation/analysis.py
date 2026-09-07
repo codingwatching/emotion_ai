@@ -1,17 +1,18 @@
-"""Provider-neutral transport for Aura's existing conversation analyses.
-
-This module deliberately preserves the legacy prompts, mappings, parser defaults,
-and domain DTOs. Prompt and psychological-quality redesign belong to Phase 4.
-"""
+"""Provider-neutral analyses with explicit uncertainty and simulated Aura labels."""
 
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any
+
+from aura_backend.conversation.emotion_assessment import (
+    EmotionAssessment,
+    assess_emotion,
+)
 
 from aura_backend.providers.base import ProviderMessage, ProviderRequest, ProviderResult
 
@@ -21,11 +22,12 @@ ProviderGenerate = Callable[[ProviderRequest], Awaitable[ProviderResult]]
 
 
 class EmotionalIntensity(str, Enum):
-    """Legacy three-level emotional intensity scale."""
+    """Three intensity levels plus an explicit unknown when assessment fails."""
 
     LOW = "Low"
     MEDIUM = "Medium"
     HIGH = "High"
+    UNKNOWN = "Unknown"
 
 
 class AsekeComponent(str, Enum):
@@ -55,6 +57,7 @@ class EmotionalStateData:
     intensity: EmotionalIntensity = EmotionalIntensity.MEDIUM
     primary_components: list[str] | None = None
     timestamp: datetime | None = None
+    assessment: EmotionAssessment | None = None
 
     def __post_init__(self) -> None:
         if self.timestamp is None:
@@ -75,7 +78,8 @@ class CognitiveState:
             self.timestamp = datetime.now()
 
 
-_USER_EMOTIONAL_STATES = {
+# Legacy display analogies are used only for Aura, never as human measurements.
+_SIMULATED_TONE_STATES = {
     "Normal": ("Baseline state of calmness", "Alpha", "Serotonin"),
     "Excited": ("Enthusiastic anticipation", "Beta", "Dopamine"),
     "Happy": ("Pleased and content", "Beta", "Endorphin"),
@@ -89,12 +93,6 @@ _USER_EMOTIONAL_STATES = {
     "Creativity": ("Inspired and inventive", "Gamma", "Dopamine"),
     "Anxious": ("Worried or nervous", "Beta", "Cortisol"),
     "Tired": ("Exhausted or fatigued", "Delta", "Melatonin"),
-}
-
-_AURA_EMOTIONAL_STATES = {
-    key: value
-    for key, value in _USER_EMOTIONAL_STATES.items()
-    if key not in {"Anxious", "Tired"}
 }
 
 _ASEKE_COMPONENTS = {
@@ -119,12 +117,51 @@ async def _generate_text(prompt: str, generate: ProviderGenerate) -> str:
     return result.content.strip()
 
 
-def _intensity(value: str) -> EmotionalIntensity:
-    """Preserve the legacy invalid-intensity fallback."""
-    title = value.title()
-    if title in {"Low", "Medium", "High"}:
-        return EmotionalIntensity(title)
-    return EmotionalIntensity.MEDIUM
+def _emotion_state(assessment: EmotionAssessment) -> EmotionalStateData:
+    """Adapt a checked proposal to the existing storage DTO without inventing data."""
+    name = assessment.emotion or "Unknown"
+    brainwave = neurotransmitter = ""
+    if assessment.emotion is None:
+        descriptions = {
+            "abstained": "Not enough clear evidence for an emotion label.",
+            "invalid": "Emotion analysis could not be validated.",
+            "unavailable": "Emotion analysis is unavailable.",
+        }
+        description = descriptions.get(assessment.status, "Emotion is unknown.")
+    elif assessment.subject == "aura":
+        description, brainwave, neurotransmitter = _SIMULATED_TONE_STATES[name]
+        description = f"Simulated tone: {description.lower()}. Not measured biology."
+    else:
+        description = f"Tentative interpretation: {name}. The user may correct it."
+    return EmotionalStateData(
+        name=name,
+        intensity=EmotionalIntensity(assessment.intensity or "Unknown"),
+        formula="source_checked_proposal" if assessment.emotion else "unknown",
+        components={"basis": assessment.status},
+        ntk_layer=f"{brainwave.lower()}-like_NTK" if brainwave else "",
+        brainwave=brainwave,
+        neurotransmitter=neurotransmitter,
+        description=description,
+        assessment=assessment,
+    )
+
+
+def emotional_state_payload(state: EmotionalStateData | None) -> dict[str, Any]:
+    """Preserve public fields while making unknown and legacy states explicit."""
+    return {
+        "name": state.name if state else "Unknown",
+        "intensity": state.intensity.value if state else "Unknown",
+        "brainwave": state.brainwave if state else "",
+        "neurotransmitter": state.neurotransmitter if state else "",
+        "description": state.description
+        if state
+        else "Emotion analysis is unavailable.",
+        "assessment": (
+            asdict(state.assessment)
+            if state and state.assessment
+            else {"status": "unverified" if state else "unavailable", "subject": "aura"}
+        ),
+    }
 
 
 async def detect_user_emotion(
@@ -132,62 +169,12 @@ async def detect_user_emotion(
     user_id: str,
     *,
     generate: ProviderGenerate,
-) -> EmotionalStateData | None:
-    """Detect the user's legacy emotion label through the selected provider."""
+) -> EmotionalStateData:
+    """Return a tentative source-checked user emotion, or an explicit unknown."""
     del user_id
-    emotion_list = "\n".join(
-        f"{name}: {description}"
-        for name, (description, _, _) in _USER_EMOTIONAL_STATES.items()
+    return _emotion_state(
+        await assess_emotion(user_message, subject="user", generate=generate)
     )
-    prompt = f"""Analyze this user's message and identify their most prominent emotional state.
-Consider the tone, word choice, and context.
-
-Available emotions:
-{emotion_list}
-
-User message:
-{user_message}
-
-Output only the emotion name and intensity like: "Happy (Medium)" or "Curiosity (High)".
-If neutral, output "Normal (Medium)"."""
-
-    try:
-        response_text = await _generate_text(prompt, generate)
-        match = re.match(r"^(.+?)\s*\((\w+)\)$", response_text)
-        if match:
-            emotion_name, intensity = match.groups()
-            emotion_name = emotion_name.strip()
-            if emotion_name in _USER_EMOTIONAL_STATES:
-                description, brainwave, neurotransmitter = _USER_EMOTIONAL_STATES[
-                    emotion_name
-                ]
-                return EmotionalStateData(
-                    name=emotion_name,
-                    formula=f"{emotion_name}(x) = detected_from_user_input",
-                    components={
-                        "user_message": "Emotional state detected from user's message"
-                    },
-                    ntk_layer=f"{brainwave.lower()}-like_NTK",
-                    brainwave=brainwave,
-                    neurotransmitter=neurotransmitter,
-                    description=description,
-                    intensity=_intensity(intensity),
-                )
-
-        description, brainwave, neurotransmitter = _USER_EMOTIONAL_STATES["Normal"]
-        return EmotionalStateData(
-            name="Normal",
-            formula="N(x) = baseline_state",
-            components={"routine": "No significant emotional triggers detected"},
-            ntk_layer="theta-like_NTK",
-            brainwave=brainwave,
-            neurotransmitter=neurotransmitter,
-            description=description,
-            intensity=EmotionalIntensity.MEDIUM,
-        )
-    except Exception:
-        logger.warning("User emotion analysis unavailable")
-        return None
 
 
 async def detect_aura_emotion(
@@ -195,61 +182,12 @@ async def detect_aura_emotion(
     user_id: str,
     *,
     generate: ProviderGenerate,
-) -> EmotionalStateData | None:
-    """Detect Aura's legacy emotion label through the selected provider."""
+) -> EmotionalStateData:
+    """Assess Aura's response tone; callers should supply only Aura's visible reply."""
     del user_id
-    emotion_list = "\n".join(
-        f"{name}: {description}"
-        for name, (description, _, _) in _AURA_EMOTIONAL_STATES.items()
+    return _emotion_state(
+        await assess_emotion(conversation_snippet, subject="aura", generate=generate)
     )
-    prompt = f"""Analyze this conversation and identify Aura's most prominent emotional state.
-
-Available emotions:
-{emotion_list}
-
-Conversation:
-{conversation_snippet}
-
-Output only the emotion name and intensity like: "Happy (Medium)" or "Curiosity (High)".
-If neutral, output "Normal (Medium)"."""
-
-    try:
-        response_text = await _generate_text(prompt, generate)
-        match = re.match(r"^(.+?)\s*\((\w+)\)$", response_text)
-        if match:
-            emotion_name, intensity = match.groups()
-            emotion_name = emotion_name.strip()
-            if emotion_name in _AURA_EMOTIONAL_STATES:
-                description, brainwave, neurotransmitter = _AURA_EMOTIONAL_STATES[
-                    emotion_name
-                ]
-                return EmotionalStateData(
-                    name=emotion_name,
-                    formula=f"{emotion_name}(x) = detected_from_conversation",
-                    components={
-                        "conversation": "Emotional state detected from dialogue"
-                    },
-                    ntk_layer=f"{brainwave.lower()}-like_NTK",
-                    brainwave=brainwave,
-                    neurotransmitter=neurotransmitter,
-                    description=description,
-                    intensity=_intensity(intensity),
-                )
-
-        description, brainwave, neurotransmitter = _AURA_EMOTIONAL_STATES["Normal"]
-        return EmotionalStateData(
-            name="Normal",
-            formula="N(x) = baseline_state",
-            components={"routine": "No significant emotional triggers"},
-            ntk_layer="theta-like_NTK",
-            brainwave=brainwave,
-            neurotransmitter=neurotransmitter,
-            description=description,
-            intensity=EmotionalIntensity.MEDIUM,
-        )
-    except Exception:
-        logger.warning("Aura emotion analysis unavailable")
-        return None
 
 
 async def detect_aura_cognitive_focus(

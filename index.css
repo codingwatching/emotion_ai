@@ -153,6 +153,11 @@ body {
   align-items: center;
 }
 
+.simulation-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .brainwave-indicator, .neurotransmitter-indicator {
   display: flex;
   align-items: center;
@@ -194,13 +199,18 @@ body {
   overflow: hidden;
 }
 
+.wave-pattern.wave-unknown {
+  animation: none;
+  opacity: 0.35;
+}
+
 .chemical-level::after {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   height: 100%;
-  width: var(--chemical-intensity, 70%);
+  width: var(--chemical-intensity, 0%);
   background: linear-gradient(90deg, #4caf50, #8bc34a);
   border-radius: 2px;
   transition: width 0.8s ease;

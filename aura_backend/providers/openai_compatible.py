@@ -378,10 +378,17 @@ class OpenAICompatibleProvider:
                 if envelope_failure is not None:
                     raise envelope_failure
                 choice = self._choices(response)[0]
+                finish_reason = _field(choice, "finish_reason")
+                if finish_reason in {"length", "content_filter"}:
+                    raise self._failure(ProviderErrorCode.RESOURCE_LIMIT, request)
+                if finish_reason not in {"stop", "tool_calls"}:
+                    raise self._failure(ProviderErrorCode.MALFORMED_RESPONSE, request)
                 message = _field(choice, "message")
                 if message is None:
                     raise ValueError("missing message")
                 tool_calls = self._nonstream_tool_calls(message, request)
+                if bool(tool_calls) != (finish_reason == "tool_calls"):
+                    raise self._failure(ProviderErrorCode.MALFORMED_RESPONSE, request)
                 if tool_calls:
                     await self._execute_tool_calls(
                         tool_calls,

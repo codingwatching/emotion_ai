@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import socket
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -22,7 +23,26 @@ from aura_backend.providers.base import (
 from aura_backend.providers.config import ProviderSettings
 from aura_backend.providers.errors import ProviderErrorCode, ProviderFailure
 from aura_backend.providers.openai_compatible import OpenAICompatibleProvider
-from tests.providers.test_openai_compatible import FakeClient, FakeStream, _chunk, _response
+from tests.providers.test_openai_compatible import (
+    FakeClient,
+    FakeStream,
+    _chunk,
+    _response,
+)
+
+
+@pytest.mark.asyncio
+async def test_analysis_reasoning_opt_out_preserves_ordinary_conversation_defaults() -> (
+    None
+):
+    from aura_backend.providers.ollama import OllamaProvider
+
+    client = FakeClient([_response("analysis"), _response("conversation")])
+    provider = OllamaProvider(settings=_settings(), client=client)
+    await provider.generate(replace(_request(), disable_reasoning=True))
+    await provider.generate(_request())
+    assert client.completions.calls[0]["reasoning_effort"] == "none"
+    assert "reasoning_effort" not in client.completions.calls[1]
 
 
 def _settings(**overrides: str) -> ProviderSettings:
@@ -163,7 +183,9 @@ async def test_missing_model_generation_maps_404_without_raw_detail() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ollama_stream_is_incremental_and_partial_failure_never_completes() -> None:
+async def test_ollama_stream_is_incremental_and_partial_failure_never_completes() -> (
+    None
+):
     from aura_backend.providers.ollama import OllamaProvider
 
     upstream = FakeStream(

@@ -8,6 +8,7 @@ from .analysis import (
     detect_aura_cognitive_focus,
     detect_aura_emotion,
     detect_user_emotion,
+    emotional_state_payload,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "detect_aura_cognitive_focus",
     "detect_aura_emotion",
     "detect_user_emotion",
+    "emotional_state_payload",
 ]

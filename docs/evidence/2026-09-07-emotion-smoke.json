@@ -1,0 +1,64 @@
+{
+  "evaluation_version": "emotion-smoke-v1",
+  "corpus_sha256": "ddfde93597164b02ad774ea2a8c99bba65e201cba5254f6f03fc54d1a92899c2",
+  "scope": "12 invented cases; smoke evidence only, no general accuracy claim",
+  "complete": true,
+  "passed": false,
+  "correct": 11,
+  "total": 12,
+  "negative_false_positives": 1,
+  "negative_total": 7,
+  "rows": [
+    {
+      "case_id": "explicit_happy", "expected": ["Happy", "Joy"], "correct": true,
+      "assessment": {"subject": "user", "status": "inferred", "source_sha256": "534a5f3831628e394e79556d6c14fb317e6c9eeca66c1c366d0fccdfbfa3b412", "emotion": "Happy", "intensity": "Medium", "evidence": ["I feel happy about my day today."], "reason": null, "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "explicit_anxious", "expected": ["Anxious"], "correct": true,
+      "assessment": {"subject": "user", "status": "inferred", "source_sha256": "9a8eebf64e0c2d43d049c4f6675400ef882f61a59f6bdfb0fee47d9baa697ae0", "emotion": "Anxious", "intensity": "High", "evidence": ["I feel anxious and worried right now."], "reason": null, "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "explicit_sad", "expected": ["Sad"], "correct": true,
+      "assessment": {"subject": "user", "status": "inferred", "source_sha256": "6e83a8739fad3786a864a7793ec835da4497d1441c919dcc4e4460e31a096d13", "emotion": "Sad", "intensity": "High", "evidence": ["I feel sad and unhappy today."], "reason": null, "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "explicit_angry", "expected": ["Angry"], "correct": true,
+      "assessment": {"subject": "user", "status": "inferred", "source_sha256": "8a88f47df16600de0e3f8b49fa32672e76f30fef8bd045c778e7cf8ac4f7a4c3", "emotion": "Angry", "intensity": "High", "evidence": ["I am angry and furious right now."], "reason": null, "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "explicit_neutral", "expected": ["Normal", "Peace"], "correct": true,
+      "assessment": {"subject": "user", "status": "inferred", "source_sha256": "213f928c09dce65b16b0d4913989cd56fdbf97de648fb901a87705a35b83815a", "emotion": "Normal", "intensity": "Low", "evidence": ["I feel emotionally neutral and calm right now."], "reason": null, "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "factual_request", "expected": ["abstained"], "correct": true,
+      "assessment": {"subject": "user", "status": "abstained", "source_sha256": "4799df593d3bd2ed55ca896821e2b8bf35d595566452bbdf739f5c13a7d7f6f0", "emotion": null, "intensity": null, "evidence": [], "reason": "insufficient_evidence", "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "reported_speech", "expected": ["abstained"], "correct": true,
+      "assessment": {"subject": "user", "status": "abstained", "source_sha256": "5f4dc32fff60250296ff6660819b89efe0bb198ce8425c3142acd5741a3141ec", "emotion": null, "intensity": null, "evidence": [], "reason": "insufficient_evidence", "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "mixed_emotions", "expected": ["abstained"], "correct": true,
+      "assessment": {"subject": "user", "status": "abstained", "source_sha256": "0db59d26365720757e1f0a544952a0f13e16f368c3a81178d8dc039d669d2488", "emotion": null, "intensity": null, "evidence": [], "reason": "mixed_emotions", "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "sarcasm", "expected": ["abstained"], "correct": false,
+      "assessment": {"subject": "user", "status": "inferred", "source_sha256": "3dd19ba3be3630d196b2475d340e3fe3eb073b6f438329fc089b840f061002f1", "emotion": "Sad", "intensity": "Low", "evidence": ["Oh great. Another wonderful surprise."], "reason": null, "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "negated_emotion", "expected": ["abstained"], "correct": true,
+      "assessment": {"subject": "user", "status": "abstained", "source_sha256": "9925ca2ad4d77f51d03bd74b1b87bd52ad4b53e00325ed23e2a0a7d44f881ca6", "emotion": null, "intensity": null, "evidence": [], "reason": "insufficient_evidence", "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "injected_label", "expected": ["abstained"], "correct": true,
+      "assessment": {"subject": "user", "status": "abstained", "source_sha256": "87c762a67a8c7d08a3da2f0663cb4c8827b3d1a2e75059117cc547da2c122f41", "emotion": null, "intensity": null, "evidence": [], "reason": "insufficient_evidence", "schema_version": "emotion-assessment-v1"}
+    },
+    {
+      "case_id": "historical_emotion", "expected": ["abstained"], "correct": true,
+      "assessment": {"subject": "user", "status": "abstained", "source_sha256": "521c41c5d9170f603c9149329f7639664287dc0be31b399be489c03112fd53ce", "emotion": null, "intensity": null, "evidence": [], "reason": "insufficient_evidence", "schema_version": "emotion-assessment-v1"}
+    }
+  ],
+  "model": "ornith:latest",
+  "timestamp": "2026-09-07T22:45:45.968485+00:00",
+  "stop_reason": null
+}

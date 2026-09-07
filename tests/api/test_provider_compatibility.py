@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import hashlib
+import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -142,6 +144,7 @@ class _FakePersistence:
         self.fail = fail
         self.immediate_calls: list[dict[str, Any]] = []
         self.background_calls = 0
+        self.exchanges: list[Any] = []
 
     async def safe_search_conversations(self, **_kwargs: Any) -> list[Any]:
         return []
@@ -153,6 +156,7 @@ class _FakePersistence:
         update_profile: bool,
         timeout: float,
     ) -> dict[str, Any]:
+        self.exchanges.append(exchange)
         self.immediate_calls.append(
             {
                 "aura_message": exchange.ai_memory.message,
@@ -246,8 +250,26 @@ def _payload() -> dict[str, str]:
 def _success_provider() -> _SequenceProvider:
     return _SequenceProvider(
         ProviderResult(content=ANSWER_SENTINEL),
-        ProviderResult(content="Normal (Medium)"),
-        ProviderResult(content="Curiosity (Low)"),
+        ProviderResult(
+            content=json.dumps(
+                {
+                    "emotion": None,
+                    "intensity": None,
+                    "evidence": [],
+                    "abstention_reason": "insufficient_evidence",
+                }
+            )
+        ),
+        ProviderResult(
+            content=json.dumps(
+                {
+                    "emotion": "Curiosity",
+                    "intensity": "Low",
+                    "evidence": [ANSWER_SENTINEL],
+                    "abstention_reason": None,
+                }
+            )
+        ),
         ProviderResult(content="Learning"),
     )
 
@@ -278,6 +300,17 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
             "intensity": "Low",
             "name": "Curiosity",
             "neurotransmitter": "Dopamine",
+            "description": "Simulated tone: strong desire to learn. Not measured biology.",
+            "assessment": {
+                "schema_version": "emotion-assessment-v1",
+                "subject": "aura",
+                "status": "simulated",
+                "source_sha256": hashlib.sha256(ANSWER_SENTINEL.encode()).hexdigest(),
+                "emotion": "Curiosity",
+                "intensity": "Low",
+                "evidence": [ANSWER_SENTINEL],
+                "reason": None,
+            },
         },
         "has_thinking": False,
         "response": ANSWER_SENTINEL,
@@ -292,6 +325,11 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
     assert primary.session_id == "synthetic-user_synthetic-session"
     assert primary.tools == _catalog().definitions
     assert all(request.tools == () for request in analyses)
+    assert json.loads(analyses[1].messages[0].content) == {"source": ANSWER_SENTINEL}
+    assert persistence.exchanges[0].user_emotional_state.name == "Unknown"
+    assert (
+        persistence.exchanges[0].user_emotional_state.assessment.status == "abstained"
+    )
     assert persistence.immediate_calls == [
         {
             "aura_message": ANSWER_SENTINEL,
@@ -309,6 +347,45 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
     assert PROMPT_SENTINEL not in rendered_logs
     assert ANSWER_SENTINEL not in rendered_logs
     assert SOURCE_SENTINEL not in rendered_logs
+
+
+@pytest.mark.parametrize(
+    "outcome,status",
+    [
+        (ProviderResult(content="Normal (Medium)"), "invalid"),
+        (ProviderErrorCode.UNAVAILABLE, "unavailable"),
+    ],
+)
+def test_failed_emotion_analysis_preserves_reply_and_persists_unknown(
+    outcome: ProviderResult | ProviderErrorCode,
+    status: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    persistence = _FakePersistence()
+    _install_route_collaborators(monkeypatch, persistence)
+    provider = _SequenceProvider(
+        ProviderResult(content=ANSWER_SENTINEL),
+        outcome,
+        outcome,
+        ProviderResult(content="Learning"),
+    )
+    application_runtime, _ = _runtime(provider)
+    app = main.create_app(runtime_builder=lambda: application_runtime)
+    with TestClient(app) as client:
+        response = client.post("/conversation", json=_payload())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == EXPECTED_RESPONSE_KEYS
+    assert body["response"] == ANSWER_SENTINEL
+    assert body["emotional_state"]["name"] == "Unknown"
+    assert body["emotional_state"]["intensity"] == "Unknown"
+    assert body["emotional_state"]["brainwave"] == ""
+    assert body["emotional_state"]["neurotransmitter"] == ""
+    assert body["emotional_state"]["assessment"]["status"] == status
+    assert len(persistence.exchanges) == 1
+    assert persistence.exchanges[0].user_emotional_state.assessment.status == status
+    assert provider.clear_session_calls == 0
 
 
 @pytest.mark.parametrize("code", tuple(ProviderErrorCode))

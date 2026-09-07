@@ -404,7 +404,8 @@ class ProjectionAdapter:
             self._assert_cosine(collection)
             return client, collection
         except Exception:
-            client.close()
+            # Chroma 1.5 exposes close() on Client, but omits it from ClientAPI.
+            getattr(client, "close")()
             raise
 
     def _upsert_origins(

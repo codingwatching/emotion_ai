@@ -202,7 +202,8 @@ class LegacyImporter:
                             existing_count += int(not inserted)
                         offset += len(identities)
             finally:
-                client.close()
+                # Chroma 1.5 exposes close() on Client, but omits it from ClientAPI.
+                getattr(client, "close")()
 
         after = legacy_tree_sha256(source)
         if after != before:

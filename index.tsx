@@ -710,11 +710,11 @@ class AuraUIManager {
 
       // Initialize with default states
       this.updateEmotionalState({
-        name: "Normal",
-        intensity: "Medium",
-        brainwave: "Alpha",
-        neurotransmitter: "Serotonin",
-        description: "Balanced and ready for interaction"
+        name: "Unknown",
+        intensity: "Unknown",
+        brainwave: "",
+        neurotransmitter: "",
+        description: "Aura's simulated tone will appear after a reply."
       });
 
       this.updateCognitiveState({
@@ -1187,11 +1187,11 @@ class AuraUIManager {
     try {
       // Update basic emotion display
       this.emotionStatusElement.textContent = emotionalState.name;
-      this.emotionDetailsElement.textContent = emotionalState.description || 'Emotional processing active';
+      this.emotionDetailsElement.textContent = emotionalState.description || 'Simulated tone; not measured biology.';
 
       // Update intensity
       if (this.emotionIntensityElement) {
-        this.emotionIntensityElement.textContent = emotionalState.intensity || 'Medium';
+        this.emotionIntensityElement.textContent = emotionalState.intensity || 'Unknown';
       }
 
       // Update emotion icon based on emotion
@@ -1202,14 +1202,12 @@ class AuraUIManager {
       // Update header background class for dynamic coloring
       this.updateHeaderEmotionalState(emotionalState.name);
 
-      // Update neural activity displays
-      if (emotionalState.brainwave) {
-        this.updateBrainwaveDisplay(emotionalState.brainwave, emotionalState.name);
-      }
-
-      if (emotionalState.neurotransmitter) {
-        this.updateNeurotransmitterDisplay(emotionalState.neurotransmitter, this.getNeurotransmitterLevel(emotionalState.intensity));
-      }
+      // Always clear previous simulated indicators when analysis is unknown.
+      this.updateBrainwaveDisplay(emotionalState.brainwave || '', emotionalState.name);
+      this.updateNeurotransmitterDisplay(
+        emotionalState.neurotransmitter || 'Unknown',
+        emotionalState.neurotransmitter ? this.getNeurotransmitterLevel(emotionalState.intensity) : 0
+      );
 
       console.log(`🎭 Enhanced emotion update: ${emotionalState.name} (${emotionalState.intensity})`);
     } catch (error) {
@@ -1241,10 +1239,10 @@ class AuraUIManager {
 
   private updateBrainwaveDisplay(brainwave: string, emotionalContext: string): void {
     try {
-      this.brainwaveValueElement.textContent = brainwave;
+      this.brainwaveValueElement.textContent = brainwave || 'Unknown';
 
       // Update wave pattern animation based on brainwave type
-      const wavePatternClass = `wave-${brainwave.toLowerCase()}`;
+      const wavePatternClass = brainwave ? `wave-${brainwave.toLowerCase()}` : 'wave-unknown';
       this.wavePatternElement.className = `wave-pattern ${wavePatternClass}`;
 
       console.log(`🧠 Brainwave updated: ${brainwave} (context: ${emotionalContext})`);

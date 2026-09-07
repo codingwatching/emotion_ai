@@ -10,7 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 from openai import APIConnectionError, APITimeoutError
 
-from .base import ProviderHealth, ProviderHealthStatus
+from .base import ProviderHealth, ProviderHealthStatus, ProviderRequest
 from .config import ProviderSettings
 from .errors import ProviderErrorCode, ProviderFailure
 from .openai_compatible import ClientFactory, OpenAICompatibleProvider
@@ -76,6 +76,19 @@ class OllamaProvider(OpenAICompatibleProvider):
             kwargs["client_factory"] = client_factory
         super().__init__(**kwargs)  # type: ignore[arg-type]
         self.base_url = settings.base_url
+
+    def _request_kwargs(
+        self,
+        request: ProviderRequest,
+        messages: list[dict[str, object]],
+        *,
+        stream: bool,
+    ) -> dict[str, object]:
+        """Honor the opt-out for bounded analysis while preserving chat defaults."""
+        kwargs = super()._request_kwargs(request, messages, stream=stream)
+        if request.disable_reasoning:
+            kwargs["reasoning_effort"] = "none"
+        return kwargs
 
     async def health(self) -> ProviderHealth:
         """List installed model metadata within a finite local readiness bound."""

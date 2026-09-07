@@ -19,6 +19,14 @@ export interface EmotionalState {
   brainwave: string;
   neurotransmitter: string;
   description?: string;
+  assessment?: {
+    schema_version?: string;
+    subject: 'user' | 'aura';
+    status: 'inferred' | 'simulated' | 'abstained' | 'invalid' | 'unavailable' | 'unverified';
+    evidence?: string[];
+    source_sha256?: string;
+    reason?: string | null;
+  };
 }
 
 export interface CognitiveState {

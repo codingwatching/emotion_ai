@@ -110,7 +110,8 @@ class SharedEmbeddingService:
         Returns:
             List of float values representing the embedding
         """
-        return self.encode(text)
+        # The string input and default convert_to_tensor=False select the list branch.
+        return cast(List[float], self.encode(text))
 
     def encode_batch(self, texts: List[str]) -> List[List[float]]:
         """

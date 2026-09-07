@@ -120,6 +120,8 @@ def test_allowed_local_json_conversation_succeeds_without_sign_in() -> None:
             "intensity": "Medium",
             "name": "Calm",
             "neurotransmitter": "Serotonin",
+            "description": "Synthetic probe state",
+            "assessment": {"status": "unverified", "subject": "aura"},
         },
         "has_thinking": False,
         "response": "Synthetic local reply.",

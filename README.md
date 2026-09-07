@@ -7,6 +7,23 @@
 
 > **Sophisticated AI Companion with Vector Database, Emotional Intelligence, and Model Context Protocol Integration**
 
+## Current emotion assessment behavior
+
+Aura now distinguishes tentative user-emotion interpretations, its own simulated
+tone, deliberate abstention, invalid model output, and unavailable analysis.
+Each accepted proposal includes checked verbatim source quotations and the hash
+of the analyzed text. Failed analysis stays **Unknown**, including in stored
+history; it no longer silently becomes “Normal.” Text does not measure a user's
+brain activity or chemical levels. The interface labels Aura's indicators as
+simulations and clears them when an assessment is unknown.
+
+The local Ornith smoke evaluation handled 11 of 12 invented cases as expected;
+it incorrectly labeled an ambiguous sarcastic sentence. Its strict acceptance
+gate therefore **failed**. This is a tested validation boundary, not evidence of
+reliable general emotion recognition. See [the implementation and evaluation
+report](docs/emotion-assessment.md) for the exact behavior, limitations, and rerun
+commands. Historical data has not been rewritten.
+
 # Two WARNINGS and a disclaimer
 
 - AI generated code
@@ -27,7 +44,7 @@
 ### 🧠 Advanced Cognitive Architecture
 
 - **ASEKE Framework**: Adaptive Socio-Emotional Knowledge Ecosystem
-- **Real-time Emotional State Detection** with neurological correlations
+- **Tentative Emotion Assessment** with checked source quotations and explicit uncertainty
 - **Cognitive Focus Tracking** across different mental frameworks
 - **Adaptive Self-Reflection** for continuous improvement
 - **🆕 Thinking Extraction**: Transparent AI reasoning with thought analysis and cognitive transparency
@@ -90,11 +107,12 @@
 - **Combined**: Hope (Anticipation + Joy), Optimism, Awe, Remorse
 - **Social**: RomanticLove, PlatonicLove, ParentalLove, Friendliness
 
-### Neurological Correlations
+### Simulated Indicators
 
-- **Brainwave Patterns**: Alpha, Beta, Gamma, Theta, Delta
-- **Neurotransmitters**: Dopamine, Serotonin, Oxytocin, GABA, Norepinephrine
-- **NTK Layers**: Neural Tensor Kernel mapping for emotional states
+- **Brainwave labels**: Alpha, Beta, Gamma, Theta, Delta are software analogies.
+- **Chemical labels**: The fixed mappings describe Aura's simulated tone only.
+- These indicators are not measured EEG, chemical levels, or an implemented
+  time-evolving affective control loop. User assessments carry no biological labels.
 
 ## 🧠 ASEKE Cognitive Framework
 

@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -315,7 +316,7 @@ def _verify_chroma(
                     if embeddings is None or len(embeddings) != 1:
                         retrieval_status = CheckStatus.BLOCKED
                         continue
-                    embedding = embeddings[0]
+                    embedding = [float(value) for value in embeddings[0]]
                     first_query = collection.query(
                         query_embeddings=[embedding],
                         n_results=min(5, actual_count),
@@ -358,7 +359,8 @@ def _verify_chroma(
                         retrieval_digest.update(b"\n")
                     fixture_total += 1
             finally:
-                client.close()
+                # Chroma 1.5 exposes close() on Client, but omits it from ClientAPI.
+                getattr(client, "close")()
     except Exception:
         if count_status is CheckStatus.PASS:
             retrieval_status = CheckStatus.BLOCKED
@@ -379,7 +381,7 @@ def _verify_chroma(
 
 
 def _normalize_query_fixture(
-    query: dict[str, Any],
+    query: Mapping[str, Any],
     *,
     known_identities: set[str],
     embedding: Any,

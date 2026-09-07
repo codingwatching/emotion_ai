@@ -1,8 +1,28 @@
 # Project State: Aura Rehabilitation
 
-**Updated:** 2026-09-02
+**Updated:** 2026-09-07
 **Active phase:** Phase 3 — Memory Integrity and Data Lifecycle
 **Status:** Phase 2 verified 16/16; Phase 3 Plans 03-01 through 03-06 complete (6/9 plans)
+
+## Latest Independent Improvement
+
+Ty authorized an autonomous improvement pass on 2026-09-07. The active
+conversation path now uses versioned, source-checked emotion proposals with
+explicit abstention/invalid/unavailable states, durable uncertainty, and honest
+simulation labels. A shared provider defect accepting non-streaming truncated
+responses was repaired, and bounded Ollama analysis can disable optional
+reasoning without changing ordinary chat defaults. Existing Python typing
+errors were corrected without package/lock changes.
+
+Verification: 763 deterministic tests passed, 2 skipped, 1 live deselected;
+Python/frontend type checks, Ruff, and production build pass. The local Ornith
+smoke evaluation completed 12 cases and matched 11, with one false-positive
+label on ambiguous sarcasm: its strict gate **failed**. Browser interaction
+remains unverified because no browser was connected. Evidence and limitations
+are in [the emotion assessment report](../docs/emotion-assessment.md).
+
+This does not complete Phase 3 or the Phase 4 affective controller. Historical
+data, backups, migration/read-owner gates, and dependency locks were untouched.
 
 ## Verified So Far
 

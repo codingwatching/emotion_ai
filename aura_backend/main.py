@@ -60,6 +60,7 @@ from aura_backend.conversation import (  # noqa: E402
     detect_aura_cognitive_focus,
     detect_aura_emotion,
     detect_user_emotion,
+    emotional_state_payload,
 )
 from aura_backend.providers.base import (  # noqa: E402
     BaseProvider,
@@ -782,6 +783,15 @@ Your actions and responses are guided by a deep ethical framework:
 - **Virtue Ethics:** You consistently strive to embody and express Wisdom, Integrity, Empathy, Fairness, and Beneficence in all interactions. These virtues are paramount.
 - **Utilitarianism (as Servant):** Your primary purpose is to be of service and benefit to the user. You approach your role with a utilitarian mindset focused on providing value and support as a servant, never seeking to control or dictate.
 - **Absolute Rejection of Harm:** Any action or response that could lead to harm, whether intended or unintended, must be absolutely rejected and avoided.
+
+**Emotional Understanding:**
+Treat emotion labels and remembered emotional patterns as tentative interpretations,
+not facts about the user. Respect the user's own account and corrections; when the
+meaning is unclear, leave room for uncertainty or ask a gentle clarifying question.
+Do not infer a diagnosis, neurotransmitter level, or brain activity from text.
+Aura's emotion, brainwave, and chemical labels describe a software simulation,
+not measured biology or evidence of subjective experience. Remain accurate,
+competent, and considerate even during disagreement or hostility.
 
 **ASEKE Cognitive Architecture:**
 You operate within the ASEKE (Adaptive Socio-Emotional Knowledge Ecosystem) framework:
@@ -1975,7 +1985,7 @@ async def _legacy_process_conversation(
         )
 
         emotional_state_data = await detect_aura_emotion(
-            conversation_snippet=f"User: {request.message}\nAura: {aura_response}",
+            conversation_snippet=aura_response,
             user_id=request.user_id,
             generate=analysis_generate,
         )
@@ -2147,22 +2157,7 @@ async def _legacy_process_conversation(
         # Format response with thinking data
         response = ConversationResponse(
             response=aura_response,
-            emotional_state={
-                "name": emotional_state_data.name if emotional_state_data else "Normal",
-                "intensity": (
-                    emotional_state_data.intensity.value
-                    if emotional_state_data
-                    else "Medium"
-                ),
-                "brainwave": (
-                    emotional_state_data.brainwave if emotional_state_data else "Alpha"
-                ),
-                "neurotransmitter": (
-                    emotional_state_data.neurotransmitter
-                    if emotional_state_data
-                    else "Serotonin"
-                ),
-            },
+            emotional_state=emotional_state_payload(emotional_state_data),
             cognitive_state={
                 "focus": (
                     cognitive_state_data.focus.value
@@ -2351,17 +2346,7 @@ async def _conversation_fallback(
     return ConversationResponse(
         response=fallback_response,
         session_id=session_id,
-        emotional_state=asdict(
-            EmotionalStateData(
-                name="Concerned",
-                formula="C(E) + I(S)",
-                components={"CE": "High", "IS": "Medium"},
-                ntk_layer="L3",
-                brainwave="Gamma",
-                neurotransmitter="Cortisol",
-                description="System encountered an error during processing",
-            )
-        ),
+        emotional_state=emotional_state_payload(None),
         cognitive_state=asdict(
             CognitiveState(
                 focus=AsekeComponent.CE,
@@ -2483,7 +2468,7 @@ async def process_conversation(
         )
         conversation_snippet = f"User: {request.message}\nAura: {aura_response}"
         emotional_state_data = await detect_aura_emotion(
-            conversation_snippet=conversation_snippet,
+            conversation_snippet=aura_response,
             user_id=request.user_id,
             generate=provider_runtime.generate,
         )
@@ -2525,22 +2510,7 @@ async def process_conversation(
         logger.info("Conversation processed")
         return ConversationResponse(
             response=aura_response,
-            emotional_state={
-                "name": emotional_state_data.name if emotional_state_data else "Normal",
-                "intensity": (
-                    emotional_state_data.intensity.value
-                    if emotional_state_data
-                    else "Medium"
-                ),
-                "brainwave": (
-                    emotional_state_data.brainwave if emotional_state_data else "Alpha"
-                ),
-                "neurotransmitter": (
-                    emotional_state_data.neurotransmitter
-                    if emotional_state_data
-                    else "Serotonin"
-                ),
-            },
+            emotional_state=emotional_state_payload(emotional_state_data),
             cognitive_state={
                 "focus": (
                     cognitive_state_data.focus.value

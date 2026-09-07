@@ -32,9 +32,20 @@ import os
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Protocol
 
 import numpy as np
+
+
+class FunctionCallInput(Protocol):
+    """The read-only fields used by both neutral and Gemini tool calls."""
+
+    @property
+    def name(self) -> str | None: ...
+
+    @property
+    def args(self) -> Mapping[str, Any] | None: ...
+
 
 # Google Gemini imports
 if TYPE_CHECKING:
@@ -379,7 +390,7 @@ class MCPGeminiBridge:
             return None
 
     async def execute_function_call(
-        self, function_call: types.FunctionCall, user_id: str
+        self, function_call: FunctionCallInput, user_id: str
     ) -> ToolExecutionResult:
         """
         Execute a Gemini function call with retry logic to handle known Gemini 2.5 tool calling issues.
@@ -398,7 +409,7 @@ class MCPGeminiBridge:
         return await self._execute_function_call_with_retry(function_call, user_id)
 
     async def _execute_function_call_with_retry(
-        self, function_call: types.FunctionCall, user_id: str
+        self, function_call: FunctionCallInput, user_id: str
     ) -> ToolExecutionResult:
         """
         Enhanced function call execution with retry logic for Gemini 2.5 stability issues.
@@ -486,7 +497,7 @@ class MCPGeminiBridge:
         )
 
     async def _execute_single_function_call(
-        self, function_call: types.FunctionCall, user_id: str
+        self, function_call: FunctionCallInput, user_id: str
     ) -> ToolExecutionResult:
         """
         Execute a single function call attempt (original logic extracted for retry wrapper).

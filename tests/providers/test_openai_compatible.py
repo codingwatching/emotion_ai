@@ -170,7 +170,12 @@ def test_client_construction_uses_exact_timeouts_and_zero_retries() -> None:
     assert captured["max_retries"] == 0
     assert captured["base_url"] == "http://127.0.0.1:11434/v1"
     assert isinstance(timeout, httpx.Timeout)
-    assert (timeout.connect, timeout.read, timeout.write, timeout.pool) == (1.0, 2.0, 3.0, 4.0)
+    assert (timeout.connect, timeout.read, timeout.write, timeout.pool) == (
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+    )
     assert "private" not in repr(provider)
 
 
@@ -203,16 +208,40 @@ async def test_generate_normalizes_messages_tools_usage_and_sdk_objects() -> Non
 @pytest.mark.parametrize(
     ("error_factory", "expected"),
     (
-        (lambda r: AuthenticationError("credential SENTINEL", response=httpx.Response(401, request=r), body=None), ProviderErrorCode.AUTHENTICATION),
-        (lambda r: NotFoundError("model SENTINEL", response=httpx.Response(404, request=r), body=None), ProviderErrorCode.MODEL_NOT_FOUND),
-        (lambda r: RateLimitError("rate SENTINEL", response=httpx.Response(429, request=r), body=None), ProviderErrorCode.RATE_LIMITED),
+        (
+            lambda r: AuthenticationError(
+                "credential SENTINEL",
+                response=httpx.Response(401, request=r),
+                body=None,
+            ),
+            ProviderErrorCode.AUTHENTICATION,
+        ),
+        (
+            lambda r: NotFoundError(
+                "model SENTINEL", response=httpx.Response(404, request=r), body=None
+            ),
+            ProviderErrorCode.MODEL_NOT_FOUND,
+        ),
+        (
+            lambda r: RateLimitError(
+                "rate SENTINEL", response=httpx.Response(429, request=r), body=None
+            ),
+            ProviderErrorCode.RATE_LIMITED,
+        ),
         (lambda r: APITimeoutError(r), ProviderErrorCode.TIMEOUT),
         (lambda r: APIConnectionError(request=r), ProviderErrorCode.UNAVAILABLE),
-        (lambda r: InternalServerError("server SENTINEL", response=httpx.Response(503, request=r), body=None), ProviderErrorCode.UNAVAILABLE),
+        (
+            lambda r: InternalServerError(
+                "server SENTINEL", response=httpx.Response(503, request=r), body=None
+            ),
+            ProviderErrorCode.UNAVAILABLE,
+        ),
     ),
 )
 @pytest.mark.asyncio
-async def test_sdk_failures_map_to_exact_safe_codes(error_factory: Any, expected: ProviderErrorCode) -> None:
+async def test_sdk_failures_map_to_exact_safe_codes(
+    error_factory: Any, expected: ProviderErrorCode
+) -> None:
     request = httpx.Request("POST", "https://credential-SENTINEL.invalid/private")
     provider = _provider(FakeClient([error_factory(request)]))
 
@@ -220,7 +249,9 @@ async def test_sdk_failures_map_to_exact_safe_codes(error_factory: Any, expected
         await provider.generate(_request())
 
     assert captured.value.code is expected
-    rendered = f"{captured.value!s} {captured.value!r} {captured.value.to_public_dict()!r}"
+    rendered = (
+        f"{captured.value!s} {captured.value!r} {captured.value.to_public_dict()!r}"
+    )
     assert "SENTINEL" not in rendered
     assert "private prompt" not in rendered
 
@@ -235,6 +266,56 @@ async def test_empty_choices_or_content_are_malformed(bad_response: Any) -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content", [None, "partial answer", '{"complete_looking":true}']
+)
+@pytest.mark.parametrize(
+    "finish_reason,code",
+    [
+        ("length", ProviderErrorCode.RESOURCE_LIMIT),
+        ("content_filter", ProviderErrorCode.RESOURCE_LIMIT),
+        (None, ProviderErrorCode.MALFORMED_RESPONSE),
+        ("unknown", ProviderErrorCode.MALFORMED_RESPONSE),
+        ("tool_calls", ProviderErrorCode.MALFORMED_RESPONSE),
+    ],
+)
+async def test_nonstream_requires_a_completed_terminal_reason(
+    content: str | None,
+    finish_reason: str | None,
+    code: ProviderErrorCode,
+) -> None:
+    response = _response(content)
+    response.choices[0].finish_reason = finish_reason
+    provider = _provider(FakeClient([response]))
+    with pytest.raises(ProviderFailure) as captured:
+        await provider.generate(_request())
+    assert captured.value.code is code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("finish_reason", ["length", "content_filter", "stop", None])
+async def test_incomplete_or_mismatched_tool_response_cannot_execute(
+    finish_reason: str | None,
+) -> None:
+    tool_call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(name="memory.search", arguments="{}"),
+    )
+    response = _response(None, tool_calls=[tool_call])
+    response.choices[0].finish_reason = finish_reason
+    calls = []
+    provider = _provider(FakeClient([response]))
+
+    async def forbidden(*args: object, **kwargs: object) -> None:
+        calls.append((args, kwargs))
+
+    provider._execute_tool_calls = forbidden
+    with pytest.raises(ProviderFailure):
+        await provider.generate(_request())
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_tool_arguments_assemble_validate_and_execute_once() -> None:
     definition = ToolDefinition(
         name="memory.search",
@@ -246,7 +327,9 @@ async def test_tool_arguments_assemble_validate_and_execute_once() -> None:
             "additionalProperties": False,
         },
     )
-    route = ToolRegistration(definition=definition, source=ToolSource.INTERNAL, server="aura-internal")
+    route = ToolRegistration(
+        definition=definition, source=ToolSource.INTERNAL, server="aura-internal"
+    )
     calls: list[dict[str, Any]] = []
 
     async def dispatch(_route: ToolRegistration, arguments: Any) -> object:
@@ -256,9 +339,16 @@ async def test_tool_arguments_assemble_validate_and_execute_once() -> None:
     executor = ToolExecutor(ToolCatalog((route,)), dispatch)
     tool_call = SimpleNamespace(
         id="call-1",
-        function=SimpleNamespace(name=route.provider_name, arguments='{"query":"safe"}'),
+        function=SimpleNamespace(
+            name=route.provider_name, arguments='{"query":"safe"}'
+        ),
     )
-    client = FakeClient([_response(None, tool_calls=[tool_call], finish_reason="tool_calls"), _response("done")])
+    client = FakeClient(
+        [
+            _response(None, tool_calls=[tool_call], finish_reason="tool_calls"),
+            _response("done"),
+        ]
+    )
     provider = _provider(client, executor=executor)
 
     result = await provider.generate(_request(tools=(route.provider_definition,)))
@@ -271,20 +361,40 @@ async def test_tool_arguments_assemble_validate_and_execute_once() -> None:
 
 @pytest.mark.asyncio
 async def test_malformed_tool_json_and_turn_exhaustion_are_not_answers() -> None:
-    definition = ToolDefinition(name="lookup", description="Synthetic", input_schema={"type": "object", "properties": {}})
-    route = ToolRegistration(definition=definition, source=ToolSource.INTERNAL, server="aura-internal")
+    definition = ToolDefinition(
+        name="lookup",
+        description="Synthetic",
+        input_schema={"type": "object", "properties": {}},
+    )
+    route = ToolRegistration(
+        definition=definition, source=ToolSource.INTERNAL, server="aura-internal"
+    )
 
     async def dispatch(_route: ToolRegistration, _arguments: Any) -> object:
         return {}
 
-    malformed = SimpleNamespace(id="call-1", function=SimpleNamespace(name="lookup", arguments="{"))
-    provider = _provider(FakeClient([_response(None, tool_calls=[malformed], finish_reason="tool_calls")]), executor=ToolExecutor(ToolCatalog((route,)), dispatch))
+    malformed = SimpleNamespace(
+        id="call-1", function=SimpleNamespace(name="lookup", arguments="{")
+    )
+    provider = _provider(
+        FakeClient(
+            [_response(None, tool_calls=[malformed], finish_reason="tool_calls")]
+        ),
+        executor=ToolExecutor(ToolCatalog((route,)), dispatch),
+    )
     with pytest.raises(ProviderFailure) as captured:
         await provider.generate(_request(tools=(definition,)))
     assert captured.value.code is ProviderErrorCode.MALFORMED_RESPONSE
 
-    valid = SimpleNamespace(id="call-2", function=SimpleNamespace(name="lookup", arguments="{}"))
-    exhausting = _provider(FakeClient([_response(None, tool_calls=[valid], finish_reason="tool_calls")] * 3), executor=ToolExecutor(ToolCatalog((route,)), dispatch))
+    valid = SimpleNamespace(
+        id="call-2", function=SimpleNamespace(name="lookup", arguments="{}")
+    )
+    exhausting = _provider(
+        FakeClient(
+            [_response(None, tool_calls=[valid], finish_reason="tool_calls")] * 3
+        ),
+        executor=ToolExecutor(ToolCatalog((route,)), dispatch),
+    )
     with pytest.raises(ProviderFailure) as exhausted:
         await exhausting.generate(_request(tools=(definition,)))
     assert exhausted.value.code is ProviderErrorCode.RESOURCE_LIMIT
@@ -292,7 +402,9 @@ async def test_malformed_tool_json_and_turn_exhaustion_are_not_answers() -> None
 
 @pytest.mark.asyncio
 async def test_stream_yields_upstream_deltas_then_one_completion_and_closes() -> None:
-    upstream = FakeStream([_chunk("first"), _chunk(" second"), _chunk(finish_reason="stop")])
+    upstream = FakeStream(
+        [_chunk("first"), _chunk(" second"), _chunk(finish_reason="stop")]
+    )
     client = FakeClient([upstream])
     provider = _provider(client)
 
@@ -305,8 +417,12 @@ async def test_stream_yields_upstream_deltas_then_one_completion_and_closes() ->
 
 
 @pytest.mark.asyncio
-async def test_midstream_failure_closes_without_completion_or_content_in_diagnostics() -> None:
-    upstream = FakeStream([_chunk("private partial SENTINEL")], RuntimeError("raw response SENTINEL"))
+async def test_midstream_failure_closes_without_completion_or_content_in_diagnostics() -> (
+    None
+):
+    upstream = FakeStream(
+        [_chunk("private partial SENTINEL")], RuntimeError("raw response SENTINEL")
+    )
     provider = _provider(FakeClient([upstream]))
     observed: list[object] = []
 
@@ -322,7 +438,9 @@ async def test_midstream_failure_closes_without_completion_or_content_in_diagnos
 
 
 @pytest.mark.asyncio
-async def test_stream_cancellation_closes_upstream_and_provider_close_is_idempotent() -> None:
+async def test_stream_cancellation_closes_upstream_and_provider_close_is_idempotent() -> (
+    None
+):
     entered = asyncio.Event()
 
     class BlockingStream(FakeStream):

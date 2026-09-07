@@ -112,6 +112,8 @@ class ProviderRequest:
     max_tokens: int | None = None
     session_id: str | None = None
     correlation_id: str | None = None
+    # Optional hint: currently implemented by Ollama; other adapters keep defaults.
+    disable_reasoning: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.messages, tuple) or not self.messages:
@@ -126,6 +128,8 @@ class ProviderRequest:
             self.system_instruction, str
         ):
             raise TypeError("system_instruction must be text or None")
+        if not isinstance(self.disable_reasoning, bool):
+            raise TypeError("disable_reasoning must be a boolean")
         if (
             isinstance(self.temperature, bool)
             or not isinstance(self.temperature, (int, float))
