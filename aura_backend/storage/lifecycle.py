@@ -23,16 +23,16 @@ from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
-from aura_backend.storage.connection import open_database
-from aura_backend.storage.models import StorageFailure
-from aura_backend.storage.projection import ProjectionAdapter
-from aura_backend.storage.repository import StorageRepository
-from aura_backend.storage.schema import rebuild_fts
 from aura_backend.runtime_security import (
     StoragePathError,
     safe_export_format,
     safe_storage_component,
 )
+from aura_backend.storage.connection import open_database
+from aura_backend.storage.models import StorageFailure
+from aura_backend.storage.projection import ProjectionAdapter
+from aura_backend.storage.repository import StorageRepository
+from aura_backend.storage.schema import rebuild_fts
 
 
 class SnapshotStatus(str, Enum):
@@ -323,6 +323,51 @@ _DELETION_PRIMARY_KEYS = {
     "retrieval_runs": ("run_id",),
     "retrieval_candidates": ("run_id", "origin_id"),
     "legacy_fragments": ("fragment_id",),
+}
+_CANONICAL_DELETE_QUERIES: Mapping[str, str] = {
+    "memory_scopes": 'DELETE FROM "memory_scopes" WHERE "scope_id"=?',
+    "sessions": 'DELETE FROM "sessions" WHERE "session_id"=?',
+    "turns": 'DELETE FROM "turns" WHERE "turn_id"=?',
+    "events": 'DELETE FROM "events" WHERE "event_id"=?',
+    "derived_memories": 'DELETE FROM "derived_memories" WHERE "memory_id"=?',
+    "memory_sources": 'DELETE FROM "memory_sources" WHERE "memory_id"=? AND "event_id"=?',
+    "memory_supersessions": 'DELETE FROM "memory_supersessions" WHERE "old_memory_id"=? AND "new_memory_id"=?',
+    "memory_retractions": 'DELETE FROM "memory_retractions" WHERE "memory_id"=?',
+    "profile_versions": 'DELETE FROM "profile_versions" WHERE "scope_id"=? AND "profile_version"=?',
+    "legacy_sources": 'DELETE FROM "legacy_sources" WHERE "root_fingerprint"=? AND "collection_name"=? AND "legacy_id"=?',
+    "retrieval_runs": 'DELETE FROM "retrieval_runs" WHERE "run_id"=?',
+    "retrieval_candidates": 'DELETE FROM "retrieval_candidates" WHERE "run_id"=? AND "origin_id"=?',
+    "legacy_fragments": 'DELETE FROM "legacy_fragments" WHERE "fragment_id"=?',
+}
+_CANONICAL_SELECT_QUERIES: Mapping[str, str] = {
+    "memory_scopes": 'SELECT * FROM "memory_scopes" WHERE "scope_id"=?',
+    "sessions": 'SELECT * FROM "sessions" WHERE "session_id"=?',
+    "turns": 'SELECT * FROM "turns" WHERE "turn_id"=?',
+    "events": 'SELECT * FROM "events" WHERE "event_id"=?',
+    "derived_memories": 'SELECT * FROM "derived_memories" WHERE "memory_id"=?',
+    "memory_sources": 'SELECT * FROM "memory_sources" WHERE "memory_id"=? AND "event_id"=?',
+    "memory_supersessions": 'SELECT * FROM "memory_supersessions" WHERE "old_memory_id"=? AND "new_memory_id"=?',
+    "memory_retractions": 'SELECT * FROM "memory_retractions" WHERE "memory_id"=?',
+    "profile_versions": 'SELECT * FROM "profile_versions" WHERE "scope_id"=? AND "profile_version"=?',
+    "legacy_sources": 'SELECT * FROM "legacy_sources" WHERE "root_fingerprint"=? AND "collection_name"=? AND "legacy_id"=?',
+    "retrieval_runs": 'SELECT * FROM "retrieval_runs" WHERE "run_id"=?',
+    "retrieval_candidates": 'SELECT * FROM "retrieval_candidates" WHERE "run_id"=? AND "origin_id"=?',
+    "legacy_fragments": 'SELECT * FROM "legacy_fragments" WHERE "fragment_id"=?',
+    "event_fts": 'SELECT * FROM "event_fts" WHERE "rowid"=?',
+    "memory_fts": 'SELECT * FROM "memory_fts" WHERE "rowid"=?',
+}
+_SCOPED_EXPORT_QUERIES: Mapping[str, str] = {
+    "memory_scopes": 'SELECT * FROM "memory_scopes" WHERE scope_id=?',
+    "sessions": 'SELECT * FROM "sessions" WHERE scope_id=?',
+    "turns": 'SELECT * FROM "turns" WHERE scope_id=?',
+    "events": 'SELECT * FROM "events" WHERE scope_id=?',
+    "derived_memories": 'SELECT * FROM "derived_memories" WHERE scope_id=?',
+    "memory_sources": 'SELECT * FROM "memory_sources" WHERE scope_id=?',
+    "memory_supersessions": 'SELECT * FROM "memory_supersessions" WHERE scope_id=?',
+    "memory_retractions": 'SELECT * FROM "memory_retractions" WHERE scope_id=?',
+    "profile_versions": 'SELECT * FROM "profile_versions" WHERE scope_id=?',
+    "retrieval_runs": 'SELECT * FROM "retrieval_runs" WHERE scope_id=?',
+    "legacy_fragments": 'SELECT * FROM "legacy_fragments" WHERE scope_id=?',
 }
 
 
@@ -652,8 +697,6 @@ class LifecycleService:
                 projection_origin_count=generation.origin_count,
                 projection_ids_sha256=generation.origin_ids_sha256,
             )
-        except StorageFailure:
-            raise
         except (OSError, sqlite3.Error, ValueError) as error:
             raise StorageFailure("restore_verification_failed") from error
 
@@ -1197,23 +1240,10 @@ class LifecycleService:
                 return rows
 
             if action is DeletionAction.SCOPE:
-                scoped_tables = (
-                    "memory_scopes",
-                    "sessions",
-                    "turns",
-                    "events",
-                    "derived_memories",
-                    "memory_sources",
-                    "memory_supersessions",
-                    "memory_retractions",
-                    "profile_versions",
-                    "retrieval_runs",
-                    "legacy_fragments",
-                )
-                for table in scoped_tables:
+                for table, query in _SCOPED_EXPORT_QUERIES.items():
                     add_rows(
                         table,
-                        f'SELECT * FROM "{table}" WHERE scope_id=?',
+                        query,
                         (scope_id,),
                     )
                 add_rows(
@@ -1245,7 +1275,8 @@ class LifecycleService:
                     (scope_id, scope_id),
                 ).fetchall()
             else:
-                assert target_id is not None
+                if target_id is None:
+                    raise StorageFailure("lifecycle_target_missing")
                 session_rows = add_rows(
                     "sessions",
                     "SELECT * FROM sessions WHERE scope_id=? AND session_id=?",
@@ -1267,7 +1298,8 @@ class LifecycleService:
                     "WHERE turn.scope_id=? AND turn.session_id=?",
                     (scope_id, target_id),
                 )
-                memory_predicate = (
+                memory_query = (
+                    "SELECT memory.* FROM derived_memories AS memory WHERE "
                     "memory.scope_id=? AND (EXISTS (SELECT 1 FROM events AS primary_event "
                     "JOIN turns AS primary_turn ON primary_turn.turn_id=primary_event.turn_id "
                     "AND primary_turn.scope_id=primary_event.scope_id "
@@ -1283,7 +1315,7 @@ class LifecycleService:
                 )
                 memory_rows = add_rows(
                     "derived_memories",
-                    f"SELECT memory.* FROM derived_memories AS memory WHERE {memory_predicate}",
+                    memory_query,
                     (scope_id, target_id, target_id),
                 )
                 event_rows = connection.execute(
@@ -1381,12 +1413,10 @@ class LifecycleService:
             by_table.setdefault(table, []).append(item)
         for table in _CANONICAL_DELETE_ORDER:
             keys = _DELETION_PRIMARY_KEYS[table]
-            where = " AND ".join(f'"{key}"=?' for key in keys)
+            delete_sql = _CANONICAL_DELETE_QUERIES[table]
             for item in by_table.get(table, []):
                 values = _deletion_identity_values(item.identity, len(keys))
-                cursor = connection.execute(
-                    f'DELETE FROM "{table}" WHERE {where}', values
-                )
+                cursor = connection.execute(delete_sql, values)
                 if cursor.rowcount != 1:
                     raise StorageFailure("deletion_inventory_changed")
 
@@ -1411,10 +1441,8 @@ class LifecycleService:
                 if keys is None:
                     raise StorageFailure("deletion_plan_tampered")
                 values = _deletion_identity_values(item.identity, len(keys))
-                where = " AND ".join(f'"{key}"=?' for key in keys)
-                row = connection.execute(
-                    f'SELECT * FROM "{table}" WHERE {where}', values
-                ).fetchone()
+                select_sql = _CANONICAL_SELECT_QUERIES[table]
+                row = connection.execute(select_sql, values).fetchone()
                 if row is not None:
                     remaining.append(_deletion_item_from_row(table, keys, row))
             return tuple(
@@ -1614,7 +1642,7 @@ def _canonical_table_facts(
             raise StorageFailure("lifecycle_table_shape_invalid", identifier=table)
         quoted = ",".join(f'"{column}"' for column in columns)
         rows = connection.execute(
-            f'SELECT {quoted} FROM "{table}" ORDER BY {quoted}'
+            f'SELECT {quoted} FROM "{table}" ORDER BY {quoted}'  # nosec B608
         ).fetchall()
         counts[table] = len(rows)
         digests[table] = hashlib.sha256(
@@ -1628,15 +1656,12 @@ def _fts_facts(
 ) -> tuple[dict[str, int], dict[str, str]]:
     counts: dict[str, int] = {}
     digests: dict[str, str] = {}
-    columns_by_table = {
-        "event_fts": "content",
-        "memory_fts": "canonical_text",
+    queries = {
+        "event_fts": 'SELECT rowid, "content" FROM "event_fts" ORDER BY rowid',
+        "memory_fts": 'SELECT rowid, "canonical_text" FROM "memory_fts" ORDER BY rowid',
     }
     for table in _FTS_TABLES:
-        content_column = columns_by_table[table]
-        rows = connection.execute(
-            f'SELECT rowid,"{content_column}" FROM "{table}" ORDER BY rowid'
-        ).fetchall()
+        rows = connection.execute(queries[table]).fetchall()
         counts[table] = len(rows)
         digests[table] = hashlib.sha256(
             b"\n".join(_canonical_json_bytes(list(row)) for row in rows)

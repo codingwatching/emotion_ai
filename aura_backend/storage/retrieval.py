@@ -28,7 +28,6 @@ from aura_backend.storage.models import (
 from aura_backend.storage.projection import ProjectionCandidate
 from aura_backend.storage.repository import StorageRepository
 
-
 _TOKEN = re.compile(r"\w+", flags=re.UNICODE)
 
 
@@ -244,7 +243,8 @@ class HybridRetriever:
                     )
                 )
                 continue
-            assert origin is not None
+            if origin is None:
+                continue
             candidate = eligible.setdefault(origin_id, _EligibleCandidate(origin))
             if candidate.lexical_rank is None:
                 candidate.lexical_rank = lexical_rank
@@ -294,7 +294,8 @@ class HybridRetriever:
                     )
                 )
                 continue
-            assert origin is not None
+            if origin is None:
+                continue
             candidate = eligible.setdefault(
                 origin.origin_id,
                 _EligibleCandidate(origin),
@@ -390,10 +391,14 @@ class HybridRetriever:
         scope_id: str,
         query: str,
     ) -> tuple[tuple[str, str, float], ...]:
-        tokens = tuple(dict.fromkeys(token.casefold() for token in _TOKEN.findall(query)))
+        tokens = tuple(
+            dict.fromkeys(token.casefold() for token in _TOKEN.findall(query))
+        )
         if not tokens:
             return ()
-        expression = " AND ".join(f'"{token.replace(chr(34), chr(34) * 2)}"' for token in tokens)
+        expression = " AND ".join(
+            f'"{token.replace(chr(34), chr(34) * 2)}"' for token in tokens
+        )
         connection = open_database(self.repository.database_path)
         try:
             rows = connection.execute(
@@ -511,9 +516,7 @@ class HybridRetriever:
             and supplied_scope == required_scope
             and origin.scope_id == required_scope
         )
-        provenance_pass = bool(
-            origin is not None and origin.provenance_event_ids
-        )
+        provenance_pass = bool(origin is not None and origin.provenance_event_ids)
         supersession_pass = bool(
             origin is not None and not origin.superseded and not origin.retracted
         )
@@ -539,8 +542,12 @@ class HybridRetriever:
             )
         )
         gates = (
-            RetrievalGate("origin", origin_exists, None if origin_exists else "origin_missing"),
-            RetrievalGate("scope", scope_pass, None if scope_pass else "scope_mismatch"),
+            RetrievalGate(
+                "origin", origin_exists, None if origin_exists else "origin_missing"
+            ),
+            RetrievalGate(
+                "scope", scope_pass, None if scope_pass else "scope_mismatch"
+            ),
             RetrievalGate(
                 "provenance",
                 provenance_pass,
@@ -596,7 +603,9 @@ class HybridRetriever:
         for candidate in candidates:
             groups.setdefault(candidate.origin.content_sha256, []).append(candidate)
         selected: list[tuple[_EligibleCandidate, tuple[str, ...], tuple[str, ...]]] = []
-        collapsed: list[tuple[_EligibleCandidate, tuple[str, ...], tuple[str, ...]]] = []
+        collapsed: list[tuple[_EligibleCandidate, tuple[str, ...], tuple[str, ...]]] = (
+            []
+        )
         for group in groups.values():
             ordered = sorted(group, key=self._sort_key)
             contributors = tuple(sorted(item.origin.origin_id for item in group))
@@ -630,12 +639,12 @@ class HybridRetriever:
     def _rrf(self, rank: int | None) -> float:
         if rank is None:
             return 0.0
-        return (1.0 / (self.config.rrf_k + rank)) / (
-            1.0 / (self.config.rrf_k + 1)
-        )
+        return (1.0 / (self.config.rrf_k + rank)) / (1.0 / (self.config.rrf_k + 1))
 
     def _neutral_score(self, candidate: _EligibleCandidate) -> float:
-        return (self._rrf(candidate.lexical_rank) + self._rrf(candidate.vector_rank)) / 2
+        return (
+            self._rrf(candidate.lexical_rank) + self._rrf(candidate.vector_rank)
+        ) / 2
 
     def _eligible_trace(
         self,
@@ -855,7 +864,13 @@ class HybridRetriever:
         connection = open_database(self.repository.database_path)
         try:
             if last is None:
-                last_clause = ""
+                query_sql = (
+                    "SELECT event_id, scope_id, turn_id, actor, content, "
+                    "content_sha256, observed_at FROM events "
+                    "WHERE scope_id = ? AND event_pk <= ? "
+                    "AND (observed_at < ? OR (observed_at = ? AND event_id <= ?)) "
+                    "ORDER BY observed_at, event_id LIMIT ?"
+                )
                 parameters: list[object] = [
                     scope_id,
                     watermark,
@@ -865,8 +880,13 @@ class HybridRetriever:
                     page_size + 1,
                 ]
             else:
-                last_clause = (
-                    "AND (observed_at > ? OR (observed_at = ? AND event_id > ?))"
+                query_sql = (
+                    "SELECT event_id, scope_id, turn_id, actor, content, "
+                    "content_sha256, observed_at FROM events "
+                    "WHERE scope_id = ? AND event_pk <= ? "
+                    "AND (observed_at < ? OR (observed_at = ? AND event_id <= ?)) "
+                    "AND (observed_at > ? OR (observed_at = ? AND event_id > ?)) "
+                    "ORDER BY observed_at, event_id LIMIT ?"
                 )
                 parameters = [
                     scope_id,
@@ -879,19 +899,7 @@ class HybridRetriever:
                     last[1],
                     page_size + 1,
                 ]
-            rows = connection.execute(
-                f"""
-                SELECT event_id, scope_id, turn_id, actor, content,
-                       content_sha256, observed_at
-                FROM events
-                WHERE scope_id = ? AND event_pk <= ?
-                  AND (observed_at < ? OR (observed_at = ? AND event_id <= ?))
-                  {last_clause}
-                ORDER BY observed_at, event_id
-                LIMIT ?
-                """,
-                parameters,
-            ).fetchall()
+            rows = connection.execute(query_sql, parameters).fetchall()
         finally:
             connection.close()
         has_more = len(rows) > page_size
@@ -1004,7 +1012,9 @@ class HybridRetriever:
             connection.commit()
         except Exception as error:
             connection.rollback()
-            raise StorageFailure("retrieval_run_store_failed", identifier=run.run_id) from error
+            raise StorageFailure(
+                "retrieval_run_store_failed", identifier=run.run_id
+            ) from error
         finally:
             connection.close()
 

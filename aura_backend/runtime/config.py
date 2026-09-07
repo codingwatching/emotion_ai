@@ -63,7 +63,7 @@ def _validate_origins(origins: tuple[str, ...]) -> tuple[str, ...]:
     for origin in origins:
         try:
             parsed = urlsplit(origin)
-            parsed.port
+            _ = parsed.port
         except ValueError as error:
             raise RuntimeConfigurationError("ALLOWED_ORIGINS") from error
         if (

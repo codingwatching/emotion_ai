@@ -9,7 +9,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 import aura_backend.main as main
 from aura_backend.conversation_persistence_service import (
@@ -17,9 +19,9 @@ from aura_backend.conversation_persistence_service import (
     ConversationPersistenceService,
 )
 from aura_backend.runtime import RuntimeConfigurationError, RuntimeSettings
-from aura_backend.storage.repository import StorageRepository
 from aura_backend.storage.lifecycle import DeletionAction, DeletionPlan
 from aura_backend.storage.models import RetrievalItem, RetrievalPage
+from aura_backend.storage.repository import StorageRepository
 from tests.api.test_provider_compatibility import (
     ANSWER_SENTINEL,
     EXPECTED_RESPONSE_KEYS,
@@ -34,7 +36,9 @@ from tests.api.test_provider_compatibility import (
 class _ProjectionFake:
     """Post-commit projection fake that can fail exactly once."""
 
-    def __init__(self, repository: StorageRepository, *, fail_once: bool = False) -> None:
+    def __init__(
+        self, repository: StorageRepository, *, fail_once: bool = False
+    ) -> None:
         self.repository = repository
         self.fail_once = fail_once
         self.calls: list[str] = []
@@ -81,7 +85,9 @@ class _KeyRecordingPersistence(_FakePersistence):
         )
 
 
-def _exchange(*, key: str, user_text: str = "synthetic question") -> ConversationExchange:
+def _exchange(
+    *, key: str, user_text: str = "synthetic question"
+) -> ConversationExchange:
     return ConversationExchange(
         user_memory=SimpleNamespace(
             user_id="scope-a",
@@ -299,7 +305,7 @@ async def test_search_boundary_is_bounded_traceable_and_compatibility_shaped() -
 
 
 def test_search_request_rejects_unbounded_pages() -> None:
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         main.SearchRequest(user_id="scope-a", query="synthetic", n_results=101)
 
 
@@ -352,7 +358,7 @@ async def test_export_and_legacy_delete_route_through_lifecycle_without_vague_mu
     previous = main.storage_boundary
     main.storage_boundary = boundary
     try:
-        with pytest.raises(Exception):
+        with pytest.raises(HTTPException):
             await main.export_user_data("scope-a", "csv")
         assert not (tmp_path / "ledger").exists()
 

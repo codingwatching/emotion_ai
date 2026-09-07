@@ -101,7 +101,6 @@ class AuraRealMemvid:
             memvid_sdk.configure(
                 {
                     "default_embedding_provider": embedding_provider,
-                    "default_memory_kind": "basic",
                 }
             )
 
@@ -406,7 +405,7 @@ class AuraRealMemvid:
                                 mv.put(
                                     title=f"Conversation {timestamp_str}",
                                     labels=[
-                                        metadata.get("emotion_name", "none"),
+                                        str(metadata.get("emotion_name") or "none"),
                                         "aura_archive",
                                     ],
                                     metadata={
