@@ -13,6 +13,45 @@ export interface ConversationRequest {
   session_id?: string;
 }
 
+export interface AffectVector {
+  valence: number;
+  arousal: number;
+  novelty: number;
+  affiliation: number;
+  control: number;
+  curiosity: number;
+  load: number;
+}
+
+export interface ResponsePolicy {
+  warmth: string;
+  energy: string;
+  acknowledge_setback: boolean;
+  recovery_step: boolean;
+  exploration: string;
+  reflection: string;
+}
+
+export interface AffectSimulationState {
+  schema_version: number;
+  scope_id: string;
+  revision: number;
+  pre_state: AffectVector;
+  post_state: AffectVector;
+  mood_state: AffectVector;
+  policy: ResponsePolicy;
+  causes: string[];
+  disposition: string;
+  channels: {
+    dopamine_like: number;
+    norepinephrine_like: number;
+    acetylcholine_like: number;
+    serotonin_like: number;
+    gaba_like: number;
+    cortisol_like: number;
+  };
+}
+
 export interface EmotionalState {
   name: string;
   intensity: string;
@@ -27,6 +66,7 @@ export interface EmotionalState {
     source_sha256?: string;
     reason?: string | null;
   };
+  simulation?: AffectSimulationState;
 }
 
 export interface CognitiveState {

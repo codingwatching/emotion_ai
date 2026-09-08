@@ -146,9 +146,12 @@ def _emotion_state(assessment: EmotionAssessment) -> EmotionalStateData:
     )
 
 
-def emotional_state_payload(state: EmotionalStateData | None) -> dict[str, Any]:
+def emotional_state_payload(
+    state: EmotionalStateData | None,
+    simulation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Preserve public fields while making unknown and legacy states explicit."""
-    return {
+    payload = {
         "name": state.name if state else "Unknown",
         "intensity": state.intensity.value if state else "Unknown",
         "brainwave": state.brainwave if state else "",
@@ -162,6 +165,9 @@ def emotional_state_payload(state: EmotionalStateData | None) -> dict[str, Any]:
             else {"status": "unverified" if state else "unavailable", "subject": "aura"}
         ),
     }
+    if simulation is not None:
+        payload["simulation"] = simulation
+    return payload
 
 
 async def detect_user_emotion(

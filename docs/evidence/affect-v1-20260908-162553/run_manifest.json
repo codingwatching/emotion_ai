@@ -1,0 +1,12 @@
+{
+  "run_id": "affect-v1-20260908-162553",
+  "mode": "compare",
+  "provider": "OllamaProvider",
+  "model": "ornith:latest",
+  "timestamp": "2026-09-08T16:36:43.240622+00:00",
+  "duration_seconds": 649.58,
+  "num_families": 4,
+  "variants_per_family": 1,
+  "repeats": 1,
+  "seed": 42
+}

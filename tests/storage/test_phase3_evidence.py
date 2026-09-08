@@ -619,6 +619,12 @@ def test_inventory_summary_is_exact_private_safe_and_proposal_bound() -> None:
     inventory_bytes = INVENTORY_SUMMARY_PATH.read_bytes()
     inventory = json.loads(inventory_bytes)
     _assert_real_inventory_summary(inventory)
+
+
+@pytest.mark.private_evidence
+def test_inventory_summary_private_receipt_verified() -> None:
+    inventory_bytes = INVENTORY_SUMMARY_PATH.read_bytes()
+    inventory = json.loads(inventory_bytes)
     _assert_private_pointer(
         Path("/backup/aura-phase-03"),
         inventory["private_artifact_relpath"],
@@ -647,6 +653,11 @@ def test_failed_quiescence_summary_was_exact_and_remains_private_safe() -> None:
     inventory_bytes = INVENTORY_SUMMARY_PATH.read_bytes()
     quiescence = json.loads(QUIESCENCE_SUMMARY_PATH.read_bytes())
     _assert_real_quiescence_summary(quiescence, inventory_bytes, require_current=False)
+
+
+@pytest.mark.private_evidence
+def test_failed_quiescence_summary_private_receipt_verified() -> None:
+    quiescence = json.loads(QUIESCENCE_SUMMARY_PATH.read_bytes())
     _assert_private_pointer(
         Path("/backup/aura-phase-03"),
         quiescence["private_ticket_relpath"],
@@ -672,6 +683,7 @@ def test_quiescence_summary_rejects_absent_incomplete_or_forged_evidence(
         )
 
 
+@pytest.mark.private_evidence
 def test_failed_inventory_bound_backup_is_detectably_out_of_scope() -> None:
     """The preserved first copy remains exact internally but not inventory-exact."""
     inventory_bytes = INVENTORY_SUMMARY_PATH.read_bytes()
@@ -741,12 +753,21 @@ def test_failed_inventory_bound_backup_is_detectably_out_of_scope() -> None:
     assert all(check["status"] == "pass" for check in backup["checks"])
 
 
-def test_failed_run_evidence_remains_byte_identical() -> None:
-    """Repair work cannot rewrite the first proposal, evidence, or backup receipt."""
+def test_failed_run_public_evidence_remains_byte_identical() -> None:
+    """Repair work cannot rewrite the first proposal or public evidence summaries."""
     expected = {
         PROPOSAL_PATH: "bfe6e64e75405244d70e216126855d3802d64e7f1c96da34f804055838814140",
         INVENTORY_SUMMARY_PATH: "f45d25dd0a994841cbe107a8a52bab31cbc7c1b48efb513920c254ce6c80d6d8",
         QUIESCENCE_SUMMARY_PATH: "2abdea85e068da8cadac305d65ec57e06442ed150a9a73a679af3e6564cacc5c",
+    }
+    for path, digest in expected.items():
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+
+
+@pytest.mark.private_evidence
+def test_failed_run_private_evidence_remains_byte_identical() -> None:
+    """Repair work cannot rewrite the first private receipts or backup receipt."""
+    expected = {
         BACKUP_ROOT / "phase-03-storage-gate-01/inventory.private.json": (
             "4768ca2b3a33ce17eeaeaca2eefd26ea7d6b72aa3a3583496cd6043a1aacfd8d"
         ),
@@ -760,3 +781,31 @@ def test_failed_run_evidence_remains_byte_identical() -> None:
     }
     for path, digest in expected.items():
         assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+
+
+def test_synthetic_private_pointer_verification(tmp_path: Path) -> None:
+    """Synthetic bundles exercise _assert_private_pointer without private paths."""
+    target = tmp_path / "receipts" / "receipt.private.json"
+    target.parent.mkdir(parents=True)
+    content = b'{"receipt": true}'
+    target.write_bytes(content)
+    target.chmod(0o600)
+    digest = hashlib.sha256(content).hexdigest()
+
+    # Passes on exact match and permissions
+    _assert_private_pointer(tmp_path, "receipts/receipt.private.json", digest)
+
+    # Fails when file is missing
+    with pytest.raises(AssertionError):
+        _assert_private_pointer(tmp_path, "receipts/missing.private.json", digest)
+
+    # Fails when hash is mismatched
+    with pytest.raises(AssertionError):
+        _assert_private_pointer(
+            tmp_path, "receipts/receipt.private.json", "0" * 64
+        )
+
+    # Fails when permissions are open (not 0o600)
+    target.chmod(0o644)
+    with pytest.raises(AssertionError):
+        _assert_private_pointer(tmp_path, "receipts/receipt.private.json", digest)

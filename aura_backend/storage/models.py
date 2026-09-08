@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
 class MemoryKind(str, Enum):
@@ -84,6 +85,8 @@ class TurnCommand:
     user_event: EventInput
     aura_event: EventInput
     derived_memories: tuple[DerivedMemoryInput, ...] = ()
+    affect_transition: Any | None = None
+    expected_state_revision: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

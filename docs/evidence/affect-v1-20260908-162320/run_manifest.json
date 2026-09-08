@@ -1,0 +1,12 @@
+{
+  "run_id": "affect-v1-20260908-162320",
+  "mode": "compare",
+  "provider": "str",
+  "model": "ornith:latest",
+  "timestamp": "2026-09-08T16:23:20.155141+00:00",
+  "duration_seconds": 0.09,
+  "num_families": 4,
+  "variants_per_family": 2,
+  "repeats": 3,
+  "seed": 42
+}

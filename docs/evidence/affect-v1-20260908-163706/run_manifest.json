@@ -1,0 +1,9 @@
+{
+  "run_id": "affect-v1-20260908-163706",
+  "mode": "deterministic",
+  "provider": "engine_pure",
+  "model": "deterministic_fixture",
+  "timestamp": "2026-09-08T16:37:06.290851+00:00",
+  "scenario_families_count": 12,
+  "seed": 42
+}

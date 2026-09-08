@@ -6,7 +6,7 @@ import sqlite3
 
 from aura_backend.storage.models import StorageFailure
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _MIGRATION_1 = """
 CREATE TABLE memory_scopes (
@@ -241,6 +241,41 @@ CREATE TABLE legacy_import_evidence (
 ) STRICT;
 """
 
+_MIGRATION_3 = """
+CREATE TABLE affect_heads (
+    scope_id TEXT PRIMARY KEY REFERENCES memory_scopes(scope_id),
+    revision INTEGER NOT NULL CHECK(revision >= 0),
+    config_version TEXT NOT NULL,
+    config_hash TEXT NOT NULL,
+    fast_state_json TEXT NOT NULL,
+    mood_state_json TEXT NOT NULL,
+    last_transition_id TEXT,
+    updated_at TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE affect_transitions (
+    transition_id TEXT PRIMARY KEY,
+    scope_id TEXT NOT NULL REFERENCES memory_scopes(scope_id),
+    revision INTEGER NOT NULL CHECK(revision > 0),
+    turn_id TEXT NOT NULL,
+    prior_revision INTEGER NOT NULL CHECK(prior_revision >= 0),
+    idempotency_key TEXT NOT NULL,
+    input_digest TEXT NOT NULL,
+    appraisal_json TEXT NOT NULL,
+    pre_state_json TEXT NOT NULL,
+    after_state_json TEXT NOT NULL,
+    policy_json TEXT NOT NULL,
+    outcome_disposition TEXT NOT NULL,
+    config_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(scope_id, revision),
+    UNIQUE(turn_id),
+    FOREIGN KEY(turn_id, scope_id) REFERENCES turns(turn_id, scope_id) ON DELETE CASCADE
+) STRICT;
+CREATE INDEX affect_transitions_scope_rev
+    ON affect_transitions(scope_id, revision);
+"""
+
 
 def apply_migrations(connection: sqlite3.Connection) -> None:
     """Apply ordered forward migrations to ``connection``."""
@@ -258,6 +293,14 @@ def apply_migrations(connection: sqlite3.Connection) -> None:
         try:
             connection.executescript(_MIGRATION_2)
             connection.execute("PRAGMA user_version = 2")
+            current = 2
+        except sqlite3.Error as error:
+            raise StorageFailure("schema_migration_failed") from error
+    if current == 2:
+        try:
+            connection.executescript(_MIGRATION_3)
+            connection.execute("PRAGMA user_version = 3")
+            current = 3
         except sqlite3.Error as error:
             raise StorageFailure("schema_migration_failed") from error
 

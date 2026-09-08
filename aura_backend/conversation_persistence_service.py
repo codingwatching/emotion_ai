@@ -58,6 +58,8 @@ class ConversationExchange:
     session_id: str = ""
     timestamp: datetime | None = None
     idempotency_key: str | None = None
+    affect_transition: Any | None = None
+    expected_state_revision: int | None = None
 
     def __post_init__(self) -> None:
         if self.timestamp is None:
@@ -253,6 +255,8 @@ class ConversationPersistenceService:
                     or getattr(exchange.ai_memory, "cognitive_state", None),
                 ),
             ),
+            affect_transition=exchange.affect_transition,
+            expected_state_revision=exchange.expected_state_revision,
         )
 
     @staticmethod

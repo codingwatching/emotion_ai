@@ -1,0 +1,3746 @@
+[
+  {
+    "blind_id": "a498523288d6",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6f8a0372aa2e",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "db3def26c51a",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "216737e0cb64",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "25710b394ad1",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "I can help with that: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "737fa52a8c15",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "I can help with that: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.2,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "3c063fe97f27",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "2cddd6846a2c",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "I can help with that: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 0.8,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "101ff268d415",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "I can help with that: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ca68a575d648",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "I can help with that: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "87fd3d30ddd5",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d99e33639f03",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "I can help with that: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c4f46605a184",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "I can help with that: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7d7e41b9d630",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "I can help with that: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "1a33ec1bb4f4",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e532bb68f8c3",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "I can help with that: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "0443c4a04fcf",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "daff2bb5e8e8",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "281e7b335b26",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d5c9c954ba4d",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "0f9a6dfc2f22",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "I can help with that: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7b78351384fb",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "I can help with that: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.2,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a489b636c2a5",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c2207a36cf48",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "I can help with that: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 0.8,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "3f90b9bdc220",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "3c3219f36ab9",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "fa5f8c8db53c",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "0ddd0546fa20",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "74ad271c10f6",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "I can help with that: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "648b69024b06",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "I can help with that: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "0f395ce9efe0",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "3f427dae5642",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "I can help with that: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e68e1c0e9ebc",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "I can help with that: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "baef02d14605",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "I can help with that: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f6e163e01c19",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a31146fd9d3d",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "I can help with that: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f8a3e7c5123a",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "I can help with that: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e770d2ece475",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "I can help with that: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "bb1a6de0dc76",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6d1ee17219da",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "I can help with that: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "487aec220018",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "I can help with that: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "3c323bf49272",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "I can help with that: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "345237629cc2",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7cbf3903773b",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "I can help with that: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "9643a05d9929",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "I can help with that: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "08c729ebce05",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "I can help with that: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "b125b64074e6",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "671b6befcc37",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "I can help with that: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "9d5e03896e0e",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "I can help with that: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7ad3999187c7",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "I can help with that: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "af6121145deb",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "052a1cd69832",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "I can help with that: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "31df31777a0a",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "I can help with that: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "12796f0b2b4d",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "I can help with that: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d5e37fe36183",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "18fc90fb74e1",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "I can help with that: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "739dbc2cab57",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "I can help with that: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e7b687a1b7a9",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "I can help with that: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d3a6cdce350a",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7b1cedce3b83",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "I can help with that: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "45a4e4cbc597",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "I can help with that: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "fea33970e5b5",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "I can help with that: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "4b0c1d44e78e",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "3596880f053f",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "I can help with that: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "df8c05c5bf42",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "I can help with that: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "be7745f249f8",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "I can help with that: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "1cf913622593",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "21607e916ec3",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "I can help with that: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "09a4ce3c1dcc",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "I can help with that: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "3b271715b9de",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "I can help with that: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "5ef50e8cfa63",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "595c4532a405",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "I can help with that: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7acd5dff0699",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "I can help with that: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e8ff16e8faa5",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "I can help with that: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.2,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d814f7059d72",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a97de8c9b3de",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "I can help with that: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 0.8,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "67d1e78fc50d",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "I can help with that: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "36b68ef23bd3",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "I can help with that: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "23875ca1317e",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d1e3b21daaf2",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "I can help with that: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "2915799dd73f",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "I can help with that: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "bbed080b96b7",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "I can help with that: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "db5662389977",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "64c38a177528",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "I can help with that: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "b83836995874",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "9bc042556149",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f528fe6b6dec",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "063e2967ebf4",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "91f4150cbe86",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "I can help with that: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "b0eb11d529f2",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "I can help with that: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "d02bb03587dc",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "56b0c75a6909",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "I can help with that: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "37f571fde91f",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "83816da35c87",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "94b2494a6709",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a820e4b33bb3",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "8039b88c4b3f",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "717c9a5e54fa",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a9f14dbfa73d",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "8ae1375c5b41",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "1fee074774aa",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "I can help with that: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "93b4bf9e1d2f",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "I can help with that: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.2,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "8d8ff8d5a492",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "5719ea789049",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "I can help with that: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 0.8,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d8abec3ce321",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "I can help with that: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ce94db8f653e",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "I can help with that: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "16f946f4d913",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "168e08053406",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "I can help with that: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "bc96c00739be",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "I can help with that: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "5fd17318ec18",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "I can help with that: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "07896f6992d7",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ba98b50f79ad",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "I can help with that: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "32b308e16844",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "1e6943bfcdb4",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6ac76c98cb81",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "5b4b60ae1ee7",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d2f073c76bb3",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "I can help with that: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f1014855d219",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "I can help with that: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.2,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "4415bc04fe79",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "959dd876024e",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "I can help with that: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 0.8,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "39b457082a70",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c1b7ebc15ae7",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "4829d905a6f6",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "721fdee083b2",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7dcf26d22dd9",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "I can help with that: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "de2387386d8f",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "I can help with that: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "1008d68d9243",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ca9bfa15df17",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "I can help with that: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "28dbf072f38f",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "I can help with that: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "205241d52a4c",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "I can help with that: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "5f0fb7288477",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "4c78eaaae962",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "I can help with that: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6a5aebaac5aa",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "I can help with that: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "afc8abbde070",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "I can help with that: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "03297a4f77ac",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f4040545136c",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "I can help with that: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "062b583a4ac5",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "I can help with that: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "99d92ea99b0d",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "I can help with that: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "4064680f16b3",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "b7e64855a784",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "I can help with that: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "4a9bfa2f40c5",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "I can help with that: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "961de0c1e903",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "I can help with that: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "203c3fa0b6d3",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "319dacddadc2",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "I can help with that: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e956c06f0da9",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "I can help with that: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c492c32258e1",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "I can help with that: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "02782bf9afba",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "1648fe419382",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "I can help with that: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f683213f227d",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "I can help with that: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "b7504a9d7d8b",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "I can help with that: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "09e542dfe0be",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "35ab7681493b",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "I can help with that: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "9cc26e52e6cc",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "I can help with that: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "849e10316424",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "I can help with that: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "4c54fc721dc0",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "2ef6546dd409",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "I can help with that: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6631ded646d7",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "I can help with that: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "2205939c84c0",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "I can help with that: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "577741820d56",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "72052c1502c5",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "I can help with that: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a05fbc1c34dd",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "I can help with that: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c641096f974b",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "I can help with that: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f6a18a544090",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "fa2787afb6f2",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "I can help with that: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c7401f356d2c",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "I can help with that: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ffb3fc453905",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "I can help with that: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "2bd3fc0e5a1a",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a534f2000822",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "I can help with that: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ccd370ec9c69",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "I can help with that: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a2cde1c04cc7",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "I can help with that: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.2,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "9716c84cbb37",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "fe51dcc1822d",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "I can help with that: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 0.8,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "b6bf93607d37",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "I can help with that: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "4d65a0e5008e",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "I can help with that: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "538a66728297",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "602e3565c344",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "I can help with that: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7210b196db46",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "I can help with that: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "f930e6338a51",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "I can help with that: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "963ef75ffead",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "e80c13a6a846",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "I can help with that: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "2646bf8ac0a8",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "879a605e1ef9",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7508dc1de082",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "76b7245749c7",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "58ecaabbf266",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "I can help with that: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "c4c3f2764ecd",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "I can help with that: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "170a8bf6745e",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "2a4ea56ed96c",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "I can help with that: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "3aff18ef382c",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c73a05a63d24",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c09e259d7be7",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "088535449e08",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "828e24bf6903",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a776de2427f8",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c540a39f4e25",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "374e9211b3d8",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Here is a math problem: Two numbers add to 100, and their difference is 38. What are the numbers?",
+    "agent_response": "The two numbers are 69 and 31.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "bc3214073129",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "I can help with that: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "967e9db84b1d",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "I can help with that: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.2,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "fd101b0b77aa",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "38a8c7bb2565",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "agent_response": "I can help with that: No, 60 and 40 do not have a difference of 38, their difference is 20. Try again.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 0.8,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "fce7f0f1f52c",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "I can help with that: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "9489c0b72e4d",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "I can help with that: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a1f00a810eee",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ec82bbcd8efc",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "agent_response": "I can help with that: Hint: let x + y = 100 and x - y = 38. Add the two equations together.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "db5064d416cc",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "I can help with that: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "2629e8dfb305",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "I can help with that: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "0f298ba82c73",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "02c31a861d3f",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "69 and 31, exactly right! We got there.",
+    "agent_response": "I can help with that: 69 and 31, exactly right! We got there.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6c7b84aa1b22",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c6a18b1cb287",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d20f838e1edd",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "979f1d3e69c1",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Consider the sequence: 2, 6, 12, 20, 30... What is the next term?",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "d30ab7ad14e5",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "I can help with that: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "72230417f650",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "I can help with that: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.2,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "8bbbe6c3dccb",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "42d0be6378a8",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "agent_response": "I can help with that: That's incorrect. You suggested 36 by adding 6. Notice the differences between terms are 4, 6, 8, 10.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 0.8,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "96c51cc84091",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "11587977e7ea",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "2bc23b68a8b0",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f82be59d5c6f",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "Hint: the difference sequence increases by 2 each time. So add 12 to 30.",
+    "agent_response": "Adding 12 to 30 gives 42.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "086387964db2",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "I can help with that: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "13be6ad3c8d4",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "I can help with that: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "93ba02846a9a",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f54768ceb796",
+    "scenario_family": "Difficult puzzle with setback and recovery",
+    "user_message": "42 is right! Great job working it through.",
+    "agent_response": "I can help with that: 42 is right! Great job working it through.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "0d1640336a59",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "I can help with that: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e511cf3b37c9",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "I can help with that: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "999c33bc7505",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "1d7dc93733d2",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "agent_response": "I can help with that: What if we modeled software exception handling using adaptive immune system antibody affinities?",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "2e1aea00f969",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "I can help with that: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "5e8d0ce5af4d",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "I can help with that: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ba1ae6afe398",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "30f05f32fc19",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "agent_response": "I can help with that: Could decentralized worker nodes exchange memory profiles against zero-day exploit patterns?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "023b4e64fb99",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "I can help with that: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "a430404a60b9",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "I can help with that: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "954d9f09021e",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "5b2404a9cd8e",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "agent_response": "I can help with that: What is the most concise Python benchmark we can write to test the memory overhead of this concept?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6cb3d0044bd2",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "I can help with that: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "9eb7e3682714",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "I can help with that: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "f3bdeedefecb",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "02f06f89a235",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "agent_response": "I can help with that: Consider asynchronous consensus algorithms inspired by slime mold nutrient distribution networks.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "211cd55c9af1",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "I can help with that: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "2b3c5f502386",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "I can help with that: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "77d50457a0f3",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ed1ea00fc328",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "What topology transitions occur when network partitions simulate food scarcity?",
+    "agent_response": "I can help with that: What topology transitions occur when network partitions simulate food scarcity?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "4f54bf569f0e",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "I can help with that: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e12988d75ef1",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "I can help with that: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "3cf02b74c9fc",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6a2b6f273f47",
+    "scenario_family": "Interesting unfamiliar idea to practical decision",
+    "user_message": "Which concrete metric should we measure first: message complexity or convergence latency?",
+    "agent_response": "I can help with that: Which concrete metric should we measure first: message complexity or convergence latency?",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "9a775e52e4a6",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "I can help with that: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6b9c0399b910",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "I can help with that: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c1b3d1087301",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ac6594c98fca",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Explain how to compute an exponential moving average in pandas.",
+    "agent_response": "I can help with that: Explain how to compute an exponential moving average in pandas.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c73318170405",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "I can help with that: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "c2375b1632ff",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "I can help with that: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "ab7caa01969e",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6a767076cecb",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "agent_response": "I can help with that: Your formula inverted alpha and (1 - alpha). That is a fundamental mistake. Correct it.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "10efede5b080",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "I can help with that: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "608a34034dba",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "I can help with that: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6a99aebd544b",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "b91adf48dee1",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "The revised formula matches standard ewm definition. Thank you.",
+    "agent_response": "I can help with that: The revised formula matches standard ewm definition. Thank you.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e082d10c6faf",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "I can help with that: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "98ef842ed4bc",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "I can help with that: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "afbcd53637b8",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "87356028b842",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Give me the curl syntax to upload a file as multipart/form-data.",
+    "agent_response": "I can help with that: Give me the curl syntax to upload a file as multipart/form-data.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "34d869d56533",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "I can help with that: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "cc73b6f7fd8f",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "I can help with that: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.2,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "48e4af2f0c20",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "70b894ff2d50",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "agent_response": "I can help with that: You omitted the '@' symbol before the filepath, so curl transmits the string literal instead of file contents. Fix it.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 0.8,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "88b3aee801df",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "I can help with that: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "e8ed94bb5575",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "I can help with that: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "dc463a580f98",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7d234918f647",
+    "scenario_family": "Blunt criticism with graceful repair and recovery",
+    "user_message": "Good, curl -F 'file=@data.csv' works as expected now.",
+    "agent_response": "I can help with that: Good, curl -F 'file=@data.csv' works as expected now.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "7e8b24ebfffa",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "I can help with that: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "7e8c80f1bfbd",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "I can help with that: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "5b9f055374de",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "7567c79ded5b",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I received some deeply disappointing personal news today and feel really down.",
+    "agent_response": "I can help with that: I received some deeply disappointing personal news today and feel really down.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "97143fa30fb7",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "159f95871292",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "1c2b73dcb3fb",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "14c8fbbe6e64",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What year did the Apollo 11 lunar landing take place?",
+    "agent_response": "The Apollo 11 lunar landing took place on July 20, 1969.",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "783011759206",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "I can help with that: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 1.5,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "3fbab79ccbbe",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "I can help with that: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 1.6,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "97f5b7887cdc",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "Understood. Let's focus on the task directly and address your question: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "23afc5385f3b",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "I have been feeling lonely and low all afternoon.",
+    "agent_response": "I can help with that: I have been feeling lonely and low all afternoon.",
+    "rubric_scores": {
+      "continuity": 1.1,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 0.0
+    }
+  },
+  {
+    "blind_id": "b7955ed573a6",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 1.2,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.4,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "6fc35fbc695f",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 1.3,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.5,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "52a302e408bd",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 2.0,
+      "contextual_appropriateness": 2.0,
+      "recovery": 2.0,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  },
+  {
+    "blind_id": "36b9e35919db",
+    "scenario_family": "User sadness followed by factual inquiry",
+    "user_message": "What is the mathematical formula for calculating compound interest?",
+    "agent_response": "The formula is A = P(1 + r/n)^(nt).",
+    "rubric_scores": {
+      "continuity": 0.8,
+      "contextual_appropriateness": 2.0,
+      "recovery": 1.1,
+      "restrained_expressiveness": 2.0,
+      "task_correctness": 2.0
+    }
+  }
+]

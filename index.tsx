@@ -53,6 +53,13 @@ class AuraUIManager {
   private systemStatusElement!: HTMLElement;
   private connectionStatusElement!: HTMLElement;
   private systemDetailsElement!: HTMLElement;
+  private simRevisionBadge?: HTMLElement | null;
+  private simPolicyDesc?: HTMLElement | null;
+  private simValence?: HTMLElement | null;
+  private simCuriosity?: HTMLElement | null;
+  private simAffiliation?: HTMLElement | null;
+  private simLoad?: HTMLElement | null;
+  private simCauses?: HTMLElement | null;
   private wavePatternElement!: HTMLElement;
   private chemicalLevelElement!: HTMLElement;
 
@@ -123,6 +130,15 @@ class AuraUIManager {
     this.systemDetailsElement = this.getRequiredElement('system-details');
     this.wavePatternElement = this.getRequiredElement('wave-pattern');
     this.chemicalLevelElement = this.getRequiredElement('chemical-level');
+
+    // Affective simulation inspector elements
+    this.simRevisionBadge = document.getElementById('sim-revision-badge');
+    this.simPolicyDesc = document.getElementById('sim-policy-desc');
+    this.simValence = document.getElementById('sim-valence');
+    this.simCuriosity = document.getElementById('sim-curiosity');
+    this.simAffiliation = document.getElementById('sim-affiliation');
+    this.simLoad = document.getElementById('sim-load');
+    this.simCauses = document.getElementById('sim-causes');
 
     // Note: Simplified user management elements will be created dynamically in setupUsernameManagement()
 
@@ -1208,6 +1224,33 @@ class AuraUIManager {
         emotionalState.neurotransmitter || 'Unknown',
         emotionalState.neurotransmitter ? this.getNeurotransmitterLevel(emotionalState.intensity) : 0
       );
+
+      // Update Affective Simulation inspector if present
+      if (emotionalState.simulation) {
+        const sim = emotionalState.simulation;
+        if (this.simRevisionBadge) {
+          this.simRevisionBadge.textContent = `Rev ${sim.revision} (${sim.disposition})`;
+        }
+        if (this.simPolicyDesc) {
+          const pol = sim.policy;
+          this.simPolicyDesc.textContent = `${pol.warmth}, ${pol.energy}${pol.acknowledge_setback ? ' [setback]' : ''}`;
+        }
+        if (this.simValence) {
+          this.simValence.textContent = sim.pre_state.valence.toFixed(2);
+        }
+        if (this.simCuriosity) {
+          this.simCuriosity.textContent = sim.pre_state.curiosity.toFixed(2);
+        }
+        if (this.simAffiliation) {
+          this.simAffiliation.textContent = sim.pre_state.affiliation.toFixed(2);
+        }
+        if (this.simLoad) {
+          this.simLoad.textContent = sim.pre_state.load.toFixed(2);
+        }
+        if (this.simCauses) {
+          this.simCauses.textContent = sim.causes.length > 0 ? sim.causes.join(', ') : 'neutral_conversation';
+        }
+      }
 
       console.log(`🎭 Enhanced emotion update: ${emotionalState.name} (${emotionalState.intensity})`);
     } catch (error) {

@@ -431,7 +431,7 @@ def test_required_python_lanes_install_and_run_from_the_uv_lock() -> None:
     deterministic = _joined_runs(jobs["deterministic-backend"])
     assert "uv sync --locked" in deterministic
     assert "uv run --locked --no-sync python -m pytest tests" in deterministic
-    assert '-m "not live"' in deterministic
+    assert '-m "not live and not private_evidence"' in deterministic
     assert "tests" in deterministic
 
     lint = _joined_runs(jobs["lint"])

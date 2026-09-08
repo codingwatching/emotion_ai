@@ -10,6 +10,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from aura_backend.storage.connection import FaultHook, append_turn_atomic, open_database
 from aura_backend.storage.models import (
@@ -1113,3 +1114,139 @@ class StorageRepository:
             status=status,
             projection_reconciliation_required=projection != "complete",
         )
+
+    def get_affect_head(self, scope_id: str) -> Any | None:
+        """Return the current committed affect head for a scope, if present."""
+        from aura_backend.affect.models import AffectState, AffectVector
+
+        connection = open_database(self.database_path)
+        try:
+            row = connection.execute(
+                """
+                SELECT revision, config_version, config_hash, fast_state_json,
+                       mood_state_json, last_transition_id, updated_at
+                FROM affect_heads WHERE scope_id = ?
+                """,
+                (scope_id,),
+            ).fetchone()
+            if not row:
+                return None
+            rev, cfg_ver, cfg_hash, fast_json, mood_json, trans_id, updated_at = row
+            fast_dict = json.loads(fast_json)
+            mood_dict = json.loads(mood_json)
+            try:
+                from datetime import datetime
+                ts = datetime.fromisoformat(updated_at).timestamp()
+            except Exception:
+                ts = 0.0
+            return AffectState(
+                schema_version=1,
+                config_version=cfg_ver,
+                config_hash=cfg_hash,
+                scope_id=scope_id,
+                revision=int(rev),
+                last_event_time=ts,
+                fast_state=AffectVector.from_dict(fast_dict),
+                mood_state=AffectVector.from_dict(mood_dict),
+                source_transition_id=trans_id,
+            )
+        finally:
+            connection.close()
+
+    def get_affect_transition(self, scope_id: str, revision: int) -> dict[str, Any] | None:
+        """Return a specific committed affect transition by scope and revision."""
+        connection = open_database(self.database_path)
+        try:
+            row = connection.execute(
+                """
+                SELECT transition_id, revision, turn_id, idempotency_key, prior_revision,
+                       input_digest, appraisal_json, pre_state_json, after_state_json,
+                       policy_json, outcome_disposition, config_hash, created_at
+                FROM affect_transitions WHERE scope_id = ? AND revision = ?
+                """,
+                (scope_id, revision),
+            ).fetchone()
+            if not row:
+                return None
+            return {
+                "transition_id": row[0],
+                "scope_id": scope_id,
+                "revision": row[1],
+                "turn_id": row[2],
+                "idempotency_key": row[3],
+                "prior_revision": row[4],
+                "input_digest": row[5],
+                "appraisal": json.loads(row[6]),
+                "pre_state": json.loads(row[7]),
+                "after_state": json.loads(row[8]),
+                "policy": json.loads(row[9]),
+                "outcome_disposition": row[10],
+                "config_hash": row[11],
+                "created_at": row[12],
+            }
+        finally:
+            connection.close()
+
+    def find_replay_turn(
+        self,
+        scope_id: str,
+        session_id: str,
+        user_content: str,
+        idempotency_key: str,
+    ) -> tuple[TurnOutcome | None, str | None, dict[str, Any] | None]:
+        """Check for existing committed turn before generation."""
+        connection = open_database(self.database_path)
+        try:
+            row = connection.execute(
+                """
+                SELECT turn_id, request_hash_version, request_hash
+                FROM turns
+                WHERE scope_id = ? AND idempotency_key = ?
+                """,
+                (scope_id, idempotency_key),
+            ).fetchone()
+            if row is None:
+                return None, None, None
+            turn_id, hash_version, stored_request_hash = row
+            curr_hash = canonical_request_hash(scope_id, session_id, user_content)
+            if int(hash_version) != 1 or str(stored_request_hash) != curr_hash:
+                conflict = IdempotencyConflict(
+                    scope_id=scope_id,
+                    idempotency_key=idempotency_key,
+                    existing_turn_id=str(turn_id),
+                )
+                return conflict, None, None
+
+            persisted = self._load_persisted_turn(
+                connection, scope_id, idempotency_key, status=TurnWriteStatus.REPLAYED
+            )
+            resp_row = connection.execute(
+                "SELECT content FROM events WHERE turn_id = ? AND actor = 'aura'",
+                (str(turn_id),),
+            ).fetchone()
+            aura_resp = str(resp_row[0]) if resp_row else ""
+
+            aff_row = connection.execute(
+                """
+                SELECT revision, appraisal_json, pre_state_json, after_state_json,
+                       policy_json, outcome_disposition
+                FROM affect_transitions WHERE turn_id = ?
+                """,
+                (str(turn_id),),
+            ).fetchone()
+            simulation_payload = None
+            if aff_row:
+                simulation_payload = {
+                    "schema_version": 1,
+                    "scope_id": scope_id,
+                    "revision": aff_row[0],
+                    "appraisal": json.loads(aff_row[1]),
+                    "pre_state": json.loads(aff_row[2]),
+                    "post_state": json.loads(aff_row[3]),
+                    "policy": json.loads(aff_row[4]),
+                    "disposition": aff_row[5],
+                    "replayed": True,
+                }
+            return persisted, aura_resp, simulation_payload
+        finally:
+            connection.close()

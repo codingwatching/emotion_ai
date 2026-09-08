@@ -236,6 +236,7 @@ def _install_route_collaborators(
     monkeypatch.setattr(main, "memvid_archival", None)
     monkeypatch.setattr(main, "autonomic_system", None)
     monkeypatch.setattr(main, "db_protection_service", None)
+    monkeypatch.setattr(main, "affect_service", None)
     main.active_chat_sessions.clear()
 
 
@@ -310,6 +311,65 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
                 "intensity": "Low",
                 "evidence": [ANSWER_SENTINEL],
                 "reason": None,
+            },
+            "simulation": {
+                "schema_version": 1,
+                "scope_id": "synthetic-user",
+                "revision": 1,
+                "pre_state": {
+                    "valence": 0.1,
+                    "arousal": 0.3,
+                    "novelty": 0.0,
+                    "affiliation": 0.65,
+                    "control": 0.75,
+                    "curiosity": 0.6,
+                    "load": 0.1,
+                },
+                "post_state": {
+                    "valence": 0.1,
+                    "arousal": 0.3,
+                    "novelty": 0.0,
+                    "affiliation": 0.65,
+                    "control": 0.75,
+                    "curiosity": 0.6,
+                    "load": 0.1,
+                },
+                "mood_state": {
+                    "valence": 0.1,
+                    "arousal": 0.3,
+                    "novelty": 0.0,
+                    "affiliation": 0.65,
+                    "control": 0.75,
+                    "curiosity": 0.6,
+                    "load": 0.1,
+                },
+                "policy": {
+                    "warmth": "warm",
+                    "energy": "balanced",
+                    "acknowledge_setback": False,
+                    "recovery_step": False,
+                    "exploration": "balanced",
+                    "reflection": "defer",
+                    "input_state": {
+                        "valence": 0.1,
+                        "arousal": 0.3,
+                        "novelty": 0.0,
+                        "affiliation": 0.65,
+                        "control": 0.75,
+                        "curiosity": 0.6,
+                        "load": 0.1,
+                    },
+                },
+                "causes": [],
+                "disposition": "unknown",
+                "channels": {
+                    "dopamine_like": 0.575,
+                    "norepinephrine_like": 0.15,
+                    "acetylcholine_like": 0.1,
+                    "serotonin_like": 0.75,
+                    "gaba_like": 0.75,
+                    "cortisol_like": 0.1,
+                },
             },
         },
         "has_thinking": False,

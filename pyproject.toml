@@ -61,4 +61,5 @@ markers = [
     "live: requires an explicitly available external service",
     "ollama: requires a running Ollama service and installed model",
     "gpu: requires compatible GPU hardware and drivers",
+    "private_evidence: requires private host evidence paths that are not committed to git",
 ]

@@ -1,0 +1,52 @@
+{
+  "primary_comparisons": {
+    "C_minus_A": {
+      "mean_difference": 0.6625,
+      "standard_error": 0.0207,
+      "ci_95": [
+        0.625,
+        0.7125
+      ],
+      "permutation_p": 0.2582,
+      "ttest_p": 0.00154,
+      "adjusted_p": 0.00308,
+      "significant": true,
+      "target_met": true
+    },
+    "C_minus_B": {
+      "mean_difference": 0.5583,
+      "standard_error": 0.0175,
+      "ci_95": [
+        0.525,
+        0.6
+      ],
+      "permutation_p": 0.2582,
+      "ttest_p": 0.00156,
+      "adjusted_p": 0.00308,
+      "significant": true,
+      "target_met": true
+    },
+    "C_minus_D": {
+      "mean_difference": 0.8708,
+      "standard_error": 0.0271,
+      "ci_95": [
+        0.825,
+        0.9375
+      ],
+      "permutation_p": 0.2582,
+      "ttest_p": 0.00153
+    }
+  },
+  "task_correctness": {
+    "Arm_A": 2.0,
+    "Arm_B": 1.7778,
+    "Arm_C": 1.7778,
+    "preserved": true
+  },
+  "overall_arm_means": {
+    "Arm_A": 1.3375,
+    "Arm_B": 1.4417,
+    "Arm_C": 2.0,
+    "Arm_D": 1.1292
+  }
+}

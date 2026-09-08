@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import sqlite3
 import hashlib
+import json
 import math
+import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 
@@ -189,6 +190,87 @@ def append_turn_atomic(
                     (memory.memory_id, event_id, command.scope_id),
                 )
                 _fault(fault_hook, f"after_source_{memory_index}_{source_index}")
+
+        if command.affect_transition is not None:
+            trans = command.affect_transition
+            cursor = connection.execute(
+                "SELECT revision FROM affect_heads WHERE scope_id = ?",
+                (command.scope_id,),
+            )
+            row = cursor.fetchone()
+            current_rev = int(row[0]) if row else 0
+            expected_rev = (
+                command.expected_state_revision
+                if command.expected_state_revision is not None
+                else trans.prior_revision
+            )
+            if current_rev != expected_rev:
+                raise StorageFailure(
+                    "affect_revision_conflict",
+                    identifier=f"{current_rev}!={expected_rev}",
+                )
+
+            mood_json = (
+                json.dumps(trans.next_mood.to_dict(), sort_keys=True)
+                if trans.next_mood
+                else json.dumps(trans.after_state.to_dict(), sort_keys=True)
+            )
+
+            connection.execute(
+                """
+                INSERT INTO affect_transitions(
+                    transition_id, scope_id, revision, turn_id, prior_revision,
+                    idempotency_key, input_digest, appraisal_json, pre_state_json,
+                    after_state_json, policy_json, outcome_disposition, config_hash,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    trans.transition_id,
+                    command.scope_id,
+                    trans.revision,
+                    command.turn_id,
+                    trans.prior_revision,
+                    trans.idempotency_key,
+                    trans.input_digest,
+                    json.dumps(trans.accepted_appraisal, sort_keys=True),
+                    json.dumps(trans.pre_state.to_dict(), sort_keys=True),
+                    json.dumps(trans.after_state.to_dict(), sort_keys=True),
+                    json.dumps(trans.rendered_policy.to_dict(), sort_keys=True),
+                    trans.outcome_disposition,
+                    trans.config_hash,
+                    command.occurred_at,
+                ),
+            )
+            _fault(fault_hook, "after_affect_transition")
+
+            connection.execute(
+                """
+                INSERT INTO affect_heads(
+                    scope_id, revision, config_version, config_hash,
+                    fast_state_json, mood_state_json, last_transition_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(scope_id) DO UPDATE SET
+                    revision=excluded.revision,
+                    config_version=excluded.config_version,
+                    config_hash=excluded.config_hash,
+                    fast_state_json=excluded.fast_state_json,
+                    mood_state_json=excluded.mood_state_json,
+                    last_transition_id=excluded.last_transition_id,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    command.scope_id,
+                    trans.revision,
+                    "affect-v1",
+                    trans.config_hash,
+                    json.dumps(trans.after_state.to_dict(), sort_keys=True),
+                    mood_json,
+                    trans.transition_id,
+                    command.occurred_at,
+                ),
+            )
+            _fault(fault_hook, "after_affect_head")
 
         if before_commit is not None:
             before_commit(connection)

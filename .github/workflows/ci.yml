@@ -25,7 +25,7 @@ jobs:
       - name: Synchronize the Python lock
         run: uv sync --locked --dev
       - name: Run all deterministic Phase 1 and Phase 2 tests
-        run: uv run --locked --no-sync python -m pytest tests -q -m "not live"
+        run: uv run --locked --no-sync python -m pytest tests -q -m "not live and not private_evidence"
 
   lint:
     name: lint

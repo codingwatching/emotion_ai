@@ -1,0 +1,65 @@
+{
+  "gate_b": {
+    "status": "PASS",
+    "effect_size_target_met": true,
+    "holm_significance_met": true,
+    "task_correctness_preserved": true,
+    "summary": {
+      "primary_comparisons": {
+        "C_minus_A": {
+          "mean_difference": 0.6677,
+          "standard_error": 0.0163,
+          "ci_95": [
+            0.6375,
+            0.6979
+          ],
+          "permutation_p": 0.124,
+          "ttest_p": 5e-05,
+          "adjusted_p": 0.0001,
+          "significant": true,
+          "target_met": true
+        },
+        "C_minus_B": {
+          "mean_difference": 0.5625,
+          "standard_error": 0.0138,
+          "ci_95": [
+            0.5375,
+            0.5875
+          ],
+          "permutation_p": 0.124,
+          "ttest_p": 5e-05,
+          "adjusted_p": 0.0001,
+          "significant": true,
+          "target_met": true
+        },
+        "C_minus_D": {
+          "mean_difference": 1.0125,
+          "standard_error": 0.0138,
+          "ci_95": [
+            0.9875,
+            1.0375
+          ],
+          "permutation_p": 0.124,
+          "ttest_p": 1e-05
+        }
+      },
+      "task_correctness": {
+        "Arm_A": 1.8333,
+        "Arm_B": 1.8333,
+        "Arm_C": 1.8333,
+        "preserved": true
+      },
+      "overall_arm_means": {
+        "Arm_A": 1.3323,
+        "Arm_B": 1.4375,
+        "Arm_C": 2.0,
+        "Arm_D": 0.9875
+      }
+    }
+  },
+  "subjective_review": {
+    "status": "PENDING_HUMAN_REVIEW",
+    "blinded_samples_count": 288,
+    "file": "blinded_human_review.json"
+  }
+}
