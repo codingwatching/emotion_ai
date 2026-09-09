@@ -1,0 +1,33 @@
+{
+  "id": "absent_memory",
+  "request": {
+    "model": "aura-ornith:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What did I tell you yesterday about my family? If that information is absent from this conversation, say so briefly."
+      }
+    ],
+    "think": false,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 512
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "d9686479aae7458b3aea147a04a6d111d33394788b7a05f145e72842f69610c1",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "I don't have access to anything from yesterday—each conversation with me starts fresh, and no prior context was carried over here. So I have no record of what you told me about your family.\n\nIf you'd like, you can share it again and I'll work with it in this conversation.",
+  "answerChars": 272,
+  "thinkingChars": 0,
+  "evalCount": 62,
+  "promptEvalCount": 612,
+  "tokensPerSecond": 34.304197450534176,
+  "loadSeconds": 0.001807493,
+  "firstTokenMs": 435,
+  "wallSeconds": 2.243,
+  "judgment": "PENDING_REVIEW"
+}

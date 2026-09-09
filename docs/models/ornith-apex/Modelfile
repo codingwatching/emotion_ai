@@ -1,0 +1,17 @@
+# Place this file alongside the already-downloaded GGUF to import it.
+# No requantization, custom persona, word penalties, or template replacement.
+FROM ./Ornith-1.5-35B-A3B-APEX-MTP-Quality.gguf
+FROM ./mmproj.gguf
+
+# Publisher's recommended general-task sampling settings.
+PARAMETER temperature 0.6
+PARAMETER top_p 0.95
+PARAMETER top_k 20
+
+# Context includes prompt/history and generated reasoning plus the final answer.
+# Explicit finite output budget; this is a local starting profile, not a benchmark.
+PARAMETER num_ctx 16384
+PARAMETER num_predict 8192
+
+# Establish ordinary decoding before separately validating speculative MTP.
+PARAMETER draft_num_predict 0

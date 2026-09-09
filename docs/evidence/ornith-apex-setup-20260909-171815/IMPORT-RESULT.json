@@ -1,0 +1,48 @@
+{
+  "kind": "local model installation diagnostic, not an inference or comparative evaluation",
+  "date": "2026-09-09",
+  "ollama_version": "0.33.3",
+  "git_revision": "e5ec96412ac99928723e9bb23b4f274870d92817",
+  "intended_model": "ornith-1.5-apex:35b",
+  "status": "BLOCKED_DISK_SPACE",
+  "model_tag_registered": false,
+  "live_inference_calls": 0,
+  "probe_unit_tests": { "passed": 6, "failed": 0 },
+  "sources": [
+    {
+      "file": "Ornith-1.5-35B-A3B-APEX-MTP-Quality.gguf",
+      "bytes": 23718411552,
+      "sha256": "c83373e4c502c6d4929339406ffbb1f442598b153a3ade02b628752e00a282fd",
+      "matches_publisher": true
+    },
+    {
+      "file": "mmproj.gguf",
+      "bytes": 899283200,
+      "sha256": "e277123529451fbcff6d880ad5bd7ada999f9d5e6339ba3639d06c5cef4763b1",
+      "matches_publisher": true
+    }
+  ],
+  "attempts": [
+    {
+      "configuration": "single FROM model only",
+      "outcome": "client interrupted before import completion",
+      "correction": "Subsequent service-log inspection showed tensor-copy activity behind the parsing GGUF status; a parsing hang was not established."
+    },
+    {
+      "configuration": "two FROM entries: model and matching projector; temperature 0.6, top_p 0.95, top_k 20, num_ctx 16384, num_predict 8192, draft_num_predict 0",
+      "command": "ollama create ornith-1.5-apex:35b -f Modelfile",
+      "outcome": "exit 1 after copying 753 tensors and starting verification",
+      "error": "failed to validate GGUF with llama-quantize without compatibility patches: write /usr/share/ollama/.ollama/models/blobs/sha256-2867920186: no space left on device",
+      "temporary_files_removed_by_ollama": ["COPY2699179637", "sha256-2867920186"]
+    }
+  ],
+  "after_cleanup": {
+    "system_partition_available_bytes": 39684231168,
+    "home_partition_available_bytes": 67026743296,
+    "source_downloads_intact": true,
+    "uploaded_source_blobs_retained_for_retry": true,
+    "existing_ornith_tags": []
+  },
+  "next_action": "Free approximately 15 GiB more on the system partition, then retry the import. No unrelated deletion, sudo, service relocation, or global setting change was performed.",
+  "interpretation": "No inference results exist. This failure cannot establish reasoning quality, projector functionality, quantization effects, or subjective experience."
+}

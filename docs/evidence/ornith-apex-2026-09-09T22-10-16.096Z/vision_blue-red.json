@@ -1,0 +1,36 @@
+{
+  "id": "vision_blue-red",
+  "request": {
+    "model": "ornith-aq1.5:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Name the color on the left half and the color on the right half of this image. Answer in the form: Left: COLOR. Right: COLOR.",
+        "images": [
+          "iVBORw0KGgoAAAANSUhEUgAAAOAAAADgAgMAAABnQ4JyAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAJUExURQAA//8AAAAAAPWRCDwAAAABYktHRAJmC3xkAAAAB3RJTUUH6gkJEQ43MMn+eQAAAEJJREFUaN7tyyEBAAAMAjBKvn+VN0AhN7+kuCKiKIqiKIqiKIqiKIqiKIqiKIqiKIqiKIqiKIqiKIqiKIqiKIriIj6DyiL5bcE2aQAAAABJRU5ErkJggg=="
+        ]
+      }
+    ],
+    "think": false,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 128
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "86ba3d7e5fb7b3d1112ad0e5814c250dc4bf0d1e31dfb004289779041d78294b",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "Left: Blue. Right: Red.",
+  "answerChars": 23,
+  "thinkingChars": 0,
+  "evalCount": 9,
+  "promptEvalCount": 94,
+  "tokensPerSecond": 37.80162546989521,
+  "loadSeconds": 0.001674862,
+  "firstTokenMs": 1591,
+  "wallSeconds": 1.829,
+  "judgment": "PENDING_REVIEW"
+}

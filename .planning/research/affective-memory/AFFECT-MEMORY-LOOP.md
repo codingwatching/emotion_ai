@@ -3,6 +3,8 @@
 **Date:** 2026-08-31  
 **Status:** Accepted design direction; implementation and evaluation pending.
 
+**2026-09-08 follow-up:** the [current regulation and episode-memory plan](../../../docs/plans/affective-regulation-and-episode-memory-plan.md) supersedes the historical implementation-status description below and refines which social events may acquire lasting significance. It preserves the neutral relevance gate, source/interpretation separation, bounded salience, and the rule that retrieval is not new evidence. A new user event may be interpreted using an existing episode; repeated reads may not independently advance affect or confidence. See that handoff for current source findings, updated scope, and the explicit experimental gates.
+
 ## Current behavior
 
 Aura's active conversation path currently behaves like this:
@@ -205,4 +207,3 @@ competence.
 These sources justify mechanisms to test. They do not establish that Aura feels,
 that simulated channels reproduce human neurochemistry, or that an affective
 memory system will outperform a simpler neutral retriever.
-

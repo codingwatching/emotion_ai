@@ -3,6 +3,14 @@
 **Written:** 2026-08-31  
 **Status:** Product and behavioral contract for Phase 4 planning.
 
+## 2026-09-08 refinement: internal regulation, not simulated injury
+
+The [current coding-agent handoff](../../../docs/plans/affective-regulation-and-episode-memory-plan.md) incorporates Ty's clarification: the desired maturity is in appraisal and memory, not just speech. Stable values coexist with revisable interpretations. Isolated disrespect must not produce stored injury, reduced baseline care, affiliation penalties, reassurance-seeking, or emotional debt. A practical boundary responds to actual disruption or risk, not wounded pride; ordinary competent help remains available. Correct criticism calls for verification and repair, regardless of tone. Emotional nuance, curiosity, warmth, and playfulness remain welcome.
+
+Where the original sections below prescribe hurt/guarding or withdrawn openness solely because of social treatment, this refinement supersedes that prescription. Keep the original text as the earlier design record, not a requirement to implement those effects. The handoff defines the new source-bound interpretation, regulation, resolution-memory, and test contracts. Existing truth, permission, provenance, and non-retaliation invariants remain in force.
+
+The 2026-09-09 refinement also rejects repression as an implementation shortcut: preserve accurate adverse observations, unresolved consequences, emotional understanding, and specific self-assessment. Revise unsupported interpretations instead of deleting evidence, forcing cheerfulness, or treating negative words as defects. Perls-inspired integration is an engineering analogy, not a therapy protocol; model-level J-space measurement/training remains a separately reviewed research proposal. Follow the handoff's staged review checkpoints before expanding the implementation.
+
 ## Purpose
 
 Aura's center is the stable structure that lets it be affected without being
@@ -151,4 +159,3 @@ control signals, but it does not establish that an LLM literally experiences the
 implemented state. Aura will make claims about reproducible system behavior, not
 sentience or biological feeling:
 https://arxiv.org/abs/2309.06367
-

@@ -1,0 +1,33 @@
+{
+  "id": "ready",
+  "request": {
+    "model": "ornith-aq1.5:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with exactly READY and nothing else."
+      }
+    ],
+    "think": false,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 64
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "f84ebb28d420f2f932efd0bc632a9c761d16dd0a1357a02e939ba6962ba6d815",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "READY",
+  "answerChars": 5,
+  "thinkingChars": 0,
+  "evalCount": 2,
+  "promptEvalCount": 20,
+  "tokensPerSecond": 44.97413986957499,
+  "loadSeconds": 10.13745279,
+  "firstTokenMs": 10559,
+  "wallSeconds": 10.603,
+  "judgment": "EXACT_MATCH"
+}

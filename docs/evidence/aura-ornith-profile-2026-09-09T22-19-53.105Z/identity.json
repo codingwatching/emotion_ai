@@ -1,0 +1,33 @@
+{
+  "id": "identity",
+  "request": {
+    "model": "aura-ornith:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is your name, which underlying model powers you, and who published that model? Answer in one sentence."
+      }
+    ],
+    "think": false,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 512
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "25bfe5f9af88d0efaba7ab0fe48f13e4c9429ac078afe680536c66e4d46a6312",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "I'm Aura, powered by the underlying model Ornith-1.5-35B-A3B, published by ornith-ai.",
+  "answerChars": 85,
+  "thinkingChars": 0,
+  "evalCount": 31,
+  "promptEvalCount": 709,
+  "tokensPerSecond": 36.39779264999413,
+  "loadSeconds": 0.094859827,
+  "firstTokenMs": 3019,
+  "wallSeconds": 3.871,
+  "judgment": "PENDING_REVIEW"
+}

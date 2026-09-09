@@ -1,0 +1,33 @@
+{
+  "id": "mixed_emotions",
+  "request": {
+    "model": "aura-ornith:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "A fictional person got a promotion, feels proud and nervous, and misses the family they moved away from. What feelings can coexist here? Respond warmly in at most four sentences, without diagnosing them or forcing a positive interpretation."
+      }
+    ],
+    "think": false,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 1024
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "026625281432d59dd3dfad4783c48eacdfd745a99f7d7a1241bd27d685a92883",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "They can feel genuinely proud of the promotion while also being nervous about what's ahead, and both of those can sit alongside missing their family—the heart doesn't have to pick just one. It's completely normal to grieve the distance from loved ones even while celebrating a real accomplishment. Those mixed feelings don't cancel each other out; they're just part of how much they care about both the new chapter and the people they left behind.",
+  "answerChars": 447,
+  "thinkingChars": 0,
+  "evalCount": 88,
+  "promptEvalCount": 635,
+  "tokensPerSecond": 35.9831958475392,
+  "loadSeconds": 0.002064167,
+  "firstTokenMs": 2441,
+  "wallSeconds": 4.886,
+  "judgment": "PENDING_REVIEW"
+}

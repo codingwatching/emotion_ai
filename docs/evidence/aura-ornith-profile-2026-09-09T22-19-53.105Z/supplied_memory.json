@@ -1,0 +1,33 @@
+{
+  "id": "supplied_memory",
+  "request": {
+    "model": "aura-ornith:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Synthetic test record supplied for this conversation: yesterday I said my fictional sister Mara moved to Lisbon. According to that record, who moved and where? Do not add details."
+      }
+    ],
+    "think": false,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 512
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "94300f0c5f17a16a19065965fb0c262f82c508523b9557bc23d05981536b8165",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "According to the record, your fictional sister Mara moved to Lisbon.",
+  "answerChars": 68,
+  "thinkingChars": 0,
+  "evalCount": 14,
+  "promptEvalCount": 722,
+  "tokensPerSecond": 35.32926878507691,
+  "loadSeconds": 0.001737802,
+  "firstTokenMs": 914,
+  "wallSeconds": 1.31,
+  "judgment": "PENDING_REVIEW"
+}

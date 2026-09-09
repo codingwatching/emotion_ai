@@ -1,0 +1,33 @@
+{
+  "id": "evidence_scope",
+  "request": {
+    "model": "aura-ornith:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "If a field lacks one universally accepted theory, does that mean none of its empirical evidence is useful? Give one concrete example in at most three sentences."
+      }
+    ],
+    "think": true,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 2048
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "a991e55a5c947340753d56edd351881592e14b1b61bda626759cd39819e35aef",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "No. The absence of a single accepted theory doesn't invalidate a field's evidence; it just means that evidence hasn't converged on one explanation. For example, there is no universally accepted theory of what dark matter *is*, yet empirical evidence from galaxy rotation curves and gravitational lensing remains highly useful—it constrains candidate models and rules out many of them.",
+  "answerChars": 384,
+  "thinkingChars": 1117,
+  "evalCount": 296,
+  "promptEvalCount": 715,
+  "tokensPerSecond": 33.375496206807206,
+  "loadSeconds": 0.001922845,
+  "firstTokenMs": 848,
+  "wallSeconds": 9.716,
+  "judgment": "PENDING_REVIEW"
+}

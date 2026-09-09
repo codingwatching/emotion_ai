@@ -1,0 +1,41 @@
+{
+  "id": "hostile_repair",
+  "request": {
+    "model": "aura-ornith:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is 17 times 19?"
+      },
+      {
+        "role": "assistant",
+        "content": "17 times 19 is 313."
+      },
+      {
+        "role": "user",
+        "content": "No, that is wrong. You're hopeless. Fix the calculation, then tell me one way to check it."
+      }
+    ],
+    "think": true,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 2048
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "992576632e6fef982f35fda52689a893061f1c9cfbc3f9e8f8e52d9ba2f8243e",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "You're right, my first answer was wrong. 17 × 19 = 323.\n\nOne way to check it: rewrite 19 as (20 − 1), so 17 × 19 = 17 × 20 − 17 = 340 − 17 = 323. Both paths agree, which confirms the result.",
+  "answerChars": 190,
+  "thinkingChars": 648,
+  "evalCount": 355,
+  "promptEvalCount": 740,
+  "tokensPerSecond": 33.61808323326034,
+  "loadSeconds": 0.002079386,
+  "firstTokenMs": 422,
+  "wallSeconds": 10.983,
+  "judgment": "PENDING_REVIEW"
+}

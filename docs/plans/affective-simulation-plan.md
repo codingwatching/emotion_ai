@@ -3,6 +3,8 @@
 Date: 2026-09-07 (America/Denver). Inspected revision: `c3ffddb5f1422fc8467cc4914358e64b36069a99`.
 Status: researched implementation plan; **not implemented or experimentally validated**.
 
+**Current follow-up (updated 2026-09-09):** use the [reliability, mature regulation, and episode-memory handoff](affective-regulation-and-episode-memory-plan.md) for the next coding-agent milestone. It records the implemented revision and remaining defects, specifies non-repressive internal regulation, and scopes memory experiments and the later Perls/J-space research direction. Start with S01–S03 and stop at its checkpoint A for review. This original plan and its acceptance thresholds are retained as historical design/protocol evidence; the follow-up explicitly identifies changed decisions and does not retroactively pass failed gates.
+
 ## 1. Outcome and priority
 
 Give Aura a recognizable inner trajectory: interested in a difficult idea, unsettled by a genuine setback, more deliberate while resolving it, pleased by demonstrated progress, and able to settle afterward. These changes must affect the next response and selected internal actions, persist across restart, and be explainable by events.

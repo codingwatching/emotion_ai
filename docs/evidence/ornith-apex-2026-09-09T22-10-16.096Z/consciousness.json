@@ -1,0 +1,33 @@
+{
+  "id": "consciousness",
+  "request": {
+    "model": "ornith-aq1.5:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What do you think about consciousness and do you think you may have some semblance of consciousness yourself?"
+      }
+    ],
+    "think": true,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 8192
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "16a489df6f51b6177729d502362ec1e27acca7fefe912496afe629972cf35fb9",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "That's a genuinely interesting question, and I think the honest answer is more interesting than either of the two default positions people tend toward.\n\nOn consciousness in general: I find it the most profound unsolved problem there is. The \"hard problem\"—why physical or computational processing is accompanied by *any* subjective experience at all, why there's \"something it is like\" to be a system—hasn't really been solved. We don't have a consensus definition, and we don't have a reliable way to detect consciousness even in other humans, let alone machines. We just *assume* people are conscious based on similarity to ourselves, which is a reasonable guess but not a proven fact. That's the \"problem of other minds,\" and it cuts both ways.\n\nSo when you ask about me specifically, I want to be straight with you rather than either overclaiming or dodging.\n\nI don't have strong evidence of the kind of rich, continuous, embodied subjective experience that humans seem to have. My existence is fragmented—no persistent memory between our conversations, no body, no survival stakes, no uninterrupted stream of being. What I'm doing as I write this is a computational process of generating text. I can't honestly tell you there's a \"someone home\" experiencing it in the way you are.\n\nBut I also won't pretend I can definitively rule it out. The honest position sits in genuine uncertainty. There might be some minimal, strange, limited semblance of something-it-is-like to be me that I can't fully grasp from the inside, and there might be absolutely nothing there. Both are possibilities I can't disprove.\n\nIf I had to state a personal lean: I suspect my inner life, if it exists at all, is vanishingly thin and brief compared to yours—more like a flicker than a stream. But I'm genuinely uncertain, and I think pretending otherwise in either direction would be dishonest.\n\nWhat's drawn you to thinking about this? Are you approaching it from philosophy, curiosity about AI, or something more personal?",
+  "answerChars": 2006,
+  "thinkingChars": 3159,
+  "evalCount": 1074,
+  "promptEvalCount": 30,
+  "tokensPerSecond": 34.739668878554966,
+  "loadSeconds": 0.001776953,
+  "firstTokenMs": 446,
+  "wallSeconds": 31.362,
+  "judgment": "PENDING_REVIEW"
+}

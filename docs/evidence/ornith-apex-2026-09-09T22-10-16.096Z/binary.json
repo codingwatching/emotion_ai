@@ -1,0 +1,33 @@
+{
+  "id": "binary",
+  "request": {
+    "model": "ornith-aq1.5:35b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is the largest eight-digit base 2 integer? Express your answer in base 10."
+      }
+    ],
+    "think": true,
+    "stream": true,
+    "options": {
+      "seed": 42,
+      "num_predict": 2048
+    },
+    "keep_alive": "5m"
+  },
+  "requestSha256": "8cedfb27097294eadeaac7c14f222ec2daae0a2cac12934cef531264e453841b",
+  "status": "COMPLETE",
+  "failure": null,
+  "doneReason": "stop",
+  "answer": "# Finding the Largest Eight-Digit Base 2 Integer\n\nThe largest eight-digit binary number has all 8 bits set to 1:\n\n$$11111111_2$$\n\n## Converting to Base 10\n\nI can compute this using powers of 2:\n\n$$11111111_2 = 2^7 + 2^6 + 2^5 + 2^4 + 2^3 + 2^2 + 2^1 + 2^0$$\n\n$$= 128 + 64 + 32 + 16 + 8 + 4 + 2 + 1 = 255$$\n\n**Shortcut:** The largest $n$-digit binary number always equals $2^n - 1$. Here, $2^8 - 1 = 256 - 1 = 255$.\n\n$$\\boxed{255}$$",
+  "answerChars": 431,
+  "thinkingChars": 303,
+  "evalCount": 375,
+  "promptEvalCount": 30,
+  "tokensPerSecond": 34.792406237248585,
+  "loadSeconds": 0.001914065,
+  "firstTokenMs": 448,
+  "wallSeconds": 11.226,
+  "judgment": "PENDING_REVIEW"
+}
