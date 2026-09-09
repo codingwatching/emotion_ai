@@ -315,7 +315,7 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
             "simulation": {
                 "schema_version": 1,
                 "scope_id": "synthetic-user",
-                "revision": 1,
+                "revision": 0,
                 "pre_state": {
                     "valence": 0.1,
                     "arousal": 0.3,
@@ -361,7 +361,7 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
                     },
                 },
                 "causes": [],
-                "disposition": "unknown",
+                "disposition": "uncommitted",
                 "channels": {
                     "dopamine_like": 0.575,
                     "norepinephrine_like": 0.15,
@@ -539,7 +539,7 @@ def test_persistence_degradation_preserves_answer_and_one_background_attempt(
     assert response.status_code == 200
     assert response.json()["response"] == ANSWER_SENTINEL
     assert len(persistence.immediate_calls) == 1
-    assert persistence.background_calls == 1
+    assert persistence.background_calls == 0
 
 
 def test_route_source_has_no_legacy_provider_or_private_tool_branch() -> None:

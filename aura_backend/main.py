@@ -2285,7 +2285,9 @@ async def _persist_conversation_exchange(
     exchange: ConversationExchange,
     background_tasks: BackgroundTasks,
 ) -> bool:
-    """Preserve the characterized immediate write and one degraded retry."""
+    """Preserve the characterized immediate write.
+    NOTE: When the immediate path times out via wait_for, the thread may still be running.
+    """
     persistence_success = False
     immediate_enabled = (
         os.getenv("IMMEDIATE_PERSISTENCE_ENABLED", "true").lower() == "true"
@@ -2301,7 +2303,7 @@ async def _persist_conversation_exchange(
                     timeout=persistence_timeout,
                 )
             )
-            persistence_success = bool(result.get("success"))
+            persistence_success = result.get("durable_status") == "stored"
             if persistence_success:
                 logger.info("Conversation persisted immediately")
             else:
@@ -2315,7 +2317,7 @@ async def _persist_conversation_exchange(
             result = await conversation_persistence.persist_conversation_exchange(
                 exchange
             )
-            persistence_success = bool(result.get("success"))
+            persistence_success = result.get("durable_status") == "stored"
             if persistence_success:
                 logger.info("Conversation persisted")
             else:
@@ -2326,21 +2328,6 @@ async def _persist_conversation_exchange(
             logger.error("Conversation persistence failed")
     else:
         persistence_success = True
-
-    async def retry_once() -> None:
-        if conversation_persistence is None:
-            return
-        try:
-            await asyncio.sleep(1.0)
-            await conversation_persistence.persist_conversation_exchange(exchange)
-            logger.info("Background conversation persistence attempted")
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.error("Background conversation persistence failed")
-
-    if not persistence_success:
-        background_tasks.add_task(retry_once)
 
     return persistence_success
 

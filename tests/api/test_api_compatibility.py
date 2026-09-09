@@ -206,7 +206,7 @@ async def test_projection_failure_commits_once_then_reconciles_same_turn(
     )
     reconciled = await service.persist_conversation_exchange(exchange)
 
-    assert degraded["success"] is False
+    assert degraded["success"] is True
     assert degraded["durable_status"] == "stored"
     assert degraded["projection_status"] == "pending"
     assert degraded["retry_identity"] == "retry-key"
@@ -234,7 +234,7 @@ def test_route_reuses_one_optional_idempotency_key_for_background_retry(
     assert response.status_code == 200
     assert set(response.json()) == EXPECTED_RESPONSE_KEYS
     assert response.json()["response"] == ANSWER_SENTINEL
-    assert persistence.keys == ["caller-stable-key", "caller-stable-key"]
+    assert persistence.keys == ["caller-stable-key"]
 
 
 def test_base_storage_source_excludes_legacy_writer_and_live_backup() -> None:

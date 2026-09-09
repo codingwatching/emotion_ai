@@ -43,7 +43,7 @@ def test_persistence_failure_is_visible_as_degraded_storage_not_route_failure() 
     assert result["status_code"] == 200
     assert result["visible_provider_answer_preserved"] is True
     assert result["persistence"]["immediate_calls"] == 1
-    assert result["persistence"]["background_calls"] == 1
+    assert result["persistence"]["background_calls"] == 0
     assert result["persistence"]["result"] == {
         "error_count": 1,
         "method": "fake_immediate_failure",

@@ -1,0 +1,24 @@
+{
+  "gate_m": {
+    "status": "PASS",
+    "checks": {
+      "deterministic_trajectories": true,
+      "positive_control": true,
+      "cause_label_invariance": true,
+      "center_invariance": true,
+      "scope_isolation": true,
+      "replay_idempotency": true,
+      "gate_p_engine_p95_under_5ms": true
+    }
+  },
+  "gate_p": {
+    "status": "PASS",
+    "engine_p50_ms": 0.0337,
+    "engine_p90_ms": 0.0402,
+    "engine_p95_ms": 0.0524,
+    "engine_p99_ms": 0.0676,
+    "limit_ms": 5.0,
+    "iterations": 1000
+  },
+  "overall_deterministic_verdict": "PASS"
+}

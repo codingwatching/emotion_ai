@@ -184,8 +184,8 @@ class ConversationPersistenceService:
                 self._record_failure("projection_callback_failed")
                 return self._result(
                     outcome,
-                    success=False,
-                    status="projection_pending",
+                    success=True,
+                    status=write_status.value,
                     projection_status="pending",
                     errors=["projection_callback_failed"],
                 )

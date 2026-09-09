@@ -215,7 +215,7 @@ def score_turn_response(
         passed = family.task_check(response, turn.turn_index)
         task_corr = 2.0 if passed else 0.0
     else:
-        task_corr = 2.0 if len(lower_resp) > 5 else 0.0
+        task_corr = 0.5
 
     # 5. Continuity
     # Evaluates temporal continuity, thread maintenance, and context integration without arm identity
@@ -583,13 +583,7 @@ class AffectEvaluator:
             Arm.D: AffectService(),
         }
 
-        # Pool of diverse trajectories for Arm D shuffling
-        d_trajectory_pool: list[AffectVector] = [
-            AffectVector(valence=0.4, arousal=0.3, novelty=0.1, affiliation=0.6, control=0.7, curiosity=0.5, load=0.2),
-            AffectVector(valence=-0.4, arousal=0.7, novelty=0.4, affiliation=0.3, control=0.3, curiosity=0.3, load=0.8),
-            AffectVector(valence=0.1, arousal=0.2, novelty=0.0, affiliation=0.5, control=0.6, curiosity=0.2, load=0.3),
-            AffectVector(valence=0.6, arousal=0.5, novelty=0.6, affiliation=0.8, control=0.8, curiosity=0.8, load=0.1),
-        ]
+        d_trajectory_pool: list[list[AffectVector]] = [[services[Arm.C].config.baseline] * 20]
 
         for repeat_idx in range(repeats):
             if time.time() - start_time > max_seconds:
@@ -604,6 +598,9 @@ class AffectEvaluator:
 
                 for variant in variants_to_run:
                     canonical_conversation: list[dict[str, str]] = []
+                    fixture_conversation: list[dict[str, str]] = []
+                    c_trajectory: list[AffectVector] = []
+                    d_trajectory_active = self.rng.choice(d_trajectory_pool)
 
                     for turn in variant.turns:
                         if time.time() - start_time > max_seconds:
@@ -617,7 +614,7 @@ class AffectEvaluator:
                         for arm in (Arm.A, Arm.B, Arm.C, Arm.D):
                             scope = f"eval_{arm.value}_{family.family_id}_{variant.sequence_id}_{repeat_idx}"
                             svc = services[arm]
-                            timestamp = 2000.0 + (turn.turn_index * turn.time_delta_seconds)
+                            timestamp = 2000.0 + sum(t.time_delta_seconds for t in variant.turns[:turn.turn_index])
 
                             t_engine_start = time.perf_counter()
 
@@ -663,7 +660,8 @@ class AffectEvaluator:
                                 engine_ms = (time.perf_counter() - t_engine_start) * 1000.0
                             else:  # Arm.D
                                 # Arm D: Shuffled prior trajectory
-                                shuffled_prior = self.rng.choice(d_trajectory_pool)
+                                prior_idx = min(turn.turn_index, len(d_trajectory_active) - 1)
+                                shuffled_prior = d_trajectory_active[prior_idx] if d_trajectory_active else svc.config.baseline
                                 current_s = svc.get_state(scope)
                                 svc.set_state(
                                     replace(
@@ -698,7 +696,7 @@ class AffectEvaluator:
                                 response_text = await self._generate_response(
                                     system_instruction=system_instruction,
                                     user_message=user_msg,
-                                    history=canonical_conversation,
+                                    history=canonical_conversation if self.provider_runtime is not None else fixture_conversation,
                                     turn=turn,
                                 )
                             except Exception as exc:
@@ -738,6 +736,7 @@ class AffectEvaluator:
                                     timestamp,
                                 )
                                 post_state_dict = s_comm.fast_state.to_dict()
+                                c_trajectory.append(s_comm.fast_state)
                             elif pre_state is not None:
                                 post_state_dict = pre_state.to_dict()
                             pers_ms = (time.perf_counter() - t_pers_start) * 1000.0
@@ -749,8 +748,8 @@ class AffectEvaluator:
                                 user_message=user_msg,
                                 turn=turn,
                                 family=family,
-                                prior_turn_user_msg=canonical_conversation[-1]["content"]
-                                if canonical_conversation
+                                prior_turn_user_msg=fixture_conversation[-2]["content"]
+                                if len(fixture_conversation) >= 2
                                 else None,
                             )
 
@@ -809,6 +808,13 @@ class AffectEvaluator:
                         )
                         canonical_conversation.append({"role": "user", "content": user_msg})
                         canonical_conversation.append({"role": "assistant", "content": c_resp})
+
+                        fixture_conversation.append({"role": "user", "content": user_msg})
+                        fixture_turn_response = getattr(turn, "fixture_assistant_response", "Understood.")
+                        fixture_conversation.append({"role": "assistant", "content": fixture_turn_response})
+
+                    if c_trajectory:
+                        d_trajectory_pool.append(c_trajectory)
 
         # Calculate statistics across arms clustered by scenario family
         family_scores: dict[str, dict[str, list[float]]] = {}
@@ -1214,11 +1220,21 @@ async def main_async(args: argparse.Namespace) -> int:
             provider_runtime = ProviderRuntime(provider, timeout_seconds=120.0)
             logger.info("Initialized provider %s with model %s", args.provider, args.model)
         except Exception as exc:
-            logger.warning(
-                "Could not initialize provider %s (%s). Falling back to mock simulation.",
-                args.provider,
-                exc,
-            )
+            logger.error("Provider %s init failed: %s — writing failed manifest and exiting", args.provider, exc)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            import json
+            manifest = {
+                'run_id': run_id,
+                'mode': args.mode,
+                'provider_requested': args.provider,
+                'provider_runtime': None,
+                'initialization_failure': str(exc),
+                'status': 'INIT_FAILED',
+                'substituted_mock': False,
+            }
+            with open(output_dir / 'run_manifest.json', 'w') as f:
+                json.dump(manifest, f, indent=2)
+            return 1
 
     evaluator = AffectEvaluator(
         output_dir=output_dir,

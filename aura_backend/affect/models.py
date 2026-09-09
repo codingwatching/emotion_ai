@@ -157,6 +157,11 @@ STARTER_EVENT_IMPULSES: dict[str, dict[str, float]] = {
         "control": 0.10,
         "curiosity": 0.06,
     },
+    "linguistic_correction_claim": {
+        "novelty": 0.10,
+        "control": 0.10,
+        "curiosity": 0.06,
+    },
     "explicit_repair": {
         "affiliation": 0.10,
         "valence": 0.08,

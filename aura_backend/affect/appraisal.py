@@ -57,10 +57,15 @@ def appraise_user_message(
             break
 
     # 3. Source-supported correction (takes precedence over generic disagreement)
-    for pat in _CORRECTION_PATTERNS:
-        if pat.search(clean):
-            accepted_events.append("source_supported_correction")
-            break
+    is_quoted = bool(re.search(r'["\u201c\u201d]|\bsaid\b|\bwrote\b|\bquoting\b', clean, re.IGNORECASE))
+    has_negation = bool(re.search(r'\b(not|never|don\'t|doesn\'t|didn\'t|isn\'t|aren\'t|wasn\'t|weren\'t|no|neither)\b', clean[:50], re.IGNORECASE))
+    has_sarcasm = bool(re.search(r'\b(yeah right|sure|totally|obviously|as if)\b', clean, re.IGNORECASE))
+
+    if not is_quoted and not has_negation and not has_sarcasm:
+        for pat in _CORRECTION_PATTERNS:
+            if pat.search(clean):
+                accepted_events.append("linguistic_correction_claim")
+                break
 
     # 4. Collaboration / appreciation
     for pat in _COLLABORATION_PATTERNS:

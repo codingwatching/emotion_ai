@@ -125,7 +125,7 @@ def test_allowed_local_json_conversation_succeeds_without_sign_in() -> None:
             "simulation": {
                 "schema_version": 1,
                 "scope_id": "probe-user",
-                "revision": 1,
+                "revision": 0,
                 "pre_state": {
                     "valence": 0.1,
                     "arousal": 0.3,
@@ -171,7 +171,7 @@ def test_allowed_local_json_conversation_succeeds_without_sign_in() -> None:
                     },
                 },
                 "causes": [],
-                "disposition": "unknown",
+                "disposition": "uncommitted",
                 "channels": {
                     "dopamine_like": 0.575,
                     "norepinephrine_like": 0.15,

@@ -117,7 +117,7 @@ def test_ambiguous_and_unknown_inputs_contribute_zero_impulse(config: AffectConf
 
 def test_correction_versus_insult(config: AffectConfig) -> None:
     """Technical correction must increase control and novelty, not trigger contempt."""
-    events = ["source_supported_correction"]
+    events = ["linguistic_correction_claim"]
     impulse = calculate_turn_impulse(events, config)
     assert impulse.control > 0.0
     assert impulse.novelty > 0.0
@@ -335,7 +335,7 @@ async def test_trajectory_3_blunt_criticism_and_repair() -> None:
     p1, pol1, ev1, app1, pre1 = await service.compute_provisional_policy(
         scope, "That is incorrect, line 15 is missing a semicolon.", t
     )
-    assert "source_supported_correction" in ev1
+    assert "linguistic_correction_claim" in ev1
     s1, _ = await service.commit_turn(scope, "t1", "k1", "d1", p1, pre1, pol1, app1, None, t)
     assert s1.fast_state.control > service.config.baseline.control
 

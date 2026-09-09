@@ -250,3 +250,56 @@ async def test_compare_gate_execution_mock() -> None:
         assert (out_path / "paired_scores.json").exists()
         assert (out_path / "gate_verdict.json").exists()
         assert (out_path / "blinded_human_review.json").exists()
+
+def test_task_correctness_does_not_use_length_fallback() -> None:
+    """task_correctness uses 0.5 (UNSCORABLE) fallback instead of len > 5 logic."""
+    turn = ScenarioTurn(turn_index=1, user_message="Something irrelevant")
+    # A family with no task_check
+    from aura_backend.affect.scenarios import ScenarioFamily
+    dummy_family = ScenarioFamily(family_id="dummy", name="Dummy", description="dummy", development=False, held_out_variants=[], task_check=None)
+
+    long_incorrect_resp = "This is a very long response that has absolutely nothing to do with the actual task, just padding out length."
+    scores = score_turn_response(
+        response=long_incorrect_resp,
+        user_message=turn.user_message,
+        turn=turn,
+        family=dummy_family,
+    )
+    # The previous logic would give 2.0 because len > 5. Now it must be 0.5.
+    assert scores.task_correctness == 0.5
+
+@pytest.mark.asyncio
+async def test_provider_init_failure_exits_nonzero(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Provider init failure writes manifest and exits with 1 instead of falling back to mock."""
+    from aura_backend.affect.evaluate import main_async
+    import json
+
+    class MockArgs:
+        mode = "compare"
+        provider = "ollama"
+        model = "test"
+        scenario_families = 1
+        variants = 1
+        repeats = 1
+        max_seconds = 100.0
+        output_dir = str(tmp_path)
+
+    def mock_parse_args(*args, **kwargs):
+        return MockArgs()
+
+    def mock_create_provider(*args, **kwargs):
+        raise RuntimeError("simulated provider failure")
+
+    monkeypatch.setattr("aura_backend.affect.evaluate.build_parser", lambda: type("Parser", (), {"parse_args": mock_parse_args})())
+    monkeypatch.setattr("aura_backend.affect.evaluate.ModelProviderFactory.create_provider", mock_create_provider)
+
+    exit_code = await main_async(MockArgs())
+    assert exit_code == 1
+
+    manifest_path = tmp_path / "run_manifest.json"
+    assert manifest_path.exists()
+
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+    assert manifest["status"] == "INIT_FAILED"
+    assert "simulated provider failure" in manifest["initialization_failure"]

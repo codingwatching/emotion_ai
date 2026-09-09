@@ -9,6 +9,7 @@ import uuid
 from typing import Any
 
 from aura_backend.affect.appraisal import appraise_user_message, build_appraisal_record
+from aura_backend.affect.regulation import classify_event, regulate
 from aura_backend.affect.dynamics import (
     apply_observed_outcome,
     apply_pre_state,
@@ -133,6 +134,15 @@ class AffectService:
             pre_state = apply_pre_state(fast_decayed, turn_impulse)
 
             eid = event_id or uuid.uuid4().hex
+
+            # Apply non-punitive regulation
+            event_interpretation = classify_event(
+                message,
+                event_id=eid,
+                task_facts=task_facts,
+            )
+            regulation_result = regulate(pre_state, event_interpretation, self.config)
+            pre_state = regulation_result.regulated_state
             appraisal = build_appraisal_record(
                 event_id=eid,
                 message=message,
