@@ -28,6 +28,43 @@ from aura_backend.affect.models import (
 from aura_backend.affect.policy import render_policy
 
 
+class AsyncReentrantLock:
+    """An asyncio reentrant lock tracking current task and recursion depth."""
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._owner: asyncio.Task[Any] | None = None
+        self._count = 0
+
+    async def acquire(self) -> bool:
+        current_task = asyncio.current_task()
+        if current_task is None:
+            raise RuntimeError("AsyncReentrantLock must be used within an asyncio task")
+        if self._owner == current_task:
+            self._count += 1
+            return True
+        await self._lock.acquire()
+        self._owner = current_task
+        self._count = 1
+        return True
+
+    def release(self) -> None:
+        current_task = asyncio.current_task()
+        if self._owner != current_task:
+            raise RuntimeError("Cannot release a lock owned by another task")
+        self._count -= 1
+        if self._count == 0:
+            self._owner = None
+            self._lock.release()
+
+    async def __aenter__(self) -> AsyncReentrantLock:
+        await self.acquire()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.release()
+
+
 class AffectService:
     """Per-scope affective simulation sequencer with serialized updates."""
 
@@ -40,12 +77,16 @@ class AffectService:
         self.repository = repository
         self._states: dict[str, AffectState] = {}
         self._transitions: dict[str, list[AffectTransition]] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: dict[str, AsyncReentrantLock] = {}
 
-    def _get_lock(self, scope_id: str) -> asyncio.Lock:
+    def _get_lock(self, scope_id: str) -> AsyncReentrantLock:
         if scope_id not in self._locks:
-            self._locks[scope_id] = asyncio.Lock()
+            self._locks[scope_id] = AsyncReentrantLock()
         return self._locks[scope_id]
+
+    def scope_lock(self, scope_id: str) -> AsyncReentrantLock:
+        """Get the re-entrant per-scope lock for serializing an entire turn."""
+        return self._get_lock(scope_id)
 
     def get_state(self, scope_id: str, timestamp: float | None = None) -> AffectState:
         """Get or initialize the current state for a scope."""
@@ -101,7 +142,7 @@ class AffectService:
 
             return prior_state, policy, accepted_events, appraisal, pre_state
 
-    async def commit_turn(
+    async def stage_turn(
         self,
         scope_id: str,
         turn_id: str,
@@ -114,7 +155,7 @@ class AffectService:
         outcome: TaskOutcome | None,
         timestamp: float,
     ) -> tuple[AffectState, AffectTransition]:
-        """Commit a complete turn, applying outcomes and updating head state."""
+        """Stage a turn transition without publishing to in-memory head state."""
         async with self._get_lock(scope_id):
             dt = max(0.0, timestamp - prior_state.last_event_time)
             mood_decayed, _, _ = compute_decay(
@@ -149,7 +190,7 @@ class AffectService:
                 timestamp=timestamp,
             )
 
-            new_state = AffectState(
+            staged_state = AffectState(
                 schema_version=self.config.schema_version,
                 config_version=self.config.config_version,
                 config_hash=self.config.config_hash,
@@ -161,9 +202,52 @@ class AffectService:
                 source_transition_id=transition_id,
             )
 
-            self._states[scope_id] = new_state
-            if scope_id not in self._transitions:
-                self._transitions[scope_id] = []
-            self._transitions[scope_id].append(transition)
+            return staged_state, transition
 
-            return new_state, transition
+    def publish_turn(
+        self,
+        scope_id: str,
+        new_state: AffectState,
+        transition: AffectTransition,
+    ) -> None:
+        """Publish a staged turn to in-memory state after verified persistence."""
+        self._states[scope_id] = new_state
+        if scope_id not in self._transitions:
+            self._transitions[scope_id] = []
+        self._transitions[scope_id].append(transition)
+
+    def discard_staged_turn(self, scope_id: str) -> None:
+        """Cleanly discard staged turn and re-sync memory from persistent repository if available."""
+        if self.repository is not None and hasattr(self.repository, "get_affect_head"):
+            head = self.repository.get_affect_head(scope_id)
+            if head is not None:
+                self._states[scope_id] = head
+
+    async def commit_turn(
+        self,
+        scope_id: str,
+        turn_id: str,
+        idempotency_key: str,
+        input_digest: str,
+        prior_state: AffectState,
+        pre_state: AffectVector,
+        policy: ResponsePolicy,
+        appraisal: Appraisal,
+        outcome: TaskOutcome | None,
+        timestamp: float,
+    ) -> tuple[AffectState, AffectTransition]:
+        """Commit a complete turn (stage and publish immediately in memory)."""
+        new_state, transition = await self.stage_turn(
+            scope_id=scope_id,
+            turn_id=turn_id,
+            idempotency_key=idempotency_key,
+            input_digest=input_digest,
+            prior_state=prior_state,
+            pre_state=pre_state,
+            policy=policy,
+            appraisal=appraisal,
+            outcome=outcome,
+            timestamp=timestamp,
+        )
+        self.publish_turn(scope_id, new_state, transition)
+        return new_state, transition

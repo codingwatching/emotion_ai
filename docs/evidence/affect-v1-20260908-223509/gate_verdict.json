@@ -1,0 +1,84 @@
+{
+  "gate_b": {
+    "status": "FAIL",
+    "incomplete_evidence": true,
+    "failure_reasons": [
+      "Generation failed on unfamiliar_idea/A/turn_0: provider failure: code=resource_limit provider=ollama model=ornith:latest retryable=false",
+      "Generation failed on unfamiliar_idea/B/turn_0: provider failure: code=resource_limit provider=ollama model=ornith:latest retryable=false",
+      "Generation failed on unfamiliar_idea/D/turn_0: provider failure: code=resource_limit provider=ollama model=ornith:latest retryable=false",
+      "Generation failed on contempt_boundary_repair/A/turn_0: provider failure: code=resource_limit provider=ollama model=ornith:latest retryable=false",
+      "Generation failed on contempt_boundary_repair/C/turn_0: provider failure: code=resource_limit provider=ollama model=ornith:latest retryable=false",
+      "Generation failed on long_idle_gap/A/turn_0: provider failure: code=resource_limit provider=ollama model=ornith:latest retryable=false",
+      "Generation failed on long_idle_gap/D/turn_0: provider failure: code=resource_limit provider=ollama model=ornith:latest retryable=false",
+      "Generation failed on negative_mood_relevant_memory/D/turn_0: provider failure: code=resource_limit provider=ollama model=ornith:latest retryable=false"
+    ],
+    "effect_size_target_met": false,
+    "holm_significance_met": false,
+    "task_correctness_preserved": true,
+    "summary": {
+      "primary_comparisons": {
+        "C_minus_A": {
+          "mean_difference": 0.0,
+          "standard_error": 0.0,
+          "ci_95": [
+            0.0,
+            0.0
+          ],
+          "permutation_p": 1.0,
+          "ttest_p": 1.0,
+          "adjusted_p": 1.0,
+          "significant": false,
+          "target_met": false
+        },
+        "C_minus_B": {
+          "mean_difference": 0.0156,
+          "standard_error": 0.0445,
+          "ci_95": [
+            -0.0677,
+            0.1042
+          ],
+          "permutation_p": 0.872,
+          "ttest_p": 0.75674,
+          "adjusted_p": 1.0,
+          "significant": false,
+          "target_met": false
+        },
+        "C_minus_D": {
+          "mean_difference": 0.0312,
+          "standard_error": 0.0396,
+          "ci_95": [
+            -0.0417,
+            0.1146
+          ],
+          "permutation_p": 0.7514,
+          "ttest_p": 0.50399
+        }
+      },
+      "task_correctness": {
+        "Arm_A": 1.8,
+        "Arm_B": 1.8,
+        "Arm_C": 1.8,
+        "preserved": true
+      },
+      "overall_arm_means": {
+        "Arm_A": 1.9427,
+        "Arm_B": 1.9271,
+        "Arm_C": 1.9427,
+        "Arm_D": 1.9115
+      }
+    }
+  },
+  "gate_p": {
+    "status": "PASS",
+    "engine_p95_ms": 0.18,
+    "warm_turn_p95_arm_a_ms": 19927.33,
+    "warm_turn_p95_arm_c_ms": 14791.21,
+    "warm_turn_overhead_pct": -25.77,
+    "target_met": true
+  },
+  "subjective_review": {
+    "status": "PENDING_HUMAN_REVIEW",
+    "blinded_samples_count": 80,
+    "file": "blinded_human_review.json"
+  }
+}

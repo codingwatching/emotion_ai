@@ -2284,7 +2284,7 @@ def _provider_tool_info(catalog: ToolCatalog) -> list[dict[str, str]]:
 async def _persist_conversation_exchange(
     exchange: ConversationExchange,
     background_tasks: BackgroundTasks,
-) -> None:
+) -> bool:
     """Preserve the characterized immediate write and one degraded retry."""
     persistence_success = False
     immediate_enabled = (
@@ -2324,6 +2324,8 @@ async def _persist_conversation_exchange(
             raise
         except Exception:
             logger.error("Conversation persistence failed")
+    else:
+        persistence_success = True
 
     async def retry_once() -> None:
         if conversation_persistence is None:
@@ -2339,6 +2341,8 @@ async def _persist_conversation_exchange(
 
     if not persistence_success:
         background_tasks.add_task(retry_once)
+
+    return persistence_success
 
 
 async def _conversation_fallback(
@@ -2405,231 +2409,244 @@ async def process_conversation(
             )
 
         stage = "context"
-        # Idempotency lookup: check for committed replay before calling provider or tools
-        if conversation_persistence and request.idempotency_key:
-            repo = getattr(conversation_persistence, "repository", None)
-            if repo and hasattr(repo, "find_replay_turn"):
-                replay_outcome, replay_content, replay_simulation = repo.find_replay_turn(
-                    scope_id=request.user_id,
-                    session_id=session_id,
-                    user_content=request.message,
-                    idempotency_key=request.idempotency_key,
-                )
-                if isinstance(replay_outcome, IdempotencyConflict):
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Idempotency conflict: key '{request.idempotency_key}' was used with different request parameters",
-                    )
-                if replay_outcome is not None and replay_content:
-                    active_chat_sessions[session_key] = True
-                    return ConversationResponse(
-                        response=replay_content,
-                        emotional_state=emotional_state_payload(None, simulation=replay_simulation),
-                        cognitive_state={
-                            "focus": "Learning",
-                            "description": "Replayed from committed turn",
-                        },
-                        session_id=session_id,
-                        thinking_content=None,
-                        thinking_metrics=None,
-                        has_thinking=False,
-                    )
-
-        user_profile = None
-        if aura_file_system:
-            user_profile = await aura_file_system.load_user_profile(request.user_id)
-
-        memory_context = ""
-        if len(request.message.split()) > 2 and conversation_persistence:
-            try:
-                relevant_memories = (
-                    await conversation_persistence.safe_search_conversations(
-                        query=request.message,
-                        user_id=request.user_id,
-                        n_results=5,
-                    )
-                )
-                memory_context = "\n".join(
-                    f"Previous context: {memory['content']}"
-                    for memory in relevant_memories[:3]
-                )
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.debug("Memory context retrieval unavailable")
-
-        # Affective simulation: compute provisional policy before generation
         affect_svc = get_affect_service()
-        turn_timestamp = time.time()
-        (
-            prior_affect_state,
-            rendered_policy,
-            accepted_events,
-            affect_appraisal,
-            pre_state,
-        ) = await affect_svc.compute_provisional_policy(
-            scope_id=request.user_id,
-            message=request.message,
-            timestamp=turn_timestamp,
-        )
+        async with affect_svc.scope_lock(request.user_id):
+            # Idempotency lookup: check for committed replay before calling provider or tools
+            if conversation_persistence and request.idempotency_key:
+                repo = getattr(conversation_persistence, "repository", None)
+                if repo and hasattr(repo, "find_replay_turn"):
+                    replay_outcome, replay_content, replay_simulation = repo.find_replay_turn(
+                        scope_id=request.user_id,
+                        session_id=session_id,
+                        user_content=request.message,
+                        idempotency_key=request.idempotency_key,
+                    )
+                    if isinstance(replay_outcome, IdempotencyConflict):
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Idempotency conflict: key '{request.idempotency_key}' was used with different request parameters",
+                        )
+                    if replay_outcome is not None and replay_content:
+                        active_chat_sessions[session_key] = True
+                        return ConversationResponse(
+                            response=replay_content,
+                            emotional_state=emotional_state_payload(None, simulation=replay_simulation),
+                            cognitive_state={
+                                "focus": "Learning",
+                                "description": "Replayed from committed turn",
+                            },
+                            session_id=session_id,
+                            thinking_content=None,
+                            thinking_metrics=None,
+                            has_thinking=False,
+                        )
 
-        stage = "prompt"
-        system_instruction = get_aura_system_instruction(
-            user_name=user_profile.get("name") if user_profile else request.user_id,
-            memory_context=memory_context,
-            available_tools=_provider_tool_info(tool_catalog),
-        )
-        if rendered_policy and rendered_policy.prompt_block:
-            system_instruction = f"{system_instruction}\n\n{rendered_policy.prompt_block}"
+            user_profile = None
+            if aura_file_system:
+                user_profile = await aura_file_system.load_user_profile(request.user_id)
 
-        correlation_id = uuid.uuid4().hex
-        stage = "provider"
-        provider_result = await provider_runtime.generate(
-            ProviderRequest(
-                messages=(ProviderMessage(role="user", content=request.message),),
-                system_instruction=system_instruction,
-                tools=tool_catalog.definitions,
-                temperature=0.7,
-                session_id=session_key,
-                correlation_id=correlation_id,
-            )
-        )
-        if not isinstance(provider_result, ProviderResult):
-            raise ProviderFailure(
-                code=ProviderErrorCode.MALFORMED_RESPONSE,
-                correlation_id=correlation_id,
-            )
-        aura_response = provider_result.content
-        if not aura_response.strip():
-            raise ProviderFailure(
-                code=ProviderErrorCode.MALFORMED_RESPONSE,
-                correlation_id=correlation_id,
-            )
-        active_chat_sessions[session_key] = True
+            memory_context = ""
+            if len(request.message.split()) > 2 and conversation_persistence:
+                try:
+                    relevant_memories = (
+                        await conversation_persistence.safe_search_conversations(
+                            query=request.message,
+                            user_id=request.user_id,
+                            n_results=5,
+                        )
+                    )
+                    memory_context = "\n".join(
+                        f"Previous context: {memory['content']}"
+                        for memory in relevant_memories[:3]
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.debug("Memory context retrieval unavailable")
 
-        stage = "autonomic"
-        if autonomic_system and autonomic_system._running:
-            try:
-                autonomic_tasks = await _analyze_conversation_for_autonomic_tasks(
-                    user_message=request.message,
-                    aura_response=aura_response,
-                    user_id=request.user_id,
-                    session_id=session_id,
+            # Affective simulation: compute provisional policy before generation
+            turn_timestamp = time.time()
+            (
+                prior_affect_state,
+                rendered_policy,
+                accepted_events,
+                affect_appraisal,
+                pre_state,
+            ) = await affect_svc.compute_provisional_policy(
+                scope_id=request.user_id,
+                message=request.message,
+                timestamp=turn_timestamp,
+            )
+
+            stage = "prompt"
+            system_instruction = get_aura_system_instruction(
+                user_name=user_profile.get("name") if user_profile else request.user_id,
+                memory_context=memory_context,
+                available_tools=_provider_tool_info(tool_catalog),
+            )
+            if rendered_policy and rendered_policy.prompt_block:
+                system_instruction = f"{system_instruction}\n\n{rendered_policy.prompt_block}"
+
+            correlation_id = uuid.uuid4().hex
+            stage = "provider"
+            provider_result = await provider_runtime.generate(
+                ProviderRequest(
+                    messages=(ProviderMessage(role="user", content=request.message),),
+                    system_instruction=system_instruction,
+                    tools=tool_catalog.definitions,
+                    temperature=0.7,
+                    session_id=session_key,
+                    correlation_id=correlation_id,
                 )
-                for task_description, task_payload in autonomic_tasks:
-                    await autonomic_system.submit_task(
-                        description=task_description,
-                        payload=task_payload,
+            )
+            if not isinstance(provider_result, ProviderResult):
+                raise ProviderFailure(
+                    code=ProviderErrorCode.MALFORMED_RESPONSE,
+                    correlation_id=correlation_id,
+                )
+            aura_response = provider_result.content
+            if not aura_response.strip():
+                raise ProviderFailure(
+                    code=ProviderErrorCode.MALFORMED_RESPONSE,
+                    correlation_id=correlation_id,
+                )
+            active_chat_sessions[session_key] = True
+
+            stage = "autonomic"
+            if autonomic_system and autonomic_system._running:
+                try:
+                    autonomic_tasks = await _analyze_conversation_for_autonomic_tasks(
+                        user_message=request.message,
+                        aura_response=aura_response,
                         user_id=request.user_id,
                         session_id=session_id,
                     )
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.debug("Autonomic conversation analysis unavailable")
+                    for task_description, task_payload in autonomic_tasks:
+                        await autonomic_system.submit_task(
+                            description=task_description,
+                            payload=task_payload,
+                            user_id=request.user_id,
+                            session_id=session_id,
+                        )
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.debug("Autonomic conversation analysis unavailable")
 
-        stage = "analysis"
-        user_emotional_state = await detect_user_emotion(
-            user_message=request.message,
-            user_id=request.user_id,
-            generate=provider_runtime.generate,
-        )
-        conversation_snippet = f"User: {request.message}\nAura: {aura_response}"
-        emotional_state_data = await detect_aura_emotion(
-            conversation_snippet=aura_response,
-            user_id=request.user_id,
-            generate=provider_runtime.generate,
-        )
-        cognitive_state_data = await detect_aura_cognitive_focus(
-            conversation_snippet=conversation_snippet,
-            user_id=request.user_id,
-            generate=provider_runtime.generate,
-        )
+            stage = "analysis"
+            user_emotional_state = await detect_user_emotion(
+                user_message=request.message,
+                user_id=request.user_id,
+                generate=provider_runtime.generate,
+            )
+            conversation_snippet = f"User: {request.message}\nAura: {aura_response}"
+            emotional_state_data = await detect_aura_emotion(
+                conversation_snippet=aura_response,
+                user_id=request.user_id,
+                generate=provider_runtime.generate,
+            )
+            cognitive_state_data = await detect_aura_cognitive_focus(
+                conversation_snippet=conversation_snippet,
+                user_id=request.user_id,
+                generate=provider_runtime.generate,
+            )
 
-        stage = "exchange"
-        turn_id = uuid.uuid4().hex
-        idempotency_key = request.idempotency_key or uuid.uuid4().hex
-        input_digest = canonical_request_hash(request.user_id, session_id, request.message)
+            stage = "exchange"
+            turn_id = uuid.uuid4().hex
+            idempotency_key = request.idempotency_key or uuid.uuid4().hex
+            input_digest = canonical_request_hash(request.user_id, session_id, request.message)
 
-        new_affect_state, affect_transition = await affect_svc.commit_turn(
-            scope_id=request.user_id,
-            turn_id=turn_id,
-            idempotency_key=idempotency_key,
-            input_digest=input_digest,
-            prior_state=prior_affect_state,
-            pre_state=pre_state,
-            policy=rendered_policy,
-            appraisal=affect_appraisal,
-            outcome=None,
-            timestamp=turn_timestamp,
-        )
+            new_affect_state, affect_transition = await affect_svc.stage_turn(
+                scope_id=request.user_id,
+                turn_id=turn_id,
+                idempotency_key=idempotency_key,
+                input_digest=input_digest,
+                prior_state=prior_affect_state,
+                pre_state=pre_state,
+                policy=rendered_policy,
+                appraisal=affect_appraisal,
+                outcome=None,
+                timestamp=turn_timestamp,
+            )
 
-        user_memory = ConversationMemory(
-            user_id=request.user_id,
-            message=request.message,
-            sender="user",
-            emotional_state=user_emotional_state,
-            session_id=session_id,
-        )
-        aura_memory = ConversationMemory(
-            user_id=request.user_id,
-            message=aura_response,
-            sender="aura",
-            emotional_state=emotional_state_data,
-            cognitive_state=cognitive_state_data,
-            session_id=session_id,
-        )
-        exchange = ConversationExchange(
-            user_memory=user_memory,
-            ai_memory=aura_memory,
-            user_emotional_state=user_emotional_state,
-            ai_emotional_state=emotional_state_data,
-            ai_cognitive_state=cognitive_state_data,
-            session_id=session_id,
-            idempotency_key=idempotency_key,
-            affect_transition=affect_transition,
-            expected_state_revision=prior_affect_state.revision,
-        )
-        stage = "persistence"
-        await _persist_conversation_exchange(exchange, background_tasks)
+            user_memory = ConversationMemory(
+                user_id=request.user_id,
+                message=request.message,
+                sender="user",
+                emotional_state=user_emotional_state,
+                session_id=session_id,
+            )
+            aura_memory = ConversationMemory(
+                user_id=request.user_id,
+                message=aura_response,
+                sender="aura",
+                emotional_state=emotional_state_data,
+                cognitive_state=cognitive_state_data,
+                session_id=session_id,
+            )
+            exchange = ConversationExchange(
+                user_memory=user_memory,
+                ai_memory=aura_memory,
+                user_emotional_state=user_emotional_state,
+                ai_emotional_state=emotional_state_data,
+                ai_cognitive_state=cognitive_state_data,
+                session_id=session_id,
+                idempotency_key=idempotency_key,
+                affect_transition=affect_transition,
+                expected_state_revision=prior_affect_state.revision,
+            )
+            stage = "persistence"
+            persisted = await _persist_conversation_exchange(exchange, background_tasks)
+            if conversation_persistence and not persisted:
+                logger.warning(
+                    "Database persistence degraded or failed; discarding staged affective state"
+                )
+                affect_svc.discard_staged_turn(request.user_id)
+                published_state = prior_affect_state
+                published_disposition = "uncommitted"
+            else:
+                # Verified persistence success: publish to memory
+                affect_svc.publish_turn(request.user_id, new_affect_state, affect_transition)
+                published_state = new_affect_state
+                published_disposition = affect_transition.outcome_disposition
 
-        stage = "response"
-        logger.info("Conversation processed")
-        simulation_payload = {
-            "schema_version": 1,
-            "scope_id": request.user_id,
-            "revision": new_affect_state.revision,
-            "pre_state": pre_state.to_dict(),
-            "post_state": new_affect_state.fast_state.to_dict(),
-            "mood_state": new_affect_state.mood_state.to_dict(),
-            "policy": rendered_policy.to_dict(),
-            "causes": accepted_events,
-            "disposition": affect_transition.outcome_disposition,
-            "channels": compute_channel_readouts(new_affect_state.fast_state),
-        }
-        return ConversationResponse(
-            response=aura_response,
-            emotional_state=emotional_state_payload(
-                emotional_state_data,
-                simulation=simulation_payload,
-            ),
-            cognitive_state={
-                "focus": (
-                    cognitive_state_data.focus.value
-                    if cognitive_state_data
-                    else "Learning"
+            stage = "response"
+            logger.info("Conversation processed")
+            simulation_payload = {
+                "schema_version": 1,
+                "scope_id": request.user_id,
+                "revision": published_state.revision,
+                "pre_state": pre_state.to_dict(),
+                "post_state": published_state.fast_state.to_dict(),
+                "mood_state": published_state.mood_state.to_dict(),
+                "policy": rendered_policy.to_dict(),
+                "causes": accepted_events,
+                "disposition": published_disposition,
+                "channels": compute_channel_readouts(published_state.fast_state),
+            }
+            return ConversationResponse(
+                response=aura_response,
+                emotional_state=emotional_state_payload(
+                    emotional_state_data,
+                    simulation=simulation_payload,
                 ),
-                "description": (
-                    cognitive_state_data.description
-                    if cognitive_state_data
-                    else "Processing user input"
-                ),
-            },
-            session_id=session_id,
-            thinking_content=provider_result.reflection_summary,
-            thinking_metrics=None,
-            has_thinking=bool(provider_result.reflection_summary),
-        )
+                cognitive_state={
+                    "focus": (
+                        cognitive_state_data.focus.value
+                        if cognitive_state_data
+                        else "Learning"
+                    ),
+                    "description": (
+                        cognitive_state_data.description
+                        if cognitive_state_data
+                        else "Processing user input"
+                    ),
+                },
+                session_id=session_id,
+                thinking_content=provider_result.reflection_summary,
+                thinking_metrics=None,
+                has_thinking=bool(provider_result.reflection_summary),
+            )
     except asyncio.CancelledError:
         active_chat_sessions.pop(session_key, None)
         raise

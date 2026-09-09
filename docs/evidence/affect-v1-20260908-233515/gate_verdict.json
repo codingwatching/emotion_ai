@@ -1,0 +1,75 @@
+{
+  "gate_b": {
+    "status": "FAIL",
+    "incomplete_evidence": false,
+    "failure_reasons": [],
+    "effect_size_target_met": false,
+    "holm_significance_met": false,
+    "task_correctness_preserved": true,
+    "summary": {
+      "primary_comparisons": {
+        "C_minus_A": {
+          "mean_difference": 0.0521,
+          "standard_error": 0.0324,
+          "ci_95": [
+            0.0,
+            0.125
+          ],
+          "permutation_p": 0.4844,
+          "ttest_p": 0.18026,
+          "adjusted_p": 0.9688,
+          "significant": false,
+          "target_met": false
+        },
+        "C_minus_B": {
+          "mean_difference": 0.0625,
+          "standard_error": 0.0407,
+          "ci_95": [
+            0.0,
+            0.1458
+          ],
+          "permutation_p": 0.4974,
+          "ttest_p": 0.19702,
+          "adjusted_p": 0.9688,
+          "significant": false,
+          "target_met": false
+        },
+        "C_minus_D": {
+          "mean_difference": 0.1146,
+          "standard_error": 0.0409,
+          "ci_95": [
+            0.0312,
+            0.1979
+          ],
+          "permutation_p": 0.1178,
+          "ttest_p": 0.03634
+        }
+      },
+      "task_correctness": {
+        "Arm_A": 1.8,
+        "Arm_B": 1.8,
+        "Arm_C": 1.8,
+        "preserved": true
+      },
+      "overall_arm_means": {
+        "Arm_A": 1.9271,
+        "Arm_B": 1.9167,
+        "Arm_C": 1.9792,
+        "Arm_D": 1.8646
+      }
+    }
+  },
+  "gate_p": {
+    "status": "FAIL",
+    "engine_p95_ms": 0.21,
+    "warm_turn_p95_arm_a_ms": 12493.18,
+    "warm_turn_p95_arm_c_ms": 16144.69,
+    "warm_turn_overhead_pct": 29.23,
+    "target_met": false
+  },
+  "subjective_review": {
+    "status": "PENDING_HUMAN_REVIEW",
+    "blinded_samples_count": 80,
+    "file": "blinded_human_review.json"
+  }
+}

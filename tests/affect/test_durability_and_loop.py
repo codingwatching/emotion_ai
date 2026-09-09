@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from dataclasses import dataclass
@@ -608,32 +609,33 @@ async def test_concurrent_same_scope_requests_serialize(clean_db: Path) -> None:
     t_base = 1700000000.0
 
     async def execute_turn(turn_idx: int) -> int:
-        prior, pol, evs, app, pre = await service.compute_provisional_policy(
-            scope_id=scope_id,
-            message=f"Concurrent message {turn_idx}",
-            timestamp=t_base + turn_idx,
-        )
-        next_state, trans = await service.commit_turn(
-            scope_id=scope_id,
-            turn_id=f"turn_conc_{turn_idx}",
-            idempotency_key=f"key_conc_{turn_idx}",
-            input_digest=_digest(f"Concurrent message {turn_idx}"),
-            prior_state=prior,
-            pre_state=pre,
-            policy=pol,
-            appraisal=app,
-            outcome=None,
-            timestamp=t_base + turn_idx + 0.5,
-        )
-        return next_state.revision
+        async with service.scope_lock(scope_id):
+            prior, pol, evs, app, pre = await service.compute_provisional_policy(
+                scope_id=scope_id,
+                message=f"Concurrent message {turn_idx}",
+                timestamp=t_base + turn_idx,
+            )
+            # Simulate in-flight async delay (e.g. model generation)
+            await asyncio.sleep(0.01)
+            next_state, trans = await service.stage_turn(
+                scope_id=scope_id,
+                turn_id=f"turn_conc_{turn_idx}",
+                idempotency_key=f"key_conc_{turn_idx}",
+                input_digest=_digest(f"Concurrent message {turn_idx}"),
+                prior_state=prior,
+                pre_state=pre,
+                policy=pol,
+                appraisal=app,
+                outcome=None,
+                timestamp=t_base + turn_idx + 0.5,
+            )
+            service.publish_turn(scope_id, next_state, trans)
+            return next_state.revision
 
-    # Execute 5 serialized turns for the same scope
-    revisions = []
-    for i in range(1, 6):
-        rev = await execute_turn(i)
-        revisions.append(rev)
+    # Execute 5 overlapping concurrent turns simultaneously via asyncio.gather
+    revisions = await asyncio.gather(*(execute_turn(i) for i in range(1, 6)))
 
-    assert revisions == [1, 2, 3, 4, 5]
+    assert sorted(revisions) == [1, 2, 3, 4, 5]
     final_state = service.get_state(scope_id)
     assert final_state.revision == 5
 
@@ -695,3 +697,108 @@ async def test_two_scopes_are_completely_isolated(clean_db: Path) -> None:
     assert trans_b.scope_id == "user-bob"
     assert trans_a.turn_id == "turn_a_1"
     assert trans_b.turn_id == "turn_b_1"
+
+
+# 9. Failed database write rolls back state and does not advance revision
+def test_failed_database_write_does_not_advance_state(
+    clean_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = StorageRepository(clean_db)
+    persistence = ConversationPersistenceService(
+        repository=repo,
+        projection=_Projection(),
+    )
+    affect_svc = AffectService(repository=repo)
+    provider = _CaptureProvider("I am here to assist.")
+    runtime = ProviderRuntime(provider, timeout_seconds=2.0)
+    app_runtime = _TestAppRuntime(runtime, ToolCatalog(()))
+
+    monkeypatch.setattr(main, "conversation_persistence", persistence)
+    monkeypatch.setattr(main, "affect_service", affect_svc)
+    monkeypatch.setattr(main, "provider", None)
+    monkeypatch.setattr(main, "client", None)
+    monkeypatch.setattr(main, "mcp_gemini_bridge", None)
+    main.active_chat_sessions.clear()
+
+    app = main.create_app(runtime_builder=lambda: app_runtime)
+    user_id = "test-user-failing-db"
+
+    with TestClient(app) as client:
+        # Turn 1: Normal working persistence -> Revision 1
+        resp1 = client.post(
+            "/conversation",
+            json={
+                "user_id": user_id,
+                "message": "First message, database is fine.",
+                "session_id": "sess-fail-001",
+            },
+        )
+        assert resp1.status_code == 200
+        sim1 = resp1.json()["emotional_state"]["simulation"]
+        assert sim1["revision"] == 1
+        assert affect_svc.get_state(user_id).revision == 1
+        persisted_head = repo.get_affect_head(user_id)
+        assert persisted_head is not None
+        assert persisted_head.revision == 1
+
+        # Turn 2: Inject storage write failure
+        async def mock_fail_persist(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            return {"success": False, "error": "Disk I/O error or constraint violation"}
+
+        monkeypatch.setattr(
+            persistence,
+            "persist_conversation_exchange_immediate",
+            mock_fail_persist,
+        )
+        monkeypatch.setattr(
+            persistence,
+            "persist_conversation_exchange",
+            mock_fail_persist,
+        )
+
+        resp2 = client.post(
+            "/conversation",
+            json={
+                "user_id": user_id,
+                "message": "Second message, database write will fail.",
+                "session_id": "sess-fail-001",
+            },
+        )
+        # Route gracefully degrades (200 OK) preserving response
+        assert resp2.status_code == 200
+        sim2 = resp2.json()["emotional_state"]["simulation"]
+        assert sim2["revision"] == 1
+        assert sim2["disposition"] == "uncommitted"
+
+        # Authority assertion: State MUST NOT advance in memory or in storage
+        assert affect_svc.get_state(user_id).revision == 1
+        persisted_head_after_fail = repo.get_affect_head(user_id)
+        assert persisted_head_after_fail is not None
+        assert persisted_head_after_fail.revision == 1
+
+        # Turn 3: Restore working persistence and verify clean sequence continuation
+        monkeypatch.undo()  # restores persist_conversation_exchange_immediate
+        # Re-apply non-failing monkeypatches
+        monkeypatch.setattr(main, "conversation_persistence", persistence)
+        monkeypatch.setattr(main, "affect_service", affect_svc)
+        monkeypatch.setattr(main, "provider", None)
+        monkeypatch.setattr(main, "client", None)
+        monkeypatch.setattr(main, "mcp_gemini_bridge", None)
+
+        resp3 = client.post(
+            "/conversation",
+            json={
+                "user_id": user_id,
+                "message": "Third message, database is healthy again.",
+                "session_id": "sess-fail-001",
+            },
+        )
+        assert resp3.status_code == 200
+        sim3 = resp3.json()["emotional_state"]["simulation"]
+        # Must be revision 2 (not 3), because turn 2 failed and never committed
+        assert sim3["revision"] == 2
+        assert affect_svc.get_state(user_id).revision == 2
+        persisted_head_3 = repo.get_affect_head(user_id)
+        assert persisted_head_3 is not None
+        assert persisted_head_3.revision == 2

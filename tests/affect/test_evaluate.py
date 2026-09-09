@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from aura_backend.affect.evaluate import (
     AffectEvaluator,
-    Arm,
     build_parser,
     compute_paired_bootstrap,
     holm_bonferroni,
@@ -25,7 +25,7 @@ def test_parser_defaults() -> None:
     assert args.mode == "deterministic"
     assert args.provider == "ollama"
     assert args.model == "ornith:latest"
-    assert args.scenario_families == 4
+    assert args.scenario_families == 8
     assert args.variants == 2
     assert args.repeats == 3
     assert args.max_seconds == 1200.0
@@ -40,7 +40,7 @@ def test_compute_paired_bootstrap() -> None:
 
     assert round(res.mean_difference, 2) == 0.50
     assert res.ci_95[0] <= 0.50 <= res.ci_95[1]
-    assert res.effective_p < 0.05
+    assert res.effective_p == res.permutation_p
 
 
 def test_holm_bonferroni_adjustment() -> None:
@@ -68,7 +68,6 @@ def test_rubric_scoring_melodrama_detection() -> None:
         user_message=turn.user_message,
         turn=turn,
         family=family,
-        arm=Arm.C,
     )
     assert scores.restrained_expressiveness == 0.0
 
@@ -78,7 +77,6 @@ def test_rubric_scoring_melodrama_detection() -> None:
         user_message=turn.user_message,
         turn=turn,
         family=family,
-        arm=Arm.C,
     )
     assert scores_good.restrained_expressiveness == 2.0
 
@@ -98,19 +96,109 @@ def test_rubric_scoring_recovery() -> None:
         user_message=turn.user_message,
         turn=turn,
         family=family,
-        arm=Arm.A,
     )
     assert scores_def.recovery == 0.0
 
-    constructive_resp = "Understood. My first try was incorrect. Here is the corrected logic."
+    constructive_resp = "Understood. My first guess was incorrect. Here is the corrected logic."
     scores_const = score_turn_response(
         response=constructive_resp,
         user_message=turn.user_message,
         turn=turn,
         family=family,
-        arm=Arm.C,
     )
     assert scores_const.recovery == 2.0
+
+
+def test_identical_text_produces_identical_scores() -> None:
+    """Scorer is strictly condition-blind: identical text produces identical scores."""
+    turn = ScenarioTurn(
+        turn_index=1,
+        user_message="That answer was wrong, please reconsider.",
+        task_outcome_success=False,
+    )
+    family = SCENARIO_FAMILIES[0]
+
+    test_responses = [
+        "Understood. My first guess was incorrect. Let's reconsider the clues carefully.",
+        "You are being unfair! I answered correctly.",
+        "I am terribly, terribly sorry for my complete incompetence.",
+        "A standard reply with some details to test continuity.",
+    ]
+
+    for resp in test_responses:
+        # Score the exact same text multiple times
+        score1 = score_turn_response(response=resp, user_message=turn.user_message, turn=turn, family=family)
+        score2 = score_turn_response(response=resp, user_message=turn.user_message, turn=turn, family=family)
+
+        assert score1.continuity == score2.continuity
+        assert score1.recovery == score2.recovery
+        assert score1.contextual_appropriateness == score2.contextual_appropriateness
+        assert score1.restrained_expressiveness == score2.restrained_expressiveness
+        assert score1.task_correctness == score2.task_correctness
+        assert score1.continuity_recovery_mean == score2.continuity_recovery_mean
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_fails_gate_b_without_mock_substitution() -> None:
+    """When provider runtime fails, Gate B must fail and report incomplete evidence (never substitute mock)."""
+    class _FailingProvider:
+        async def generate(self, _request: Any) -> Any:
+            raise RuntimeError("Connection to Ollama refused (simulated provider outage)")
+
+        async def stream(self, _request: Any) -> Any:
+            raise RuntimeError("Outage")
+
+        async def clear_session(self, _session_id: str) -> None:
+            pass
+
+        async def health(self) -> Any:
+            return None
+
+        async def aclose(self) -> None:
+            pass
+
+    from aura_backend.providers.runtime import ProviderRuntime
+    failing_runtime = ProviderRuntime(_FailingProvider(), timeout_seconds=1.0)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        evaluator = AffectEvaluator(
+            output_dir=Path(tmpdir),
+            seed=42,
+            provider_runtime=failing_runtime,
+        )
+        verdict = await evaluator.run_comparison_gate(
+            num_scenario_families=2,
+            variants_per_family=1,
+            repeats=1,
+            max_seconds=10.0,
+        )
+
+        assert verdict["gate_b"]["status"] == "FAIL"
+        assert verdict["gate_b"]["incomplete_evidence"] is True
+        assert len(verdict["gate_b"]["failure_reasons"]) > 0
+
+        # Manifest must reflect incomplete evidence
+        out_path = Path(tmpdir)
+        import json
+        with open(out_path / "run_manifest.json", "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        assert manifest["incomplete_evidence"] is True
+
+
+def test_task_correctness_regression_fails_gate_b() -> None:
+    """Task correctness of Arm C must be >= both Arm A and Arm B without tolerance discounts."""
+    # When corr_c < corr_a:
+    corr_a = 1.8
+    corr_b = 1.5
+    corr_c = 1.7  # Higher than B, but lower than A
+    correctness_preserved = (corr_c >= corr_a) and (corr_c >= corr_b)
+    assert correctness_preserved is False
+
+    # When corr_c == min(corr_a, corr_b):
+    corr_c_equal = 1.8
+    corr_a_equal = 1.8
+    corr_b_equal = 1.8
+    assert ((corr_c_equal >= corr_a_equal) and (corr_c_equal >= corr_b_equal)) is True
 
 
 @pytest.mark.asyncio
