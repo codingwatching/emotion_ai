@@ -802,3 +802,133 @@ def test_failed_database_write_does_not_advance_state(
         persisted_head_3 = repo.get_affect_head(user_id)
         assert persisted_head_3 is not None
         assert persisted_head_3.revision == 2
+
+
+# 10. Timeout race: slow writer committing late does NOT cause affect_revision_conflict on next turn
+def test_timeout_late_commit_does_not_cause_revision_conflict(
+    clean_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A timed-out writer that commits late to SQLite must not cause affect_revision_conflict on next turn."""
+    import time
+    repo = StorageRepository(clean_db)
+    persistence = ConversationPersistenceService(
+        repository=repo,
+        projection=_Projection(),
+    )
+    affect_svc = AffectService(repository=repo)
+    provider = _CaptureProvider("Synthetic reply.")
+    runtime = ProviderRuntime(provider, timeout_seconds=2.0)
+    app_runtime = _TestAppRuntime(runtime, ToolCatalog(()))
+
+    monkeypatch.setattr(main, "conversation_persistence", persistence)
+    monkeypatch.setattr(main, "affect_service", affect_svc)
+    monkeypatch.setattr(main, "provider", None)
+    monkeypatch.setattr(main, "client", None)
+    monkeypatch.setattr(main, "mcp_gemini_bridge", None)
+    main.active_chat_sessions.clear()
+
+    app = main.create_app(runtime_builder=lambda: app_runtime)
+    user_id = "test-user-timeout-race"
+
+    with TestClient(app) as client:
+        monkeypatch.setenv("PERSISTENCE_TIMEOUT", "0.05")
+
+        orig_persist_command = persistence._persist_command
+
+        def slow_persist_command(command: Any) -> Any:
+            time.sleep(0.15)
+            return orig_persist_command(command)
+
+        monkeypatch.setattr(persistence, "_persist_command", slow_persist_command)
+
+        resp1 = client.post(
+            "/conversation",
+            json={
+                "user_id": user_id,
+                "message": "Turn 1 will time out immediately.",
+                "session_id": "sess-race-001",
+            },
+        )
+        assert resp1.status_code == 200
+
+        # Wait for the slow writer thread to finish committing to SQLite
+        time.sleep(0.3)
+
+        # Confirm the slow writer committed rev 1 to SQLite
+        db_head = repo.get_affect_head(user_id)
+        assert db_head is not None
+        assert db_head.revision == 1
+
+        # Turn 2: restore normal persistence speed
+        monkeypatch.setattr(persistence, "_persist_command", orig_persist_command)
+        monkeypatch.setenv("PERSISTENCE_TIMEOUT", "5.0")
+
+        resp2 = client.post(
+            "/conversation",
+            json={
+                "user_id": user_id,
+                "message": "Turn 2 should build on revision 1 and advance to 2 without conflict.",
+                "session_id": "sess-race-001",
+            },
+        )
+        assert resp2.status_code == 200
+        sim2 = resp2.json()["emotional_state"]["simulation"]
+        # Must be revision 2, NOT conflict error!
+        assert sim2["revision"] == 2
+        assert sim2["disposition"] != "uncommitted"
+        assert affect_svc.get_state(user_id).revision == 2
+        head_after_2 = repo.get_affect_head(user_id)
+        assert head_after_2 is not None
+        assert head_after_2.revision == 2
+
+
+# 11. Projection failure: disposable projection failure does NOT discard committed ledger
+def test_projection_failure_does_not_discard_committed_ledger(
+    clean_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When disposable projection fails, the committed ledger must NOT be discarded; affect state advances."""
+    repo = StorageRepository(clean_db)
+
+    class _FailingProjection:
+        def upsert_committed(self, _turn_id: str) -> int:
+            raise RuntimeError("Chroma vector index disk full or connection error")
+
+    persistence = ConversationPersistenceService(
+        repository=repo,
+        projection=_FailingProjection(),
+    )
+    affect_svc = AffectService(repository=repo)
+    provider = _CaptureProvider("I am here to assist.")
+    runtime = ProviderRuntime(provider, timeout_seconds=2.0)
+    app_runtime = _TestAppRuntime(runtime, ToolCatalog(()))
+
+    monkeypatch.setattr(main, "conversation_persistence", persistence)
+    monkeypatch.setattr(main, "affect_service", affect_svc)
+    monkeypatch.setattr(main, "provider", None)
+    monkeypatch.setattr(main, "client", None)
+    monkeypatch.setattr(main, "mcp_gemini_bridge", None)
+    main.active_chat_sessions.clear()
+
+    app = main.create_app(runtime_builder=lambda: app_runtime)
+    user_id = "test-user-proj-fail"
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/conversation",
+            json={
+                "user_id": user_id,
+                "message": "Projection will fail, but ledger should commit.",
+                "session_id": "sess-proj-001",
+            },
+        )
+        assert resp.status_code == 200
+        sim = resp.json()["emotional_state"]["simulation"]
+        # Ledger committed, so state advanced to revision 1 (not uncommitted)
+        assert sim["revision"] == 1
+        assert sim["disposition"] != "uncommitted"
+        assert affect_svc.get_state(user_id).revision == 1
+        persisted_head = repo.get_affect_head(user_id)
+        assert persisted_head is not None
+        assert persisted_head.revision == 1

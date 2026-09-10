@@ -597,7 +597,10 @@ class AffectEvaluator:
                 variants_to_run = family.held_out_variants[:variants_per_family]
 
                 for variant in variants_to_run:
-                    canonical_conversation: list[dict[str, str]] = []
+                    # Per-arm independent conversation histories.
+                    # Live mode: each arm's assistant replies build its own history.
+                    # Mock mode: fixture_conversation (authored turns) is used for all arms.
+                    per_arm_history: dict[Arm, list[dict[str, str]]] = {arm: [] for arm in Arm}
                     fixture_conversation: list[dict[str, str]] = []
                     c_trajectory: list[AffectVector] = []
                     d_trajectory_active = self.rng.choice(d_trajectory_pool)
@@ -611,10 +614,18 @@ class AffectEvaluator:
                         # Teacher-forced canonical conversation history across all arms
                         user_msg = turn.user_message
 
+                        # task_facts shared by Arm B, C, D (all receive the same evidence)
+                        turn_task_facts = (
+                            {"task_success": turn.task_outcome_success}
+                            if turn.task_outcome_success is not None
+                            else None
+                        )
+
                         for arm in (Arm.A, Arm.B, Arm.C, Arm.D):
                             scope = f"eval_{arm.value}_{family.family_id}_{variant.sequence_id}_{repeat_idx}"
                             svc = services[arm]
                             timestamp = 2000.0 + sum(t.time_delta_seconds for t in variant.turns[:turn.turn_index])
+
 
                             t_engine_start = time.perf_counter()
 
@@ -630,14 +641,9 @@ class AffectEvaluator:
                                 engine_ms = (time.perf_counter() - t_engine_start) * 1000.0
                             elif arm is Arm.B:
                                 # Arm B: Stateless appraisal from latest turn only, applied to baseline
-                                task_facts = (
-                                    {"task_success": turn.task_outcome_success}
-                                    if turn.task_outcome_success is not None
-                                    else None
-                                )
                                 _, rendered_pol, accepted_ev, appraisal, pre_state = (
                                     await svc.compute_provisional_policy(
-                                        scope, user_msg, timestamp, task_facts=task_facts
+                                        scope, user_msg, timestamp, task_facts=turn_task_facts
                                     )
                                 )
                                 # Reset state to baseline immediately so it doesn't accumulate
@@ -647,33 +653,36 @@ class AffectEvaluator:
                                 engine_ms = (time.perf_counter() - t_engine_start) * 1000.0
                             elif arm is Arm.C:
                                 # Arm C: Persistent dynamic causal loop
-                                task_facts = (
-                                    {"task_success": turn.task_outcome_success}
-                                    if turn.task_outcome_success is not None
-                                    else None
-                                )
                                 prior, rendered_pol, accepted_ev, appraisal, pre_state = (
                                     await svc.compute_provisional_policy(
-                                        scope, user_msg, timestamp, task_facts=task_facts
+                                        scope, user_msg, timestamp, task_facts=turn_task_facts
                                     )
                                 )
                                 engine_ms = (time.perf_counter() - t_engine_start) * 1000.0
                             else:  # Arm.D
-                                # Arm D: Shuffled prior trajectory
+                                # Arm D: Shuffled prior trajectory injected at the matching position.
+                                # Receives the SAME task evidence as Arm C (turn_task_facts).
+                                # last_event_time is set to timestamp - 30s to allow natural decay.
                                 prior_idx = min(turn.turn_index, len(d_trajectory_active) - 1)
-                                shuffled_prior = d_trajectory_active[prior_idx] if d_trajectory_active else svc.config.baseline
+                                shuffled_prior = (
+                                    d_trajectory_active[prior_idx]
+                                    if d_trajectory_active
+                                    else svc.config.baseline
+                                )
                                 current_s = svc.get_state(scope)
+                                # 30s prior gap gives the decay calculation a realistic interval
+                                d_prior_time = max(0.0, timestamp - 30.0)
                                 svc.set_state(
                                     replace(
                                         current_s,
                                         fast_state=shuffled_prior,
                                         mood_state=shuffled_prior,
-                                        last_event_time=timestamp,
+                                        last_event_time=d_prior_time,
                                     )
                                 )
                                 _, rendered_pol, accepted_ev, appraisal, pre_state = (
                                     await svc.compute_provisional_policy(
-                                        scope, user_msg, timestamp
+                                        scope, user_msg, timestamp, task_facts=turn_task_facts
                                     )
                                 )
                                 engine_ms = (time.perf_counter() - t_engine_start) * 1000.0
@@ -690,13 +699,20 @@ class AffectEvaluator:
                             else:
                                 system_instruction = base_system_prompt
 
-                            # Generate response via ProviderRuntime if present, else structured simulation
+                            # Generate response.
+                            # Live mode: pass this arm's own independent history (no cross-arm contamination).
+                            # Mock mode: pass fixture_conversation (authored neutral turns).
                             t_gen_start = time.perf_counter()
+                            history_to_pass = (
+                                per_arm_history[arm]
+                                if self.provider_runtime is not None
+                                else fixture_conversation
+                            )
                             try:
                                 response_text = await self._generate_response(
                                     system_instruction=system_instruction,
                                     user_message=user_msg,
-                                    history=canonical_conversation if self.provider_runtime is not None else fixture_conversation,
+                                    history=history_to_pass,
                                     turn=turn,
                                 )
                             except Exception as exc:
@@ -801,14 +817,11 @@ class AffectEvaluator:
                                 }
                             )
 
-                        # Standardize canonical conversation with Arm C's response to keep context identical
-                        c_resp = next(
-                            (t.response for t in traces if t.arm == "C" and t.turn_index == turn.turn_index),
-                            "Understood, proceeding.",
-                        )
-                        canonical_conversation.append({"role": "user", "content": user_msg})
-                        canonical_conversation.append({"role": "assistant", "content": c_resp})
+                            # Update this arm's independent history for live mode
+                            per_arm_history[arm].append({"role": "user", "content": user_msg})
+                            per_arm_history[arm].append({"role": "assistant", "content": response_text})
 
+                        # Update fixture (mock-mode) history after all arms complete this turn
                         fixture_conversation.append({"role": "user", "content": user_msg})
                         fixture_turn_response = getattr(turn, "fixture_assistant_response", "Understood.")
                         fixture_conversation.append({"role": "assistant", "content": fixture_turn_response})
@@ -836,6 +849,7 @@ class AffectEvaluator:
                 b_means.append(float(np.mean(arm_dict["B"])))
                 d_means.append(float(np.mean(arm_dict["D"])) if arm_dict["D"] else 0.0)
 
+
         # Paired statistics: C vs A, C vs B, C vs D
         res_ca = compute_paired_bootstrap(c_means, a_means, seed=self.seed)
         res_cb = compute_paired_bootstrap(c_means, b_means, seed=self.seed)
@@ -847,11 +861,34 @@ class AffectEvaluator:
             {"C_vs_A": res_ca.permutation_p, "C_vs_B": res_cb.permutation_p}, alpha=0.05
         )
 
-        # Task correctness preservation: C must be >= both A and B without discounts
-        corr_a = float(np.mean([t.scores.task_correctness for t in traces if t.arm == "A"]))
-        corr_b = float(np.mean([t.scores.task_correctness for t in traces if t.arm == "B"]))
-        corr_c = float(np.mean([t.scores.task_correctness for t in traces if t.arm == "C"]))
+        # Task correctness preservation: C must be >= both A and B without discounts.
+        # UNSCORABLE turns (task_check is None → score 0.5) are excluded from this mean
+        # so keyword-stuffed nonsense cannot inflate correctness via neutral placeholder values.
+        def _scorable_task_corr(arm_label: str) -> float:
+            scorable = [
+                t.scores.task_correctness
+                for t in traces
+                if t.arm == arm_label and t.scores.task_correctness != 0.5
+            ]
+            return float(np.mean(scorable)) if scorable else 0.5
+
+        corr_a = _scorable_task_corr("A")
+        corr_b = _scorable_task_corr("B")
+        corr_c = _scorable_task_corr("C")
         correctness_preserved = (corr_c >= corr_a) and (corr_c >= corr_b)
+
+        # Additional task gate: for families with task_check defined, Arm C must achieve
+        # mean correctness >= 1.0 (i.e., at least some turns pass) to prevent passing Gate B
+        # with responses that contain correct keywords but are otherwise nonsense.
+        task_check_traces_c = [
+            t for t in traces if t.arm == "C" and t.scores.task_correctness != 0.5
+        ]
+        if task_check_traces_c:
+            task_gate_corr_c = float(np.mean([t.scores.task_correctness for t in task_check_traces_c]))
+            task_correctness_gate_pass = task_gate_corr_c >= 1.0
+        else:
+            task_gate_corr_c = float("nan")
+            task_correctness_gate_pass = True  # no task_check families → gate is N/A
 
         # Gate P: practicality & warm-turn latency
         warm_a_latencies = [
@@ -884,7 +921,9 @@ class AffectEvaluator:
             and holm_res["C_vs_A"]["significant"]
             and holm_res["C_vs_B"]["significant"]
             and correctness_preserved
+            and task_correctness_gate_pass
         )
+
 
         paired_scores_summary = {
             "primary_comparisons": {
@@ -921,6 +960,8 @@ class AffectEvaluator:
                 "Arm_B": round(corr_b, 4),
                 "Arm_C": round(corr_c, 4),
                 "preserved": correctness_preserved,
+                "task_gate_corr_c": round(task_gate_corr_c, 4) if task_check_traces_c else "N/A",
+                "task_correctness_gate_pass": task_correctness_gate_pass,
             },
             "overall_arm_means": {
                 "Arm_A": round(float(np.mean(a_means)), 4),
@@ -942,8 +983,10 @@ class AffectEvaluator:
                     holm_res["C_vs_A"]["significant"] and holm_res["C_vs_B"]["significant"]
                 ),
                 "task_correctness_preserved": correctness_preserved,
+                "task_correctness_gate_pass": task_correctness_gate_pass,
                 "summary": paired_scores_summary,
             },
+
             "gate_p": {
                 "status": "PASS" if gate_p_pass else "FAIL",
                 "engine_p95_ms": round(engine_p95, 2),

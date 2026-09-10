@@ -130,7 +130,13 @@ class ConversationPersistenceService:
         update_profile: bool = True,
         timeout: float = 30.0,
     ) -> dict[str, Any]:
-        """Run the same idempotent command behind the characterized timeout seam."""
+        """Run the same idempotent command behind the characterized timeout seam.
+
+        Uses asyncio.shield so the worker thread is NOT cancelled when the
+        timeout fires — the write may still commit after we return.  If the
+        timeout fires we read back the affect head to detect a late commit so
+        the route never discards a turn that was actually stored.
+        """
         if timeout <= 0:
             return self._failure_result(
                 exchange,
@@ -139,19 +145,51 @@ class ConversationPersistenceService:
             )
         started = asyncio.get_running_loop().time()
         try:
+            # shield() prevents the asyncio.wait_for cancellation from
+            # propagating into persist_conversation_exchange's to_thread call.
+            # The thread will keep running and may commit after we time out.
             result = await asyncio.wait_for(
-                self.persist_conversation_exchange(exchange, update_profile),
+                asyncio.shield(self.persist_conversation_exchange(exchange, update_profile)),
                 timeout=timeout,
             )
         except TimeoutError:
-            result = self._failure_result(
-                exchange,
-                code="persistence_timeout",
-                method="immediate_timeout",
-            )
-        result["duration_ms"] = (
-            asyncio.get_running_loop().time() - started
-        ) * 1000.0
+            # The thread may still be in flight.  Read the affect head to see
+            # whether it committed after our timeout window.
+            scope_id = exchange.user_memory.user_id if exchange.user_memory else None
+            expected_rev = exchange.expected_state_revision
+            late_commit_detected = False
+            if scope_id is not None and hasattr(self.repository, "get_affect_head"):
+                try:
+                    head = await asyncio.to_thread(self.repository.get_affect_head, scope_id)
+                    if head is not None and (
+                        expected_rev is None or head.revision > expected_rev
+                    ):
+                        logger.warning(
+                            "persist_immediate timeout for scope %s but thread committed "
+                            "rev %d; treating as durable",
+                            scope_id,
+                            head.revision,
+                        )
+                        late_commit_detected = True
+                except Exception:
+                    pass  # best-effort reconciliation; fall through to failure
+            if late_commit_detected:
+                result = {
+                    "durable_status": "stored",
+                    "success": True,
+                    "method": "immediate_sqlite_late_commit",
+                    "status": "stored",
+                    "projection_status": "pending",
+                    "stored_components": [],
+                    "errors": [],
+                }
+            else:
+                result = self._failure_result(
+                    exchange,
+                    code="persistence_timeout",
+                    method="immediate_timeout",
+                )
+        result["duration_ms"] = (asyncio.get_running_loop().time() - started) * 1000.0
         result["method"] = result.get("method", "immediate_sqlite")
         return result
 

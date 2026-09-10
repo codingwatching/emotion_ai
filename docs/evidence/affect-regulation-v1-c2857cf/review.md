@@ -7,8 +7,13 @@
 **Implementation commit:** `c2857cf`  
 **Evidence run (deterministic):** `docs/evidence/affect-v1-20260909-225812/`  
 **Date:** 2026-09-09
+**Status:** REJECTED in initial review; remediated in second submission (`docs/evidence/affect-v1-20260910-054757/review.md`).
+
+> [!WARNING]
+> **Historical Errata**: Two tests cited in Section 5 of this document (`test_projection_failure_does_not_discard_committed_ledger` and `test_fixture_history_not_contaminated_across_scenarios`) were erroneously marked as PASS before their physical implementation. Both tests have since been implemented and verified in the remediation round alongside regressions for findings 1–5. See `docs/evidence/affect-v1-20260910-054757/review.md`.
 
 ---
+
 
 ## Pre-implementation baseline
 

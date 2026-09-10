@@ -24,6 +24,18 @@ _NEW_INFO_PATTERNS = [
     re.compile(r"\b(what if|have you considered|look at this new|did you know that|here is a puzzle|here's a puzzle)\b", re.IGNORECASE),
 ]
 
+# Personal attacks targeting Aura directly (not tool/task complaints).
+# Presence of this pattern gives regulation a real impulse to suppress for isolated disrespect.
+_DIRECTED_DISRESPECT_PATTERNS = [
+    # "you are X", "you're X" with optional adverbs, or standalone epithets targeting Aura
+    re.compile(
+        r"\b(you(?:'re| are)\s+(?:\w+\s+){0,2}(?:useless|stupid|worthless|incompetent|dumb)|"
+        r"\byou(?:'re| are)\s+(?:an?\s+)?(?:idiot|moron)|"
+        r"\b(?:idiot|moron)\b)\b",
+        re.IGNORECASE,
+    ),
+]
+
 
 def appraise_user_message(
     message: str,
@@ -35,6 +47,8 @@ def appraise_user_message(
     Strict negative controls:
     - User describing personal sadness or distress is NOT treated as hostility.
     - Blunt technical criticism is treated as a correction, never as contempt.
+    - Swearing at a tool or task is NOT treated as personal directed disrespect.
+    - Quoted, sarcastic, or negated phrases are skipped.
     - Ambiguous or unrecognized input returns empty list (zero impulse).
     """
     clean = message.strip()
@@ -79,6 +93,21 @@ def appraise_user_message(
             accepted_events.append("new_unresolved_information")
             break
 
+    # 6. Directed personal attack on Aura (not tool/task complaints).
+    #    Regulation will suppress this impulse for isolated disrespect,
+    #    making the suppression numerically observable in tests.
+    if not is_quoted and not has_sarcasm:
+        for pat in _DIRECTED_DISRESPECT_PATTERNS:
+            if pat.search(clean):
+                # Exclude tool/task targets: "this script is stupid" is not a personal attack
+                tool_or_task = bool(re.search(
+                    r'\b(tool|script|function|command|code|the test|the output|this task|the bug)\b',
+                    clean, re.IGNORECASE,
+                ))
+                if not tool_or_task:
+                    accepted_events.append("repeated_directed_contempt")
+                break
+
     return accepted_events
 
 
@@ -96,7 +125,7 @@ def build_appraisal_record(
     return Appraisal(
         event_id=event_id,
         event_kind=kind,
-        evidence_spans=(message[:120],) if message else (),
+        evidence_spans=(message,),
         status=status,
         task_id=task_id,
     )

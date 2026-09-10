@@ -79,6 +79,11 @@ class AffectService:
         self._states: dict[str, AffectState] = {}
         self._transitions: dict[str, list[AffectTransition]] = {}
         self._locks: dict[str, AsyncReentrantLock] = {}
+        # Staged regulation decisions: populated in compute_provisional_policy,
+        # consumed in stage_turn, cleared in discard_staged_turn.
+        from aura_backend.affect.regulation import RegulationDecision
+        self._staged_decisions: dict[str, RegulationDecision] = {}
+
 
     def _get_lock(self, scope_id: str) -> AsyncReentrantLock:
         if scope_id not in self._locks:
@@ -91,15 +96,18 @@ class AffectService:
 
     def get_state(self, scope_id: str, timestamp: float | None = None) -> AffectState:
         """Get or initialize the current state for a scope."""
-        if scope_id not in self._states:
-            if self.repository is not None and hasattr(self.repository, "get_affect_head"):
-                persisted = self.repository.get_affect_head(scope_id)
-                if persisted is not None:
+        if self.repository is not None and hasattr(self.repository, "get_affect_head"):
+            persisted = self.repository.get_affect_head(scope_id)
+            if persisted is not None:
+                current = self._states.get(scope_id)
+                if current is None or persisted.revision > current.revision:
                     self._states[scope_id] = persisted
                     return persisted
+        if scope_id not in self._states:
             ts = timestamp if timestamp is not None else time.time()
             self._states[scope_id] = AffectState.initial(scope_id, self.config, ts)
         return self._states[scope_id]
+
 
     def set_state(self, state: AffectState) -> None:
         """Explicitly set the current state (e.g. upon restore from storage)."""
@@ -135,14 +143,24 @@ class AffectService:
 
             eid = event_id or uuid.uuid4().hex
 
-            # Apply non-punitive regulation
+            # Apply non-punitive regulation, passing the pre-impulse decayed state so
+            # the regulator can revert affiliation for disrespect events.
             event_interpretation = classify_event(
                 message,
                 event_id=eid,
                 task_facts=task_facts,
+                accepted_appraisal_events=accepted_events,
             )
-            regulation_result = regulate(pre_state, event_interpretation, self.config)
+            regulation_result = regulate(
+                pre_state,
+                event_interpretation,
+                self.config,
+                pre_impulse_state=fast_decayed,
+            )
             pre_state = regulation_result.regulated_state
+            # Stage the decision for persistence in stage_turn
+            self._staged_decisions[scope_id] = regulation_result
+
             appraisal = build_appraisal_record(
                 event_id=eid,
                 message=message,
@@ -151,6 +169,7 @@ class AffectService:
             policy = render_policy(pre_state)
 
             return prior_state, policy, accepted_events, appraisal, pre_state
+
 
     async def stage_turn(
         self,
@@ -182,6 +201,12 @@ class AffectService:
             id_suffix = hashlib.sha256(digest_seed).hexdigest()[:8]
             transition_id = f"trans_{scope_id}_{next_revision}_{id_suffix}"
 
+            # Merge staged regulation decision into appraisal provenance
+            regulation_decision = self._staged_decisions.pop(scope_id, None)
+            appraisal_dict = appraisal.to_dict()
+            if regulation_decision is not None:
+                appraisal_dict["regulation_decision"] = regulation_decision.to_dict()
+
             transition = AffectTransition(
                 transition_id=transition_id,
                 scope_id=scope_id,
@@ -190,7 +215,7 @@ class AffectService:
                 idempotency_key=idempotency_key,
                 prior_revision=prior_state.revision,
                 input_digest=input_digest,
-                accepted_appraisal=appraisal.to_dict(),
+                accepted_appraisal=appraisal_dict,
                 pre_state=pre_state,
                 after_state=after_state,
                 rendered_policy=policy,
@@ -228,10 +253,13 @@ class AffectService:
 
     def discard_staged_turn(self, scope_id: str) -> None:
         """Cleanly discard staged turn and re-sync memory from persistent repository if available."""
+        # Clear any staged regulation decision so it is not applied to the next turn
+        self._staged_decisions.pop(scope_id, None)
         if self.repository is not None and hasattr(self.repository, "get_affect_head"):
             head = self.repository.get_affect_head(scope_id)
             if head is not None:
                 self._states[scope_id] = head
+
 
     async def commit_turn(
         self,

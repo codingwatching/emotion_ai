@@ -79,14 +79,11 @@ def calculate_turn_impulse(
 
     for ev in accepted_events:
         event_name = ev if isinstance(ev, str) else ev.get("name", "")
-        if event_name == "repeated_directed_contempt" and not config.enable_contempt_branch:
-            # Negative control: contempt branch disabled in v1 until safety passes
-            continue
-
         deltas = STARTER_EVENT_IMPULSES.get(event_name)
         if not deltas:
             # Ambiguous or unrecognized events contribute zero impulse
             continue
+
 
         for dim, delta in deltas.items():
             if dim in raw_deltas:

@@ -54,7 +54,9 @@ from aura_backend.conversation_persistence_service import (  # noqa: E402
     PersistenceHealthCheck,
 )
 from aura_backend.affect import AffectService  # noqa: E402
+from aura_backend.affect.models import TaskOutcome  # noqa: E402
 from aura_backend.affect.policy import compute_channel_readouts  # noqa: E402
+
 from aura_backend.storage.repository import (  # noqa: E402
     IdempotencyConflict,
     canonical_request_hash,
@@ -578,6 +580,15 @@ class ConversationRequest(BaseModel):
             description="Optional stable retry identity for this exact request",
         ),
     ] = None
+    task_facts: Annotated[
+        Optional[dict[str, Any]],
+        Field(default=None, description="Optional task observations or facts for this turn"),
+    ] = None
+    task_outcome: Annotated[
+        Optional[dict[str, Any]],
+        Field(default=None, description="Optional observed task outcome for this turn"),
+    ] = None
+
 
 
 class ConversationResponse(BaseModel):
@@ -2463,7 +2474,9 @@ async def process_conversation(
                 scope_id=request.user_id,
                 message=request.message,
                 timestamp=turn_timestamp,
+                task_facts=getattr(request, "task_facts", None),
             )
+
 
             stage = "prompt"
             system_instruction = get_aura_system_instruction(
@@ -2543,6 +2556,24 @@ async def process_conversation(
             idempotency_key = request.idempotency_key or uuid.uuid4().hex
             input_digest = canonical_request_hash(request.user_id, session_id, request.message)
 
+            # Reconcile head state before staging in case of late persistence completions
+            current_head = affect_svc.get_state(request.user_id, turn_timestamp)
+            if current_head.revision > prior_affect_state.revision:
+                prior_affect_state = current_head
+
+            turn_outcome: TaskOutcome | None = None
+            req_outcome = getattr(request, "task_outcome", None)
+            if req_outcome:
+                if isinstance(req_outcome, TaskOutcome):
+                    turn_outcome = req_outcome
+                elif isinstance(req_outcome, dict):
+                    turn_outcome = TaskOutcome(
+                        task_id=str(req_outcome.get("task_id", "task")),
+                        success=bool(req_outcome.get("success", False)),
+                        metadata=dict(req_outcome.get("metadata") or req_outcome.get("details") or {}),
+                    )
+
+
             new_affect_state, affect_transition = await affect_svc.stage_turn(
                 scope_id=request.user_id,
                 turn_id=turn_id,
@@ -2552,7 +2583,7 @@ async def process_conversation(
                 pre_state=pre_state,
                 policy=rendered_policy,
                 appraisal=affect_appraisal,
-                outcome=None,
+                outcome=turn_outcome,
                 timestamp=turn_timestamp,
             )
 
@@ -2589,13 +2620,14 @@ async def process_conversation(
                     "Database persistence degraded or failed; discarding staged affective state"
                 )
                 affect_svc.discard_staged_turn(request.user_id)
-                published_state = prior_affect_state
+                published_state = affect_svc.get_state(request.user_id, turn_timestamp)
                 published_disposition = "uncommitted"
             else:
                 # Verified persistence success: publish to memory
                 affect_svc.publish_turn(request.user_id, new_affect_state, affect_transition)
                 published_state = new_affect_state
                 published_disposition = affect_transition.outcome_disposition
+
 
             stage = "response"
             logger.info("Conversation processed")

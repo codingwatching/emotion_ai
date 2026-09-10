@@ -321,3 +321,69 @@ def test_appraise_quotes_sarcasm_negation_negative_controls() -> None:
         for ev in events:
             assert ev != 'verified_task_success'
             assert ev != 'verified_task_failure'
+
+
+@pytest.mark.asyncio
+async def test_disrespect_regulation_produces_zero_affiliation_delta(config: AffectConfig) -> None:
+    """Disrespect impulse drops affiliation, but regulation actively reverts it to zero persistent delta."""
+    from aura_backend.affect.service import AffectService
+    service = AffectService(config=config)
+    scope = "scope_disrespect_functional"
+
+    # User message with directed disrespect
+    prior, policy, events, appraisal, pre_state = await service.compute_provisional_policy(
+        scope,
+        "You are completely useless and stupid.",
+        timestamp=1000.0,
+    )
+    # Appraisal detected directed disrespect
+    assert "repeated_directed_contempt" in events
+
+    # Staged decision exists and shows candidate dropped affiliation while regulated restored it
+    staged = service._staged_decisions.get(scope)
+    assert staged is not None
+    assert "isolated_disrespect_no_persistent_delta" in staged.reason_codes
+    assert staged.candidate_state.affiliation < config.baseline.affiliation  # dropped by impulse
+    assert staged.regulated_state.affiliation == pytest.approx(config.baseline.affiliation, abs=1e-4)  # restored!
+    assert staged.candidate_state.affiliation != staged.regulated_state.affiliation
+    assert pre_state.affiliation == pytest.approx(config.baseline.affiliation, abs=1e-4)
+
+
+@pytest.mark.asyncio
+async def test_regulation_decision_persisted_in_transition(config: AffectConfig) -> None:
+    """Regulation decisions and verified task facts are persisted in AffectTransition.accepted_appraisal."""
+    from aura_backend.affect.service import AffectService
+    from aura_backend.affect.models import TaskOutcome
+    service = AffectService(config=config)
+    scope = "scope_reg_persist"
+
+    # Turn with verified task failure
+    prior, policy, events, appraisal, pre_state = await service.compute_provisional_policy(
+        scope,
+        "Line 42 has a segmentation fault.",
+        timestamp=2000.0,
+        task_facts={"task_failure": True},
+    )
+    assert "verified_task_failure" in events
+
+    staged_state, transition = await service.stage_turn(
+        scope_id=scope,
+        turn_id="turn_reg_01",
+        idempotency_key="idemp_reg_01",
+        input_digest="hash_reg_01",
+        prior_state=prior,
+        pre_state=pre_state,
+        policy=policy,
+        appraisal=appraisal,
+        outcome=TaskOutcome("task_reg_01", success=False),
+        timestamp=2000.0,
+    )
+
+    # Transition must contain regulation_decision
+    assert "regulation_decision" in transition.accepted_appraisal
+    reg_dict = transition.accepted_appraisal["regulation_decision"]
+    assert "verified_outcome_accepted" in reg_dict["reason_codes"]
+    assert len(reg_dict["accepted_interpretations"]) == 1
+    assert reg_dict["accepted_interpretations"][0]["validation_status"] == "verified"
+    assert reg_dict["accepted_interpretations"][0]["claim_kind"] == "verified_failure"
+    assert reg_dict["accepted_interpretations"][0]["source_id"] == "task_facts"
