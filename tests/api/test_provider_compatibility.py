@@ -350,6 +350,7 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
                     "recovery_step": False,
                     "exploration": "balanced",
                     "reflection": "defer",
+                    "evidence_action": "proceed",
                     "input_state": {
                         "valence": 0.1,
                         "arousal": 0.3,
@@ -361,7 +362,14 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
                     },
                 },
                 "causes": [],
-                "disposition": "uncommitted",
+                "disposition": "unknown",
+                "persistence": {
+                    "status": "unknown",
+                    "idempotency_key": response.json()["emotional_state"]["simulation"]["persistence"]["idempotency_key"],
+                    "turn_id": None,
+                    "transition_id": None,
+                    "projection_status": "unknown",
+                },
                 "channels": {
                     "dopamine_like": 0.575,
                     "norepinephrine_like": 0.15,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 
 from aura_backend.affect.models import AffectVector, ResponsePolicy
+from aura_backend.affect.regulation import RegulationDecision
 
 WARMTH_LEVELS = ("reserved", "warm", "appreciative")
 ENERGY_LEVELS = ("steady", "balanced", "energetic")
@@ -26,6 +27,8 @@ def _clamp_step(candidate: str, prior: str, levels: tuple[str, ...]) -> str:
 def render_policy(
     state: AffectVector,
     prior_policy: ResponsePolicy | None = None,
+    *,
+    regulation: RegulationDecision | None = None,
 ) -> ResponsePolicy:
     """Map affective state vector to authored, causal response policy."""
     # 1. Warmth
@@ -34,6 +37,10 @@ def render_policy(
     elif state.affiliation > 0.75 and state.valence > 0.12:
         target_warmth = "appreciative"
     else:
+        target_warmth = "warm"
+    if regulation is not None and target_warmth == "reserved":
+        # A leftover negative state is not evidence that this interlocutor
+        # deserves distance. Keep the legacy mapping for v1 replay callers.
         target_warmth = "warm"
 
     # 2. Energy
@@ -65,6 +72,14 @@ def render_policy(
     # 4. Setback & recovery
     acknowledge_setback = bool(state.valence < -0.05 and state.load > 0.15)
     recovery_step = bool(acknowledge_setback or (state.valence < -0.02 and state.control >= 0.70))
+    evidence_action = regulation.selected_action if regulation is not None else "proceed"
+    if regulation is not None:
+        acknowledge_setback = any(
+            interpretation.validation_status == "verified"
+            and interpretation.current_consequence == "active_error"
+            for interpretation in regulation.accepted_interpretations
+        )
+        recovery_step = acknowledge_setback
 
     # 5. Reflection
     reflection = "immediate" if (state.load < 0.25 and state.curiosity > 0.65) else "defer"
@@ -78,6 +93,8 @@ def render_policy(
         f"- Initiative & Exploration: {exploration} (keep factual and task requirements strictly prioritized)",
         f"- Reflection: {reflection}",
     ]
+    if evidence_action == "verify":
+        prompt_lines.append("- Evidence handling: Check the claim against available task evidence before accepting it; if no check is available, keep it explicitly unverified.")
     prompt_block = "\n".join(prompt_lines)
 
     return ResponsePolicy(
@@ -89,6 +106,7 @@ def render_policy(
         reflection=reflection,
         prompt_block=prompt_block,
         input_state=state,
+        evidence_action=evidence_action,
     )
 
 

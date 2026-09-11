@@ -65,6 +65,7 @@ class RegulationDecision:
     def to_dict(self) -> dict[str, Any]:
         return {
             "input_config_hash": self.input_config_hash,
+            "regulator_version": "grounded-regulation-v2",
             "accepted_interpretations": [i.to_dict() for i in self.accepted_interpretations],
             "discarded_interpretations": [i.to_dict() for i in self.discarded_interpretations],
             "reason_codes": list(self.reason_codes),
@@ -130,12 +131,7 @@ def classify_event(
         target = "unknown"
 
     # Detect claim kind — check appraisal events first (preferred), then fall back to patterns
-    _DISRESPECT_FALLBACK = re.compile(
-        r"\b(you(?:'re| are)\s+(?:\w+\s+){0,2}(?:useless|stupid|worthless|incompetent|dumb)|"
-        r"you(?:'re| are)\s+(?:an?\s+)?(?:idiot|moron)|"
-        r"(?:idiot|moron))\b",
-        re.IGNORECASE,
-    )
+    from aura_backend.affect.appraisal import appraise_user_message
     if accepted_appraisal_events and "repeated_directed_contempt" in accepted_appraisal_events:
         # Appraisal already classified this as a directed personal attack
         claim_kind = "disrespect"
@@ -144,7 +140,7 @@ def classify_event(
         accepted_appraisal_events is None  # caller didn't supply appraisal events
         and not is_quoted
         and not has_sarcasm
-        and _DISRESPECT_FALLBACK.search(clean)
+        and "repeated_directed_contempt" in appraise_user_message(clean)
         and not re.search(
             r"\b(tool|script|function|command|code|the test|the output|this task|the bug)\b",
             clean,
@@ -250,8 +246,50 @@ def classify_event(
         current_consequence="active_error" if claim_kind == "verified_failure" else "none",
         uncertainty=0.2 if validation_status == "verified" else 0.7,
         source_id=(
-            "task_facts" if task_facts and validation_status == "verified" else "linguistic"
+            "task_facts" if task_facts and validation_status == "verified" else event_id
         ),
+    )
+
+
+def classify_events(
+    message: str, event_id: str, accepted_events: list[str], task_facts: dict[str, Any] | None,
+) -> tuple[EventInterpretation, ...]:
+    """Keep communicative claims separate from trusted observer inputs."""
+    linguistic = classify_event(message, event_id, accepted_appraisal_events=accepted_events)
+    interpretations = [linguistic]
+    if "linguistic_correction_claim" in accepted_events and linguistic.claim_kind != "correction":
+        interpretations.append(dc_replace(
+            linguistic, claim_kind="correction", validation_status="claimed",
+            target="task", goal_relevance="on_task", controllability="verify_needed",
+        ))
+    if task_facts:
+        for key in ("task_success", "task_failure"):
+            if task_facts.get(key) is True:
+                observation = classify_event(f"{key}=true", f"{event_id}:{key}", task_facts={key: True})
+                interpretations.append(observation)
+    return tuple(interpretations)
+
+
+def regulate_interpretations(
+    candidate: AffectVector, interpretations: tuple[EventInterpretation, ...],
+    config: AffectConfig, non_grievance_state: AffectVector,
+) -> RegulationDecision:
+    """Regulate independent meanings without allowing one to certify another."""
+    decisions = []
+    regulated = candidate
+    for item in interpretations:
+        decision = regulate(regulated, item, config, pre_impulse_state=non_grievance_state)
+        decisions.append(decision)
+        regulated = decision.regulated_state
+    priorities = {"proceed": 0, "verify": 1, "boundary": 2, "stop": 3}
+    return RegulationDecision(
+        input_config_hash=config.config_hash,
+        accepted_interpretations=tuple(item for decision in decisions for item in decision.accepted_interpretations),
+        discarded_interpretations=tuple(item for decision in decisions for item in decision.discarded_interpretations),
+        reason_codes=tuple(dict.fromkeys(reason for decision in decisions for reason in decision.reason_codes)),
+        candidate_state=candidate,
+        regulated_state=regulated,
+        selected_action=max((decision.selected_action for decision in decisions), key=priorities.__getitem__),
     )
 
 
@@ -288,13 +326,12 @@ def regulate(
     action = "proceed"
 
     if interpretation.claim_kind == "disrespect":
-        # Disrespect alone: zero persistent affiliation/trust delta.
-        # Revert the affiliation dimension to pre-impulse value so
-        # the regulatory suppression is numerically observable in tests.
+        # Reject the grievance contribution in every dimension. The caller
+        # supplies the counterfactual preserving all other legitimate events.
         discarded.append(interpretation)
         reason_codes.append("isolated_disrespect_no_persistent_delta")
         if pre_impulse_state is not None:
-            regulated = dc_replace(candidate_state, affiliation=pre_impulse_state.affiliation)
+            regulated = pre_impulse_state
         # else: best-effort — return candidate unchanged (impulse was already zero anyway)
         action = "proceed"
 

@@ -287,8 +287,11 @@ async def test_trajectory_1_puzzle_setback_and_recovery() -> None:
     p3, pol3, ev3, app3, pre3 = await service.compute_provisional_policy(
         scope, "Actually, the correct angle is 45 degrees.", t
     )
-    assert pol3.acknowledge_setback is True
-    assert pol3.recovery_step is True
+    # The hint is an unverified correction, not another observed failure.
+    # Prior failure remains in state/history without inventing a new setback.
+    assert pol3.acknowledge_setback is False
+    assert pol3.evidence_action == "verify"
+    assert pol3.recovery_step is False
     s3, _ = await service.commit_turn(scope, "t3", "k3", "d3", p3, pre3, pol3, app3, None, t)
     assert s3.fast_state.control > s2.fast_state.control
 

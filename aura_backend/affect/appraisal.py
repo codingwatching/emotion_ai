@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from typing import Any
 
 from aura_backend.affect.models import Appraisal
@@ -25,13 +26,12 @@ _NEW_INFO_PATTERNS = [
 ]
 
 # Personal attacks targeting Aura directly (not tool/task complaints).
-# Presence of this pattern gives regulation a real impulse to suppress for isolated disrespect.
+# Detection alone does not authorize a persistent affect impulse.
 _DIRECTED_DISRESPECT_PATTERNS = [
-    # "you are X", "you're X" with optional adverbs, or standalone epithets targeting Aura
+    # Require an explicit second-person target, not a standalone epithet.
     re.compile(
         r"\b(you(?:'re| are)\s+(?:\w+\s+){0,2}(?:useless|stupid|worthless|incompetent|dumb)|"
-        r"\byou(?:'re| are)\s+(?:an?\s+)?(?:idiot|moron)|"
-        r"\b(?:idiot|moron)\b)\b",
+        r"\byou(?:'re| are)\s+(?:an?\s+)?(?:idiot|moron))\b",
         re.IGNORECASE,
     ),
 ]
@@ -71,7 +71,7 @@ def appraise_user_message(
             break
 
     # 3. Source-supported correction (takes precedence over generic disagreement)
-    is_quoted = bool(re.search(r'["\u201c\u201d]|\bsaid\b|\bwrote\b|\bquoting\b', clean, re.IGNORECASE))
+    is_quoted = bool(re.search(r'["\u201c\u201d]|\b(said|wrote|quoting|roleplay|role-play|fiction|lyrics)\b', clean, re.IGNORECASE))
     has_negation = bool(re.search(r'\b(not|never|don\'t|doesn\'t|didn\'t|isn\'t|aren\'t|wasn\'t|weren\'t|no|neither)\b', clean[:50], re.IGNORECASE))
     has_sarcasm = bool(re.search(r'\b(yeah right|sure|totally|obviously|as if)\b', clean, re.IGNORECASE))
 
@@ -94,9 +94,8 @@ def appraise_user_message(
             break
 
     # 6. Directed personal attack on Aura (not tool/task complaints).
-    #    Regulation will suppress this impulse for isolated disrespect,
-    #    making the suppression numerically observable in tests.
-    if not is_quoted and not has_sarcasm:
+    #    Detection is provenance, not permission to activate a grievance impulse.
+    if not is_quoted and not has_sarcasm and not has_negation:
         for pat in _DIRECTED_DISRESPECT_PATTERNS:
             if pat.search(clean):
                 # Exclude tool/task targets: "this script is stupid" is not a personal attack
@@ -121,11 +120,26 @@ def build_appraisal_record(
     """Build a typed, provenance-bearing Appraisal record."""
     status = "observed" if accepted_events else "unknown"
     kind = accepted_events[0] if accepted_events else "neutral_conversation"
+    patterns = {
+        "explicit_collaboration": _COLLABORATION_PATTERNS,
+        "linguistic_correction_claim": _CORRECTION_PATTERNS,
+        "explicit_repair": _REPAIR_PATTERNS,
+        "new_unresolved_information": _NEW_INFO_PATTERNS,
+        "repeated_directed_contempt": _DIRECTED_DISRESPECT_PATTERNS,
+    }
+    spans: list[str] = []
+    for event in accepted_events:
+        for pattern in patterns.get(event, []):
+            match = pattern.search(message)
+            if match:
+                spans.append(message[max(0, match.start() - 20):min(len(message), match.end() + 20)][:160])
 
     return Appraisal(
         event_id=event_id,
         event_kind=kind,
-        evidence_spans=(message,),
+        evidence_spans=tuple(dict.fromkeys(spans)),
+        source_ids=(event_id,),
+        source_sha256=hashlib.sha256(message.encode("utf-8")).hexdigest(),
         status=status,
         task_id=task_id,
     )

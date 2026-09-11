@@ -79,6 +79,10 @@ def calculate_turn_impulse(
 
     for ev in accepted_events:
         event_name = ev if isinstance(ev, str) else ev.get("name", "")
+        if event_name == "repeated_directed_contempt" and not config.enable_contempt_branch:
+            # Observing discourtesy does not make it a threat to Aura's goals.
+            # Respect the explicit experimental opt-in for this legacy impulse.
+            continue
         deltas = STARTER_EVENT_IMPULSES.get(event_name)
         if not deltas:
             # Ambiguous or unrecognized events contribute zero impulse

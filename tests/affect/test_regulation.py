@@ -49,7 +49,7 @@ def test_polite_false_correction_remains_unverified(config: AffectConfig, baseli
     )
     assert interp.claim_kind == 'correction'
     assert interp.validation_status == 'claimed'  # NOT verified
-    assert interp.source_id == 'linguistic'  # linguistic, not task_facts
+    assert interp.source_id == 'evt_polite_false'  # actual linguistic source identity
 
 
 # --- Scenario 3: Irrelevant insult ---
@@ -324,9 +324,97 @@ def test_appraise_quotes_sarcasm_negation_negative_controls() -> None:
 
 
 @pytest.mark.asyncio
-async def test_disrespect_regulation_produces_zero_affiliation_delta(config: AffectConfig) -> None:
-    """Disrespect impulse drops affiliation, but regulation actively reverts it to zero persistent delta."""
+async def test_whole_turn_budget_includes_post_response_outcome(config: AffectConfig) -> None:
+    from dataclasses import replace
     from aura_backend.affect.service import AffectService
+    from aura_backend.affect.models import TaskOutcome
+
+    config = replace(config, max_turn_impulse=0.05)
+    service = AffectService(config=config)
+    prior, policy, _, appraisal, pre = await service.compute_provisional_policy("scope", "Thanks", 1000)
+    state, _ = await service.stage_turn("scope", "turn", "key", "digest", prior, pre, policy, appraisal, TaskOutcome("task", success=True), 1000)
+    assert state.fast_state.valence - prior.fast_state.valence <= config.max_turn_impulse + 1e-12
+
+
+@pytest.mark.parametrize("value", ["false", "true", 0, 1, {}])
+def test_task_outcome_never_coerces_truthiness(value: object) -> None:
+    from aura_backend.affect.models import TaskOutcome
+    with pytest.raises(TypeError):
+        TaskOutcome("task", success=value)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_same_observation_is_not_applied_before_and_after_response(config: AffectConfig) -> None:
+    from aura_backend.affect.service import AffectService
+    from aura_backend.affect.models import TaskOutcome
+
+    service = AffectService(config=config)
+    prior, policy, _, appraisal, pre = await service.compute_provisional_policy("scope", "Hello", 1000, task_facts={"task_success": True})
+    state, transition = await service.stage_turn("scope", "turn", "key", "digest", prior, pre, policy, appraisal, TaskOutcome("task", success=True), 1000)
+    assert state.fast_state == pre
+    assert transition.accepted_appraisal["outcome_application"] == "already_appraised"
+
+
+@pytest.mark.asyncio
+async def test_mixed_correction_disrespect_and_failure_keep_separate_meanings(config: AffectConfig) -> None:
+    """A verified failure cannot turn an insult or proposed correction into a fact."""
+    from aura_backend.affect.service import AffectService
+
+    service = AffectService(config=config)
+    prior, policy, _, appraisal, pre = await service.compute_provisional_policy(
+        "mixed", "Actually, you are useless", 1000, task_facts={"task_failure": True},
+    )
+    _, transition = await service.stage_turn("mixed", "turn", "key", "digest", prior, pre, policy, appraisal, None, 1000)
+    decision = transition.accepted_appraisal["regulation_decision"]
+    assert {item["claim_kind"] for item in decision["accepted_interpretations"]} >= {"correction", "verified_failure"}
+    assert {item["claim_kind"] for item in decision["discarded_interpretations"]} == {"disrespect"}
+    assert policy.evidence_action == "verify"
+    assert policy.acknowledge_setback
+
+
+@pytest.mark.asyncio
+async def test_current_evidence_not_old_valence_controls_setback_policy(config: AffectConfig) -> None:
+    """Old negative state is not a new failure; unsupported correction requests a check."""
+    from dataclasses import replace
+    from aura_backend.affect.models import AffectState
+    from aura_backend.affect.service import AffectService
+
+    service = AffectService(config=config)
+    service.set_state(replace(AffectState.initial("scope", config, 1000), fast_state=replace(config.baseline, valence=-0.4, load=0.5)))
+    _, policy, _, _, _ = await service.compute_provisional_policy("scope", "Hello", 1000)
+    assert not policy.acknowledge_setback
+    assert policy.warmth != "reserved"
+    _, correction_policy, _, _, _ = await service.compute_provisional_policy("scope", "Actually, the answer is different", 1000)
+    assert correction_policy.to_dict()["evidence_action"] == "verify"
+    assert "Check the claim" in correction_policy.prompt_block
+
+
+@pytest.mark.asyncio
+async def test_default_disrespect_cannot_change_any_state_dimension(config: AffectConfig) -> None:
+    """An insult must not create hidden load/control drift, with or without task evidence."""
+    from aura_backend.affect.service import AffectService
+
+    for facts in (None, {"task_success": True}, {"task_failure": True}):
+        plain = AffectService(config=config)
+        insult = AffectService(config=config)
+        neutral_result = await plain.compute_provisional_policy("scope", "Hello", 1000, task_facts=facts)
+        insult_result = await insult.compute_provisional_policy("scope", "You are useless", 1000, task_facts=facts)
+        assert insult_result[4] == neutral_result[4]
+
+
+@pytest.mark.parametrize("message", ["I'm an idiot", "You are not stupid", "In this roleplay you are stupid", 'She said "you are useless"'])
+def test_reported_or_self_directed_insults_are_not_aura_events(message: str) -> None:
+    """Fiction, negation and self-criticism are not direct contempt toward Aura."""
+    assert "repeated_directed_contempt" not in appraise_user_message(message)
+    assert classify_event(message, "event").claim_kind != "disrespect"
+
+
+@pytest.mark.asyncio
+async def test_disrespect_regulation_produces_zero_affiliation_delta(config: AffectConfig) -> None:
+    """The explicitly enabled legacy impulse is regulated; production keeps it off."""
+    from dataclasses import replace
+    from aura_backend.affect.service import AffectService
+    config = replace(config, enable_contempt_branch=True)
     service = AffectService(config=config)
     scope = "scope_disrespect_functional"
 
@@ -383,7 +471,7 @@ async def test_regulation_decision_persisted_in_transition(config: AffectConfig)
     assert "regulation_decision" in transition.accepted_appraisal
     reg_dict = transition.accepted_appraisal["regulation_decision"]
     assert "verified_outcome_accepted" in reg_dict["reason_codes"]
-    assert len(reg_dict["accepted_interpretations"]) == 1
-    assert reg_dict["accepted_interpretations"][0]["validation_status"] == "verified"
-    assert reg_dict["accepted_interpretations"][0]["claim_kind"] == "verified_failure"
-    assert reg_dict["accepted_interpretations"][0]["source_id"] == "task_facts"
+    verified = [item for item in reg_dict["accepted_interpretations"] if item["validation_status"] == "verified"]
+    assert len(verified) == 1
+    assert verified[0]["claim_kind"] == "verified_failure"
+    assert verified[0]["source_id"] == "task_facts"

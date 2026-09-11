@@ -6,10 +6,11 @@ import asyncio
 import hashlib
 import time
 import uuid
+from dataclasses import asdict
 from typing import Any
 
 from aura_backend.affect.appraisal import appraise_user_message, build_appraisal_record
-from aura_backend.affect.regulation import classify_event, regulate
+from aura_backend.affect.regulation import classify_events, regulate_interpretations
 from aura_backend.affect.dynamics import (
     apply_observed_outcome,
     apply_pre_state,
@@ -100,7 +101,9 @@ class AffectService:
             persisted = self.repository.get_affect_head(scope_id)
             if persisted is not None:
                 current = self._states.get(scope_id)
-                if current is None or persisted.revision > current.revision:
+                if current != persisted:
+                    # SQLite is authority, including equal-revision identity
+                    # mismatches left by older runtime versions.
                     self._states[scope_id] = persisted
                     return persisted
         if scope_id not in self._states:
@@ -145,17 +148,14 @@ class AffectService:
 
             # Apply non-punitive regulation, passing the pre-impulse decayed state so
             # the regulator can revert affiliation for disrespect events.
-            event_interpretation = classify_event(
-                message,
-                event_id=eid,
-                task_facts=task_facts,
-                accepted_appraisal_events=accepted_events,
+            interpretations = classify_events(message, eid, accepted_events, task_facts)
+            non_grievance_state = apply_pre_state(
+                fast_decayed, calculate_turn_impulse(
+                    [event for event in accepted_events if event != "repeated_directed_contempt"], self.config,
+                ),
             )
-            regulation_result = regulate(
-                pre_state,
-                event_interpretation,
-                self.config,
-                pre_impulse_state=fast_decayed,
+            regulation_result = regulate_interpretations(
+                pre_state, interpretations, self.config, non_grievance_state,
             )
             pre_state = regulation_result.regulated_state
             # Stage the decision for persistence in stage_turn
@@ -166,7 +166,7 @@ class AffectService:
                 message=message,
                 accepted_events=accepted_events,
             )
-            policy = render_policy(pre_state)
+            policy = render_policy(pre_state, regulation=regulation_result)
 
             return prior_state, policy, accepted_events, appraisal, pre_state
 
@@ -187,13 +187,34 @@ class AffectService:
         """Stage a turn transition without publishing to in-memory head state."""
         async with self._get_lock(scope_id):
             dt = max(0.0, timestamp - prior_state.last_event_time)
-            mood_decayed, _, _ = compute_decay(
+            mood_decayed, _, fast_decayed = compute_decay(
                 prior_state.fast_state,
                 prior_state.mood_state,
                 dt,
                 self.config,
             )
-            after_state, disposition = apply_observed_outcome(pre_state, outcome, self.config)
+            regulation_decision = self._staged_decisions.get(scope_id)
+            already_appraised = (
+                outcome is not None and outcome.success is not None
+                and regulation_decision is not None
+                and any(
+                    item.claim_kind == ("verified_success" if outcome.success else "verified_failure")
+                    and item.validation_status == "verified"
+                    for item in regulation_decision.accepted_interpretations
+                )
+            )
+            # The legacy seam describes one outcome per turn, not independent
+            # repeated rewards. Do not apply that same observation twice.
+            after_state, disposition = apply_observed_outcome(pre_state, None if already_appraised else outcome, self.config)
+            if already_appraised and outcome is not None:
+                disposition = "success" if outcome.success else "failure"
+            decay_values = asdict(fast_decayed)
+            capped_values = {}
+            for dimension, value in asdict(after_state).items():
+                delta = value - decay_values[dimension]
+                cap = self.config.max_turn_impulse
+                capped_values[dimension] = value if abs(delta) <= cap else decay_values[dimension] + max(-cap, min(cap, delta))
+            after_state = AffectVector.from_dict(capped_values).clip()
             next_mood = compute_next_mood(mood_decayed, after_state, self.config)
 
             next_revision = prior_state.revision + 1
@@ -204,6 +225,8 @@ class AffectService:
             # Merge staged regulation decision into appraisal provenance
             regulation_decision = self._staged_decisions.pop(scope_id, None)
             appraisal_dict = appraisal.to_dict()
+            appraisal_dict["outcome_application"] = "already_appraised" if already_appraised else "post_response" if outcome is not None else "unavailable"
+            appraisal_dict["task_outcome"] = outcome.to_dict() if outcome is not None else None
             if regulation_decision is not None:
                 appraisal_dict["regulation_decision"] = regulation_decision.to_dict()
 

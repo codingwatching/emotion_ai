@@ -769,7 +769,7 @@ def test_failed_database_write_does_not_advance_state(
         assert resp2.status_code == 200
         sim2 = resp2.json()["emotional_state"]["simulation"]
         assert sim2["revision"] == 1
-        assert sim2["disposition"] == "uncommitted"
+        assert sim2["disposition"] == "unknown"
 
         # Authority assertion: State MUST NOT advance in memory or in storage
         assert affect_svc.get_state(user_id).revision == 1
@@ -884,6 +884,387 @@ def test_timeout_late_commit_does_not_cause_revision_conflict(
 
 
 # 11. Projection failure: disposable projection failure does NOT discard committed ledger
+@pytest.mark.asyncio
+async def test_unexpected_writer_failure_is_unknown_not_an_unowned_task(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    persistence = ConversationPersistenceService(StorageRepository(clean_db), _Projection())
+    exchange = main.ConversationExchange(
+        user_memory=main.ConversationMemory(user_id="error", message="Question", sender="user"),
+        ai_memory=main.ConversationMemory(user_id="error", message="Answer", sender="aura"),
+        session_id="error-session", idempotency_key="error-key",
+    )
+
+    def unexpected(command: Any) -> Any:
+        raise RuntimeError("synthetic unexpected failure")
+
+    monkeypatch.setattr(persistence, "_persist_command", unexpected)
+    result = await persistence.persist_conversation_exchange(exchange)
+    assert result["durable_status"] == "unknown"
+    assert result["idempotency_key"] == "error-key"
+    assert await persistence.settle_scope("error", 1)
+    await persistence.drain()
+
+
+def test_regulation_provenance_resolves_to_the_committed_user_event(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Interpretation IDs/spans must resolve to real source bytes, not generic labels."""
+    repo = StorageRepository(clean_db)
+    monkeypatch.setattr(main, "conversation_persistence", ConversationPersistenceService(repo, _Projection()))
+    monkeypatch.setattr(main, "affect_service", AffectService(repository=repo))
+    runtime = _TestAppRuntime(ProviderRuntime(_CaptureProvider(), timeout_seconds=2), ToolCatalog(()))
+    message = "Background context. " * 30 + "Actually, the answer needs checking."
+    with TestClient(main.create_app(runtime_builder=lambda: runtime)) as client:
+        response = client.post("/conversation", json={"user_id": "source", "session_id": "source-session", "message": message})
+    assert response.status_code == 200
+    transition = repo.get_affect_transition("source", 1)
+    assert transition is not None
+    appraisal = transition["appraisal"]
+    connection = open_database(clean_db)
+    try:
+        row = connection.execute("SELECT event_id, content_sha256 FROM events WHERE turn_id = ? AND actor = 'user'", (transition["turn_id"],)).fetchone()
+    finally:
+        connection.close()
+    assert row is not None
+    assert appraisal["event_id"] == row[0]
+    assert appraisal["source_ids"] == [row[0]]
+    assert appraisal["source_sha256"] == row[1]
+    assert all(span in message and len(span) <= 160 for span in appraisal["evidence_spans"])
+    assert appraisal["regulation_decision"]["regulator_version"] == "grounded-regulation-v2"
+
+
+def test_exhausted_rollback_retry_reports_rejected(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two known rollbacks leave no turn and are not reported as stored/pending."""
+    repo = StorageRepository(clean_db)
+    monkeypatch.setattr(main, "conversation_persistence", ConversationPersistenceService(repo, _Projection()))
+    monkeypatch.setattr(main, "affect_service", AffectService(repository=repo))
+    runtime = _TestAppRuntime(ProviderRuntime(_CaptureProvider(), timeout_seconds=2), ToolCatalog(()))
+    attempts = []
+
+    def fail(scope_id: str, command: Any, **kwargs: Any) -> Any:
+        attempts.append(command)
+        raise StorageFailure("turn_write_failed")
+
+    monkeypatch.setattr(repo, "append_turn", fail)
+    with TestClient(main.create_app(runtime_builder=lambda: runtime)) as client:
+        result = client.post("/conversation", json={"user_id": "failure", "session_id": "failure-session", "message": "Hello"})
+    assert result.status_code == 200
+    assert result.json()["emotional_state"]["simulation"]["disposition"] == "rejected"
+    assert len(attempts) == 2
+    assert attempts[0] is attempts[1]
+    assert repo.get_affect_head("failure") is None
+
+
+def test_no_storage_is_explicitly_ephemeral(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An in-memory response must not masquerade as a durable commit."""
+    monkeypatch.setattr(main, "conversation_persistence", None)
+    monkeypatch.setattr(main, "affect_service", AffectService())
+    runtime = _TestAppRuntime(ProviderRuntime(_CaptureProvider(), timeout_seconds=2), ToolCatalog(()))
+    with TestClient(main.create_app(runtime_builder=lambda: runtime)) as client:
+        result = client.post("/conversation", json={"user_id": "ephemeral", "message": "Hello"})
+    assert result.status_code == 200
+    simulation = result.json()["emotional_state"]["simulation"]
+    assert simulation["disposition"] == "ephemeral"
+    assert simulation["persistence"]["turn_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_five_overlapping_http_turns_commit_once_each(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concurrent actual requests retain all five distinct durable transitions."""
+    import httpx
+
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    class BarrierProvider(_CaptureProvider):
+        async def generate(self, request: ProviderRequest) -> ProviderResult:
+            self.requests.append(request)
+            if len(self.requests) == 1:
+                entered.set()
+                await release.wait()
+            return ProviderResult(content="One reply")
+
+    repo = StorageRepository(clean_db)
+    persistence = ConversationPersistenceService(repo, _Projection())
+    provider = BarrierProvider()
+    monkeypatch.setattr(main, "conversation_persistence", persistence)
+    monkeypatch.setattr(main, "affect_service", AffectService(repository=repo))
+    runtime = _TestAppRuntime(ProviderRuntime(provider, timeout_seconds=5), ToolCatalog(()))
+    app = main.create_app(runtime_builder=lambda: runtime)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+            async def send(index: int) -> Any:
+                return await client.post("/conversation", json={
+                    "user_id": "overlap", "session_id": "overlap-session",
+                    "message": f"Message {index}", "idempotency_key": f"send-{index}",
+                })
+
+            first = asyncio.create_task(send(0))
+            tasks = [first]
+            try:
+                await asyncio.wait_for(entered.wait(), 2)
+                tasks.extend(asyncio.create_task(send(index)) for index in range(1, 5))
+            finally:
+                release.set()
+            responses = await asyncio.wait_for(asyncio.gather(*tasks), 10)
+            assert all(response.status_code == 200 for response in responses)
+            simulations = [response.json()["emotional_state"]["simulation"] for response in responses]
+            assert sorted(item["revision"] for item in simulations) == [1, 2, 3, 4, 5]
+            assert all(item["disposition"] == "committed" for item in simulations)
+            assert len({item["persistence"]["transition_id"] for item in simulations}) == 5
+            calls = len(provider.requests)
+            replays = await asyncio.gather(*(send(index) for index in range(5)))
+            assert len(provider.requests) == calls
+            assert all(response.json()["emotional_state"]["simulation"]["disposition"] == "replayed" for response in replays)
+            head = repo.get_affect_head("overlap")
+            assert head is not None and head.revision == 5
+            assert repo.get_affect_transition("overlap", 6) is None
+
+
+@pytest.mark.asyncio
+async def test_http_disconnect_pending_replay_and_independent_scope(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Disconnect the HTTP task itself while its writer is held at a barrier."""
+    import threading
+    import httpx
+
+    repo = StorageRepository(clean_db)
+    persistence = ConversationPersistenceService(repo, _Projection())
+    provider = _CaptureProvider("Original answer")
+    runtime = _TestAppRuntime(ProviderRuntime(provider, timeout_seconds=2), ToolCatalog(()))
+    monkeypatch.setattr(main, "conversation_persistence", persistence)
+    monkeypatch.setattr(main, "affect_service", AffectService(repository=repo))
+    monkeypatch.setenv("PERSISTENCE_TIMEOUT", "5")
+    entered, release = threading.Event(), threading.Event()
+    original = persistence._persist_command
+
+    def blocked(command: Any) -> Any:
+        if command.scope_id == "disconnect":
+            entered.set()
+            assert release.wait(5)
+        return original(command)
+
+    monkeypatch.setattr(persistence, "_persist_command", blocked)
+    app = main.create_app(runtime_builder=lambda: runtime)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+            body = {"user_id": "disconnect", "session_id": "session", "message": "Hello", "idempotency_key": "same-send"}
+            waiter = asyncio.create_task(client.post("/conversation", json=body))
+            try:
+                assert await asyncio.to_thread(entered.wait, 2)
+                waiter.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await waiter
+                calls = len(provider.requests)
+                monkeypatch.setenv("PERSISTENCE_TIMEOUT", "0.02")
+                pending = await client.post("/conversation", json=body)
+                assert pending.status_code == 503
+                assert len(provider.requests) == calls
+                monkeypatch.setenv("PERSISTENCE_TIMEOUT", "1")
+                independent = await client.post("/conversation", json={**body, "user_id": "independent", "session_id": "independent-session"})
+                assert independent.status_code == 200
+                assert independent.json()["emotional_state"]["simulation"]["disposition"] == "committed"
+            finally:
+                release.set()
+            calls = len(provider.requests)
+            replay = await client.post("/conversation", json=body)
+            assert replay.status_code == 200
+            assert replay.json()["response"] == "Original answer"
+            assert replay.json()["emotional_state"]["simulation"]["disposition"] == "replayed"
+            assert len(provider.requests) == calls
+
+
+def test_rolled_back_write_retries_exact_command_without_regeneration(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A known rollback gets one storage retry, not another model response."""
+    repo = StorageRepository(clean_db)
+    persistence = ConversationPersistenceService(repo, _Projection())
+    provider = _CaptureProvider("One answer")
+    runtime = _TestAppRuntime(ProviderRuntime(provider, timeout_seconds=2), ToolCatalog(()))
+    monkeypatch.setattr(main, "conversation_persistence", persistence)
+    monkeypatch.setattr(main, "affect_service", AffectService(repository=repo))
+    original = repo.append_turn
+    commands: list[Any] = []
+
+    def fail_once(scope_id: str, command: Any, **kwargs: Any) -> Any:
+        commands.append(command)
+        if len(commands) == 1:
+            raise StorageFailure("turn_write_failed")
+        return original(scope_id, command, **kwargs)
+
+    monkeypatch.setattr(repo, "append_turn", fail_once)
+    with TestClient(main.create_app(runtime_builder=lambda: runtime)) as client:
+        body = {"user_id": "retry", "session_id": "session", "message": "Hello", "idempotency_key": "retry-key"}
+        result = client.post("/conversation", json=body)
+        assert result.status_code == 200
+        assert result.json()["emotional_state"]["simulation"]["disposition"] == "committed"
+        assert commands[0] is commands[1]
+        calls = len(provider.requests)
+        replay = client.post("/conversation", json=body)
+        assert replay.status_code == 200
+        assert len(provider.requests) == calls
+        head = repo.get_affect_head("retry")
+        assert head is not None and head.revision == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("immediate", [False, True])
+async def test_cancelled_waiter_retains_exact_writer(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch, immediate: bool,
+) -> None:
+    """Both persistence APIs retain ownership when their caller disappears."""
+    import threading
+
+    repo = StorageRepository(clean_db)
+    persistence = ConversationPersistenceService(repo, _Projection())
+    exchange = main.ConversationExchange(
+        user_memory=main.ConversationMemory(user_id="cancel", message="Question", sender="user"),
+        ai_memory=main.ConversationMemory(user_id="cancel", message="Answer", sender="aura"),
+        session_id="session", idempotency_key="identity",
+    )
+    entered, release = threading.Event(), threading.Event()
+    original = persistence._persist_command
+
+    def blocked(command: Any) -> Any:
+        entered.set()
+        assert release.wait(5)
+        return original(command)
+
+    monkeypatch.setattr(persistence, "_persist_command", blocked)
+    operation = (persistence.persist_conversation_exchange_immediate(exchange)
+                 if immediate else persistence.persist_conversation_exchange(exchange))
+    waiter = asyncio.create_task(operation)
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        assert persistence.has_pending_write("cancel")
+        assert not await persistence.settle_scope("cancel", 0.01)
+    finally:
+        release.set()
+        await persistence.drain()
+    outcome, response, _ = repo.find_replay_turn(scope_id="cancel", session_id="session", user_content="Question", idempotency_key="identity")
+    assert outcome is not None
+    assert response == "Answer"
+    assert not persistence.has_pending_write("cancel")
+
+
+@pytest.mark.parametrize("claimed_success", [True, False, "false", None])
+def test_http_task_claims_are_not_verified_observations(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch, claimed_success: Any,
+) -> None:
+    """Caller-controlled outcome fields cannot mint trusted task observations."""
+    repo = StorageRepository(clean_db)
+    monkeypatch.setattr(main, "conversation_persistence", ConversationPersistenceService(repo, _Projection()))
+    monkeypatch.setattr(main, "affect_service", AffectService(repository=repo))
+    runtime = _TestAppRuntime(ProviderRuntime(_CaptureProvider("Reply"), timeout_seconds=2), ToolCatalog(()))
+    with TestClient(main.create_app(runtime_builder=lambda: runtime)) as client:
+        result = client.post("/conversation", json={
+            "user_id": "claims", "session_id": "session", "message": "Hello",
+            "task_facts": {"task_success": True},
+            "task_outcome": {"success": claimed_success},
+        })
+        assert result.status_code == 200
+        simulation = result.json()["emotional_state"]["simulation"]
+        assert "verified_task_success" not in simulation["causes"]
+        assert "verified_task_failure" not in simulation["causes"]
+        head = repo.get_affect_head("claims")
+        assert head is not None
+        assert head.fast_state == AffectConfig().baseline
+        assert simulation["disposition"] == "committed"
+        assert simulation["persistence"]["transition_id"] == head.source_transition_id
+        assert simulation["persistence"]["turn_id"]
+
+
+def test_pending_writer_blocks_same_scope_before_provider(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second HTTP turn must not compute against an unsettled writer."""
+    import threading
+
+    repo = StorageRepository(clean_db)
+    persistence = ConversationPersistenceService(repo, _Projection())
+    affect = AffectService(repository=repo)
+    provider = _CaptureProvider("Synthetic reply.")
+    runtime = _TestAppRuntime(ProviderRuntime(provider, timeout_seconds=2), ToolCatalog(()))
+    monkeypatch.setattr(main, "conversation_persistence", persistence)
+    monkeypatch.setattr(main, "affect_service", affect)
+    monkeypatch.setenv("PERSISTENCE_TIMEOUT", "0.02")
+    entered, release = threading.Event(), threading.Event()
+    original = persistence._persist_command
+    writes = []
+
+    def blocked(command: Any) -> Any:
+        writes.append(command)
+        entered.set()
+        assert release.wait(5), "test failed to release writer"
+        return original(command)
+
+    monkeypatch.setattr(persistence, "_persist_command", blocked)
+    with TestClient(main.create_app(runtime_builder=lambda: runtime)) as client:
+        try:
+            body = {"user_id": "pending-scope", "session_id": "session", "message": "First", "idempotency_key": "first"}
+            first = client.post("/conversation", json=body)
+            assert first.status_code == 200
+            assert entered.is_set()
+            assert first.json()["emotional_state"]["simulation"]["disposition"] == "pending"
+            provider_calls = len(provider.requests)
+            second = client.post("/conversation", json={**body, "message": "Second", "idempotency_key": "second"})
+            assert second.status_code == 503
+            assert len(writes) == 1
+            assert len(provider.requests) == provider_calls
+            assert repo.get_affect_head("pending-scope") is None
+        finally:
+            release.set()
+        monkeypatch.setenv("PERSISTENCE_TIMEOUT", "5")
+        replay = client.post("/conversation", json=body)
+        assert replay.status_code == 200
+        assert len(writes) == 1
+        assert affect.get_state("pending-scope") == repo.get_affect_head("pending-scope")
+        from dataclasses import replace
+        head = affect.get_state("pending-scope")
+        affect.set_state(replace(head, source_transition_id="wrong-turn-same-revision"))
+        assert affect.get_state("pending-scope") == repo.get_affect_head("pending-scope")
+
+
+def test_restart_preserves_the_transition_clock(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Durable reload must not move the engine clock to response completion."""
+    repo = StorageRepository(clean_db)
+    published_states: list[Any] = []
+
+    class RecordingAffectService(AffectService):
+        def publish_turn(self, scope_id: str, new_state: Any, transition: Any) -> None:
+            published_states.append(new_state)
+            super().publish_turn(scope_id, new_state, transition)
+
+    persistence = ConversationPersistenceService(repo, _Projection())
+    monkeypatch.setattr(main, "conversation_persistence", persistence)
+    monkeypatch.setattr(main, "affect_service", RecordingAffectService(repository=repo))
+    runtime = _TestAppRuntime(
+        ProviderRuntime(_CaptureProvider("Clock check."), timeout_seconds=2), ToolCatalog(()),
+    )
+    with TestClient(main.create_app(runtime_builder=lambda: runtime)) as client:
+        response = client.post("/conversation", json={
+            "user_id": "clock", "session_id": "clock-session", "message": "Let's work together on a novel idea",
+            "idempotency_key": "clock-turn",
+        })
+        assert response.status_code == 200
+        restarted = AffectService(repository=repo).get_state("clock")
+        assert len(published_states) == 1
+        assert restarted.last_event_time == pytest.approx(published_states[0].last_event_time, abs=1e-6, rel=0)
+        assert restarted.fast_state == published_states[0].fast_state
+        assert restarted.mood_state == published_states[0].mood_state
+
+
 def test_projection_failure_does_not_discard_committed_ledger(
     clean_db: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Protocol
 
+from aura_backend.affect.receipts import DurableReceipt
+
 from aura_backend.storage.models import (
     EventInput,
     IdempotencyConflict,
@@ -93,6 +95,9 @@ class ConversationPersistenceService:
         self.projection = projection
         self.legacy_reader = legacy_reader
         self._id_factory = id_factory or (lambda: uuid.uuid4().hex)
+        # Strong ownership outlives the HTTP waiter. Only the scope coordinator
+        # consumes these tasks; a timeout is never evidence of a rollback.
+        self._pending: dict[str, asyncio.Task[dict[str, Any]]] = {}
         self._metrics: dict[str, Any] = {
             "total_exchanges_stored": 0,
             "failed_stores": 0,
@@ -118,11 +123,40 @@ class ConversationPersistenceService:
         del update_profile
         started = asyncio.get_running_loop().time()
         command = self._turn_command(exchange)
-        result = await asyncio.to_thread(self._persist_command, command)
+        previous = self._pending.get(command.scope_id)
+        if previous is not None:
+            await asyncio.shield(previous)
+        writer = asyncio.create_task(asyncio.to_thread(self._persist_with_retry, command))
+        self._pending[command.scope_id] = writer
+        result = await asyncio.shield(writer)
         result["duration_ms"] = (
             asyncio.get_running_loop().time() - started
         ) * 1000.0
         return result
+
+    async def settle_scope(self, scope_id: str, timeout: float) -> bool:
+        """Wait for the previous writer before any new same-scope computation."""
+        task = self._pending.get(scope_id)
+        if task is None:
+            return True
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=max(timeout, 0.001))
+        except TimeoutError:
+            return False
+        finally:
+            if task.done() and self._pending.get(scope_id) is task:
+                del self._pending[scope_id]
+        return True
+
+    def has_pending_write(self, scope_id: str) -> bool:
+        """Whether a retained writer has an unresolved durability outcome."""
+        task = self._pending.get(scope_id)
+        return task is not None and not task.done()
+
+    async def drain(self) -> None:
+        """Settle retained writers before closing their storage resources."""
+        await asyncio.gather(*(asyncio.shield(task) for task in self._pending.values()))
+        self._pending.clear()
 
     async def persist_conversation_exchange_immediate(
         self,
@@ -130,13 +164,7 @@ class ConversationPersistenceService:
         update_profile: bool = True,
         timeout: float = 30.0,
     ) -> dict[str, Any]:
-        """Run the same idempotent command behind the characterized timeout seam.
-
-        Uses asyncio.shield so the worker thread is NOT cancelled when the
-        timeout fires — the write may still commit after we return.  If the
-        timeout fires we read back the affect head to detect a late commit so
-        the route never discards a turn that was actually stored.
-        """
+        """Retain the exact writer; acknowledge only its own completed receipt."""
         if timeout <= 0:
             return self._failure_result(
                 exchange,
@@ -144,53 +172,57 @@ class ConversationPersistenceService:
                 method="immediate_invalid_timeout",
             )
         started = asyncio.get_running_loop().time()
+        scope_id = exchange.user_memory.user_id
+        if not await self.settle_scope(scope_id, timeout):
+            return self._failure_result(exchange, code="scope_commit_pending", method="immediate_pending")
         try:
-            # shield() prevents the asyncio.wait_for cancellation from
-            # propagating into persist_conversation_exchange's to_thread call.
-            # The thread will keep running and may commit after we time out.
+            # The inner method owns and shields the writer for both APIs.
             result = await asyncio.wait_for(
-                asyncio.shield(self.persist_conversation_exchange(exchange, update_profile)),
+                self.persist_conversation_exchange(exchange, update_profile),
                 timeout=timeout,
             )
         except TimeoutError:
-            # The thread may still be in flight.  Read the affect head to see
-            # whether it committed after our timeout window.
-            scope_id = exchange.user_memory.user_id if exchange.user_memory else None
-            expected_rev = exchange.expected_state_revision
-            late_commit_detected = False
-            if scope_id is not None and hasattr(self.repository, "get_affect_head"):
-                try:
-                    head = await asyncio.to_thread(self.repository.get_affect_head, scope_id)
-                    if head is not None and (
-                        expected_rev is None or head.revision > expected_rev
-                    ):
-                        logger.warning(
-                            "persist_immediate timeout for scope %s but thread committed "
-                            "rev %d; treating as durable",
-                            scope_id,
-                            head.revision,
-                        )
-                        late_commit_detected = True
-                except Exception:
-                    pass  # best-effort reconciliation; fall through to failure
-            if late_commit_detected:
-                result = {
-                    "durable_status": "stored",
-                    "success": True,
-                    "method": "immediate_sqlite_late_commit",
-                    "status": "stored",
-                    "projection_status": "pending",
-                    "stored_components": [],
-                    "errors": [],
-                }
-            else:
-                result = self._failure_result(
-                    exchange,
-                    code="persistence_timeout",
-                    method="immediate_timeout",
-                )
+            result = self._failure_result(
+                exchange, code="persistence_timeout", method="immediate_timeout",
+            )
         result["duration_ms"] = (asyncio.get_running_loop().time() - started) * 1000.0
         result["method"] = result.get("method", "immediate_sqlite")
+        return result
+
+    async def persist_affect_exchange(self, exchange: ConversationExchange, timeout: float) -> DurableReceipt:
+        """Verify the owned receipt and exact transition before publishing state."""
+        result = await self.persist_conversation_exchange_immediate(exchange, timeout=timeout)
+        scope_id = exchange.user_memory.user_id
+        task = self._pending.get(scope_id)
+        if task is not None and task.done() and not task.cancelled():
+            result = task.result()
+        key = exchange.idempotency_key or ""
+        if self.has_pending_write(scope_id):
+            return DurableReceipt("pending", key)
+        transition = exchange.affect_transition
+        if result.get("durable_status") == "stored" and result.get("idempotency_key") == key:
+            head = await asyncio.to_thread(self.repository.get_affect_head, scope_id)
+            if (head is not None and transition is not None
+                    and head.source_transition_id == transition.transition_id
+                    and head.revision == transition.revision):
+                return DurableReceipt(
+                    "replayed" if result.get("status") == "replayed" else "committed",
+                    key, result.get("turn_id"), head.source_transition_id,
+                    result.get("projection_status", "unknown"),
+                )
+            return DurableReceipt("rejected", key)
+        return DurableReceipt("rejected" if result.get("durable_status") == "unchanged" else "unknown", key)
+
+    def _persist_with_retry(self, command: TurnCommand) -> dict[str, Any]:
+        """Retry once only for the transaction layer's explicit rollback code."""
+        try:
+            result = self._persist_command(command)
+            if result.get("errors") == ["turn_write_failed"]:
+                result = self._persist_command(command)
+                result["retry_count"] = 1
+        except Exception:
+            self._record_failure("persistence_worker_failed")
+            result = self._failure_result_from_command(command, code="persistence_worker_failed")
         return result
 
     def _persist_command(self, command: TurnCommand) -> dict[str, Any]:
@@ -258,12 +290,16 @@ class ConversationPersistenceService:
         idempotency_key = exchange.idempotency_key
         if not isinstance(idempotency_key, str) or not idempotency_key:
             raise StorageFailure("idempotency_key_missing")
-        user_event_id = self._id_factory()
+        transition = exchange.affect_transition
+        user_event_id = (
+            transition.accepted_appraisal["event_id"]
+            if transition is not None else self._id_factory()
+        )
         aura_event_id = self._id_factory()
         return TurnCommand(
             scope_id=scope_id,
             session_id=session_id,
-            turn_id=self._id_factory(),
+            turn_id=transition.turn_id if transition is not None else self._id_factory(),
             idempotency_key=idempotency_key,
             request_hash_version=1,
             request_hash=canonical_request_hash(scope_id, session_id, user_content),
@@ -406,7 +442,7 @@ class ConversationPersistenceService:
             "duration_ms": 0.0,
             "retry_count": 0,
             "status": code,
-            "durable_status": "unknown",
+            "durable_status": "unchanged" if code == "turn_write_failed" else "unknown",
             "projection_status": "unknown",
             "idempotency_key": command.idempotency_key,
             "retry_identity": command.idempotency_key,

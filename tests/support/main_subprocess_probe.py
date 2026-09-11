@@ -637,6 +637,10 @@ def _run_base_only_startup_scenario(
         def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             return None
 
+        async def drain(self) -> None:
+            """Startup-only probe has no outstanding writes to drain."""
+            return None
+
     class FakeProvider:
         async def generate(self, _request: Any) -> Any:
             raise AssertionError("startup must not generate")

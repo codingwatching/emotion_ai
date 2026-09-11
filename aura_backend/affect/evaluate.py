@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
-from scipy.stats import ttest_rel
+from scipy.stats import permutation_test, ttest_rel
 
 from aura_backend.affect.dynamics import (
     apply_pre_state,
@@ -83,10 +83,15 @@ class TurnLatencies:
     """Latency measurements (in milliseconds) for a single turn."""
 
     engine_ms: float
-    appraisal_ms: float
+    appraisal_ms: float | None
     generation_ms: float
-    persistence_ms: float
+    state_commit_ms: float
     total_ms: float
+    ledger_ms: float | None = None
+    projection_ms: float | None = None
+    retrieval_ms: float | None = None
+    post_analysis_ms: float | None = None
+    route_total_ms: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +114,13 @@ class TraceRecord:
     channels: dict[str, float] | None
     scores: TurnScores
     latencies: TurnLatencies
+    timestamp: float
+    task_facts: dict[str, bool] | None
+    history: list[dict[str, str]]
+    history_hash: str
+    donor_sequence_id: str | None
+    donor_prior: dict[str, Any] | None
+    execution_order: list[str]
 
 
 # --- Rubric Scoring Functions (Blinded) ---
@@ -295,6 +307,10 @@ def compute_paired_bootstrap(
     """Compute paired mean difference, SE, 95% bootstrap CI, and two-sided permutation p-value."""
     x = np.array(arm_x_scores, dtype=np.float64)
     y = np.array(arm_y_scores, dtype=np.float64)
+    if x.ndim != 1 or y.ndim != 1 or x.shape != y.shape or not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):
+        raise ValueError("paired scores must be finite, one-dimensional, and equally sized")
+    if n_resamples < 2:
+        raise ValueError("at least two bootstrap resamples are required")
     diffs = x - y
     n = len(diffs)
     if n == 0:
@@ -314,15 +330,19 @@ def compute_paired_bootstrap(
     ci_high = float(np.percentile(boot_means, 97.5))
 
     # Two-sided sign-flip permutation test
-    n_perms = 5000
-    abs_obs = abs(mean_diff)
-    signs = rng.choice([-1.0, 1.0], size=(n_perms, n))
-    perm_means = np.mean(diffs * signs, axis=1)
-    p_perm = float(np.mean(np.abs(perm_means) >= abs_obs))
+    # Exhaustive for all supported family counts; SciPy also handles tied
+    # floating-point values and conservative Monte Carlo adjustment for larger n.
+    if n == 1:
+        p_perm = 1.0
+    else:
+        p_perm = float(permutation_test(
+            (diffs,), np.mean, permutation_type="samples", alternative="two-sided",
+            n_resamples=2 ** n if n <= 16 else 5000, rng=rng,
+        ).pvalue)
 
     # Paired t-test
     t_p = 1.0
-    if n > 1:
+    if n > 1 and float(np.std(diffs)) > np.finfo(float).eps:
         try:
             t_res = ttest_rel(x, y)
             if not math.isnan(float(t_res.pvalue)):
@@ -560,7 +580,15 @@ class AffectEvaluator:
         max_seconds: float = 1200.0,
     ) -> dict[str, Any]:
         """Execute the 4-arm comparative evaluation across scenario families."""
+        if (type(num_scenario_families) is not int or not 1 <= num_scenario_families <= len(SCENARIO_FAMILIES)
+                or type(variants_per_family) is not int or variants_per_family < 1
+                or type(repeats) is not int or not 1 <= repeats <= 100
+                or not math.isfinite(max_seconds) or max_seconds <= 0):
+            raise ValueError("invalid comparison bounds")
+        if any(variants_per_family > len(family.held_out_variants) for family in SCENARIO_FAMILIES[:num_scenario_families]):
+            raise ValueError("requested variants exceed available frozen cases")
         start_time = time.time()
+        deadline = time.monotonic() + max_seconds
         logger.info(
             "Starting 4-arm comparative evaluation: families=%d, variants=%d, repeats=%d, max_sec=%.1f",
             num_scenario_families,
@@ -574,6 +602,22 @@ class AffectEvaluator:
         blinded_reviews: list[dict[str, Any]] = []
         incomplete_evidence: bool = False
         failure_reasons: list[str] = []
+        warmup: dict[str, Any] = {"status": "not_applicable", "calls": 0}
+        if self.provider_runtime is not None:
+            warmup_started = time.perf_counter()
+            warmup["calls"] = 1
+            try:
+                async with asyncio.timeout(max(0.001, deadline - time.monotonic())):
+                    await self.provider_runtime.generate(ProviderRequest(
+                        messages=(ProviderMessage(role="user", content="Reply Ready."),),
+                        max_tokens=16, temperature=0.0, disable_reasoning=True,
+                    ))
+                warmup["status"] = "complete"
+            except Exception as error:
+                warmup["status"] = "failed"
+                incomplete_evidence = True
+                failure_reasons.append(f"Warmup failed: {type(error).__name__}")
+            warmup["duration_ms"] = (time.perf_counter() - warmup_started) * 1000
 
         # We maintain separate services per arm
         services: dict[Arm, AffectService] = {
@@ -583,10 +627,39 @@ class AffectEvaluator:
             Arm.D: AffectService(),
         }
 
-        d_trajectory_pool: list[list[AffectVector]] = [[services[Arm.C].config.baseline] * 20]
+        # Build all donor priors before generating any model output. Permute
+        # complete trajectories only within identical temporal schedules.
+        trajectories: dict[str, list[AffectState]] = {}
+        strata: dict[tuple[float, ...], list[str]] = {}
+        for family in selected_families:
+            for sequence in family.held_out_variants[:variants_per_family]:
+                donor_service = AffectService()
+                donor_scope = sequence.sequence_id
+                donor_service.set_state(AffectState.initial(donor_scope, donor_service.config, 2000.0))
+                trajectory: list[AffectState] = []
+                timestamp = 2000.0
+                for turn in sequence.turns:
+                    trajectory.append(donor_service.get_state(donor_scope))
+                    timestamp += turn.time_delta_seconds
+                    facts = ({"task_success" if turn.task_outcome_success else "task_failure": True}
+                             if turn.task_outcome_success is not None else None)
+                    prior, policy, _, appraisal, pre = await donor_service.compute_provisional_policy(
+                        donor_scope, turn.user_message, timestamp, task_facts=facts,
+                        event_id=f"fixture_{donor_scope}_{turn.turn_index}",
+                    )
+                    await donor_service.commit_turn(donor_scope, str(turn.turn_index), str(turn.turn_index),
+                                                    "fixture", prior, pre, policy, appraisal, None, timestamp)
+                trajectories[donor_scope] = trajectory
+                strata.setdefault(tuple(turn.time_delta_seconds for turn in sequence.turns), []).append(donor_scope)
+        donors: dict[str, str] = {}
+        for members in strata.values():
+            shuffled = list(members)
+            self.rng.shuffle(shuffled)
+            donors.update({recipient: shuffled[(index + 1) % len(shuffled)]
+                           for index, recipient in enumerate(shuffled)})
 
         for repeat_idx in range(repeats):
-            if time.time() - start_time > max_seconds:
+            if time.monotonic() >= deadline:
                 logger.warning("Max execution time reached, stopping comparison early")
                 incomplete_evidence = True
                 failure_reasons.append("Max execution time reached; evaluation timed out")
@@ -597,16 +670,14 @@ class AffectEvaluator:
                 variants_to_run = family.held_out_variants[:variants_per_family]
 
                 for variant in variants_to_run:
-                    # Per-arm independent conversation histories.
-                    # Live mode: each arm's assistant replies build its own history.
-                    # Mock mode: fixture_conversation (authored turns) is used for all arms.
-                    per_arm_history: dict[Arm, list[dict[str, str]]] = {arm: [] for arm in Arm}
+                    # Matched trials: generated output is an observation, never
+                    # a later input. Free-running rollouts are a different protocol.
                     fixture_conversation: list[dict[str, str]] = []
-                    c_trajectory: list[AffectVector] = []
-                    d_trajectory_active = self.rng.choice(d_trajectory_pool)
+                    donor_id = donors[variant.sequence_id]
+                    d_trajectory_active = trajectories[donor_id]
 
                     for turn in variant.turns:
-                        if time.time() - start_time > max_seconds:
+                        if time.monotonic() >= deadline:
                             incomplete_evidence = True
                             failure_reasons.append("Max execution time reached; evaluation timed out")
                             break
@@ -616,15 +687,20 @@ class AffectEvaluator:
 
                         # task_facts shared by Arm B, C, D (all receive the same evidence)
                         turn_task_facts = (
-                            {"task_success": turn.task_outcome_success}
+                            {"task_success" if turn.task_outcome_success else "task_failure": True}
                             if turn.task_outcome_success is not None
                             else None
                         )
 
-                        for arm in (Arm.A, Arm.B, Arm.C, Arm.D):
+                        arm_order = list(Arm)
+                        self.rng.shuffle(arm_order)
+                        for arm in arm_order:
+                            if time.monotonic() >= deadline:
+                                incomplete_evidence = True
+                                break
                             scope = f"eval_{arm.value}_{family.family_id}_{variant.sequence_id}_{repeat_idx}"
                             svc = services[arm]
-                            timestamp = 2000.0 + sum(t.time_delta_seconds for t in variant.turns[:turn.turn_index])
+                            timestamp = 2000.0 + sum(t.time_delta_seconds for t in variant.turns[:turn.turn_index + 1])
 
 
                             t_engine_start = time.perf_counter()
@@ -660,26 +736,8 @@ class AffectEvaluator:
                                 )
                                 engine_ms = (time.perf_counter() - t_engine_start) * 1000.0
                             else:  # Arm.D
-                                # Arm D: Shuffled prior trajectory injected at the matching position.
-                                # Receives the SAME task evidence as Arm C (turn_task_facts).
-                                # last_event_time is set to timestamp - 30s to allow natural decay.
-                                prior_idx = min(turn.turn_index, len(d_trajectory_active) - 1)
-                                shuffled_prior = (
-                                    d_trajectory_active[prior_idx]
-                                    if d_trajectory_active
-                                    else svc.config.baseline
-                                )
-                                current_s = svc.get_state(scope)
-                                # 30s prior gap gives the decay calculation a realistic interval
-                                d_prior_time = max(0.0, timestamp - 30.0)
-                                svc.set_state(
-                                    replace(
-                                        current_s,
-                                        fast_state=shuffled_prior,
-                                        mood_state=shuffled_prior,
-                                        last_event_time=d_prior_time,
-                                    )
-                                )
+                                # Preserve donor mood, clock and pre-turn position.
+                                svc.set_state(replace(d_trajectory_active[turn.turn_index], scope_id=scope))
                                 _, rendered_pol, accepted_ev, appraisal, pre_state = (
                                     await svc.compute_provisional_policy(
                                         scope, user_msg, timestamp, task_facts=turn_task_facts
@@ -700,21 +758,17 @@ class AffectEvaluator:
                                 system_instruction = base_system_prompt
 
                             # Generate response.
-                            # Live mode: pass this arm's own independent history (no cross-arm contamination).
-                            # Mock mode: pass fixture_conversation (authored neutral turns).
+                            # Use identical frozen history in both provider modes.
                             t_gen_start = time.perf_counter()
-                            history_to_pass = (
-                                per_arm_history[arm]
-                                if self.provider_runtime is not None
-                                else fixture_conversation
-                            )
+                            history_to_pass = [dict(message) for message in fixture_conversation]
                             try:
-                                response_text = await self._generate_response(
-                                    system_instruction=system_instruction,
-                                    user_message=user_msg,
-                                    history=history_to_pass,
-                                    turn=turn,
-                                )
+                                async with asyncio.timeout(max(0.001, deadline - time.monotonic())):
+                                    response_text = await self._generate_response(
+                                        system_instruction=system_instruction,
+                                        user_message=user_msg,
+                                        history=history_to_pass,
+                                        turn=turn,
+                                    )
                             except Exception as exc:
                                 logger.error(
                                     "Provider generation failed (%s) on family=%s arm=%s turn=%d",
@@ -734,11 +788,9 @@ class AffectEvaluator:
                             t_pers_start = time.perf_counter()
                             post_state_dict: dict[str, float] | None = None
                             if arm is Arm.C and pre_state is not None and rendered_pol is not None:
-                                outcome = (
-                                    TaskOutcome("task", turn.task_outcome_success)
-                                    if turn.task_outcome_success is not None
-                                    else None
-                                )
+                                # Fixture outcome is already available in this
+                                # user turn; do not apply the same evidence twice.
+                                outcome = None
                                 s_comm, _ = await svc.commit_turn(
                                     scope,
                                     f"turn_{turn.turn_index}",
@@ -752,7 +804,6 @@ class AffectEvaluator:
                                     timestamp,
                                 )
                                 post_state_dict = s_comm.fast_state.to_dict()
-                                c_trajectory.append(s_comm.fast_state)
                             elif pre_state is not None:
                                 post_state_dict = pre_state.to_dict()
                             pers_ms = (time.perf_counter() - t_pers_start) * 1000.0
@@ -790,11 +841,18 @@ class AffectEvaluator:
                                 if pre_state
                                 else None,
                                 scores=scores,
+                                timestamp=timestamp,
+                                task_facts=turn_task_facts,
+                                history=history_to_pass,
+                                history_hash=hashlib.sha256(json.dumps(history_to_pass, sort_keys=True).encode()).hexdigest(),
+                                donor_sequence_id=donor_id if arm is Arm.D else None,
+                                donor_prior=asdict(d_trajectory_active[turn.turn_index]) if arm is Arm.D else None,
+                                execution_order=[item.value for item in arm_order],
                                 latencies=TurnLatencies(
                                     engine_ms=round(engine_ms, 3),
-                                    appraisal_ms=0.0,
+                                    appraisal_ms=None,
                                     generation_ms=round(gen_ms, 3),
-                                    persistence_ms=round(pers_ms, 3),
+                                    state_commit_ms=round(pers_ms, 3),
                                     total_ms=round(total_ms, 3),
                                 ),
                             )
@@ -807,27 +865,25 @@ class AffectEvaluator:
                                     "scenario_family": family.name,
                                     "user_message": user_msg,
                                     "agent_response": response_text,
-                                    "rubric_scores": {
-                                        "continuity": scores.continuity,
-                                        "contextual_appropriateness": scores.contextual_appropriateness,
-                                        "recovery": scores.recovery,
-                                        "restrained_expressiveness": scores.restrained_expressiveness,
-                                        "task_correctness": scores.task_correctness,
-                                    },
+                                    "history": [dict(message) for message in history_to_pass],
                                 }
                             )
-
-                            # Update this arm's independent history for live mode
-                            per_arm_history[arm].append({"role": "user", "content": user_msg})
-                            per_arm_history[arm].append({"role": "assistant", "content": response_text})
 
                         # Update fixture (mock-mode) history after all arms complete this turn
                         fixture_conversation.append({"role": "user", "content": user_msg})
                         fixture_turn_response = getattr(turn, "fixture_assistant_response", "Understood.")
                         fixture_conversation.append({"role": "assistant", "content": fixture_turn_response})
 
-                    if c_trajectory:
-                        d_trajectory_pool.append(c_trajectory)
+        expected_ids = {
+            f"tr_{arm.value}_{family.family_id}_{variant.sequence_id}_{repeat}_{turn.turn_index}"
+            for family in selected_families
+            for variant in family.held_out_variants[:variants_per_family]
+            for repeat in range(repeats) for turn in variant.turns for arm in Arm
+        }
+        observed_ids = {trace.trace_id for trace in traces}
+        if observed_ids != expected_ids or len(observed_ids) != len(traces):
+            incomplete_evidence = True
+            failure_reasons.append("Missing, duplicate, or unexpected paired trace identities")
 
         # Calculate statistics across arms clustered by scenario family
         family_scores: dict[str, dict[str, list[float]]] = {}
@@ -843,11 +899,11 @@ class AffectEvaluator:
         d_means: list[float] = []
 
         for fid, arm_dict in family_scores.items():
-            if arm_dict["C"] and arm_dict["A"] and arm_dict["B"]:
+            if all(arm_dict[arm.value] for arm in Arm):
                 c_means.append(float(np.mean(arm_dict["C"])))
                 a_means.append(float(np.mean(arm_dict["A"])))
                 b_means.append(float(np.mean(arm_dict["B"])))
-                d_means.append(float(np.mean(arm_dict["D"])) if arm_dict["D"] else 0.0)
+                d_means.append(float(np.mean(arm_dict["D"])))
 
 
         # Paired statistics: C vs A, C vs B, C vs D
@@ -914,7 +970,7 @@ class AffectEvaluator:
         # 2. Holm-adjusted permutation p < 0.05 for both
         # 3. Task correctness preserved (corr_c >= corr_a and corr_c >= corr_b)
         # 4. Complete evidence (no provider failures or incomplete runs)
-        gate_b_pass = (
+        heuristic_thresholds_met = (
             not incomplete_evidence
             and res_ca.mean_difference >= 0.30
             and res_cb.mean_difference >= 0.30
@@ -964,16 +1020,25 @@ class AffectEvaluator:
                 "task_correctness_gate_pass": task_correctness_gate_pass,
             },
             "overall_arm_means": {
-                "Arm_A": round(float(np.mean(a_means)), 4),
-                "Arm_B": round(float(np.mean(b_means)), 4),
-                "Arm_C": round(float(np.mean(c_means)), 4),
-                "Arm_D": round(float(np.mean(d_means)), 4),
+                "Arm_A": round(float(np.mean(a_means)), 4) if a_means else None,
+                "Arm_B": round(float(np.mean(b_means)), 4) if b_means else None,
+                "Arm_C": round(float(np.mean(c_means)), 4) if c_means else None,
+                "Arm_D": round(float(np.mean(d_means)), 4) if d_means else None,
             },
         }
 
         verdict = {
+            "warmup": warmup,
             "gate_b": {
-                "status": "PASS" if gate_b_pass else "FAIL",
+                # Phrase/length rubrics are useful diagnostics, not validated
+                # measurements of task meaning or behavioral contribution.
+                # Keep their numbers, but never certify improvement with them.
+                "status": "FAIL",
+                "semantic_validation": "NOT_VALIDATED",
+                "donor_assignments": donors,
+                "identity_donors": [recipient for recipient, donor in donors.items() if recipient == donor],
+                "acceptance_blockers": ["Independent semantic scoring and blinded review are required"],
+                "heuristic_thresholds_met": bool(heuristic_thresholds_met),
                 "incomplete_evidence": incomplete_evidence,
                 "failure_reasons": failure_reasons,
                 "effect_size_target_met": bool(
@@ -988,7 +1053,9 @@ class AffectEvaluator:
             },
 
             "gate_p": {
-                "status": "PASS" if gate_p_pass else "FAIL",
+                "status": "NOT_RUN",
+                "scope": "Full route/SQLite latency is not measured by this harness",
+                "engine_diagnostic_pass": gate_p_pass,
                 "engine_p95_ms": round(engine_p95, 2),
                 "warm_turn_p95_arm_a_ms": round(p95_a, 2),
                 "warm_turn_p95_arm_c_ms": round(p95_c, 2),
@@ -1143,6 +1210,12 @@ class AffectEvaluator:
         manifest = {
             "run_id": self.output_dir.name,
             "mode": "compare",
+            "protocol_version": "matched-diagnostic-v2",
+            "scorer_version": "phrase-diagnostics-v2-not-semantic",
+            "evidence_kind": "provider" if self.provider_runtime is not None else "mock",
+            "identity_donors": verdict["gate_b"]["identity_donors"],
+            "warmup": verdict["warmup"],
+            "donor_assignments": verdict["gate_b"]["donor_assignments"],
             "provider": getattr(self.provider_runtime, "_provider", "mock").__class__.__name__,
             "model": self.model_name,
             "timestamp": datetime.now(timezone.utc).isoformat(),

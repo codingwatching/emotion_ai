@@ -82,6 +82,7 @@ EXPECTED_SCRIPTS: Final = {
     "dev": "vite",
     "typecheck:python": "pyright --project pyproject.toml",
     "typecheck:frontend": "tsc --noEmit",
+    "test:frontend": "node --test tests/frontend/*.test.mjs",
     "build": "vite build",
     "preview": "vite preview",
 }

@@ -1,0 +1,9 @@
+{
+  "run_id": "deterministic",
+  "mode": "deterministic",
+  "provider": "engine_pure",
+  "model": "deterministic_fixture",
+  "timestamp": "2026-09-11T05:35:15.440739+00:00",
+  "scenario_families_count": 12,
+  "seed": 42
+}

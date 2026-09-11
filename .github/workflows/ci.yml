@@ -87,6 +87,8 @@ jobs:
         run: npm ci
       - name: Run the named frontend type check
         run: npm run typecheck:frontend
+      - name: Frontend retry contract
+        run: npm run test:frontend
 
   frontend-build:
     name: frontend-build

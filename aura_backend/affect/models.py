@@ -192,6 +192,7 @@ class Appraisal:
     status: str = "observed"  # observed, inferred, uncertain, unknown
     source_ids: tuple[str, ...] = ()
     task_id: str | None = None
+    source_sha256: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -207,6 +208,7 @@ class Appraisal:
             "evidence_spans": list(self.evidence_spans),
             "status": self.status,
             "source_ids": list(self.source_ids),
+            "source_sha256": self.source_sha256,
             "task_id": self.task_id,
         }
 
@@ -221,6 +223,10 @@ class TaskOutcome:
     prediction_error: float = 0.0
     observed_at: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.success is not None and type(self.success) is not bool:
+            raise TypeError("task outcome success must be a boolean or None")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -245,6 +251,7 @@ class ResponsePolicy:
     reflection: str  # 'immediate', 'defer'
     prompt_block: str
     input_state: AffectVector
+    evidence_action: str = "proceed"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -255,6 +262,7 @@ class ResponsePolicy:
             "exploration": self.exploration,
             "reflection": self.reflection,
             "input_state": self.input_state.to_dict(),
+            "evidence_action": self.evidence_action,
         }
 
 

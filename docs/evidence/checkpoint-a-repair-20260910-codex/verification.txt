@@ -1,0 +1,83 @@
+[pytest]
+$ uv run --locked --no-sync python -m pytest tests -q -m 'not live and not private_evidence' -p no:cacheprovider
+exit_code: 0
+........................................................................ [  8%]
+........................................................................ [ 16%]
+........................................................................ [ 24%]
+........................................................................ [ 33%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 57%]
+........................................................................ [ 66%]
+........ss.sss.......................................................... [ 74%]
+........................................................................ [ 82%]
+........................................................................ [ 91%]
+.....................................s..........s....................... [ 99%]
+......                                                                   [100%]
+863 passed, 7 skipped, 5 deselected in 35.35s
+
+[lint_types]
+$ uv run --locked --no-sync ruff check aura_backend tests --exclude aura_backend/archive_unused --exclude aura_backend/scratch --exclude aura_backend/tests && npm run typecheck:python
+exit_code: 0
+All checks passed!
+
+> aura-emotional-ai@0.0.0 typecheck:python
+> pyright --project pyproject.toml
+
+0 errors, 0 warnings, 0 informations
+
+[frontend]
+$ npm run test:frontend && npm run typecheck:frontend && npm run build
+exit_code: 0
+
+> aura-emotional-ai@0.0.0 test:frontend
+> node --test tests/frontend/*.test.mjs
+
+🟢 Backend health check successful: { status: 'operational' }
+🌐 [req_4aacd226-37f6-4fdf-ad46-541c8d37f5a6] POST /conversation
+⚠️ [req_4aacd226-37f6-4fdf-ad46-541c8d37f5a6] Attempt 1/3 failed: Error: HTTP 503: pending
+    at AuraAPI.makeRequest (auraApi.test.js:168:27)
+    at async AuraAPI.sendMessage (auraApi.test.js:266:30)
+    at async TestContext.<anonymous> (file:///home/ty/Repositories/ai_workspace/emotion_ai/tests/frontend/aura-retry.test.mjs:25:5)
+    at async Test.run (node:internal/test_runner/test:1404:7)
+    at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+⏳ [req_4aacd226-37f6-4fdf-ad46-541c8d37f5a6] Retrying in 1118ms...
+🌐 [req_b4455714-258b-4d8b-a7b1-052231c3a32f] POST /conversation
+🌐 [req_63375e1b-82dd-41f9-b20f-6f65a0fb2131] POST /conversation
+✔ conversation retries preserve identity; new sends get new identities (120.727861ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 395.069064
+
+> aura-emotional-ai@0.0.0 typecheck:frontend
+> tsc --noEmit
+
+
+> aura-emotional-ai@0.0.0 build
+> vite build
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 7 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                  9.47 kB │ gzip:  2.51 kB
+dist/assets/index-D5Q4bbrX.css  27.90 kB │ gzip:  5.83 kB
+dist/assets/index-BgtJ7LnR.js   90.30 kB │ gzip: 25.89 kB
+
+✓ built in 77ms
+
+[deterministic]
+$ uv run --locked --no-sync python -m aura_backend.affect.evaluate --mode deterministic --output-dir docs/evidence/checkpoint-a-repair-20260910-codex/deterministic
+exit_code: 0
+2026-09-10 23:35:15,380 [INFO] aura.affect.evaluate: Running Gate M mechanism verification across all 12 scenario families
+2026-09-10 23:35:15,401 [INFO] aura.affect.evaluate: Running Gate P pure engine latency benchmark (1,000 iterations)
+2026-09-10 23:35:15,441 [INFO] aura.affect.evaluate: Deterministic evidence written to docs/evidence/checkpoint-a-repair-20260910-codex/deterministic
+
+[Gate Deterministic Verdict]: PASS
+Evidence directory: docs/evidence/checkpoint-a-repair-20260910-codex/deterministic

@@ -11,6 +11,7 @@ export interface ConversationRequest {
   user_id: string;
   message: string;
   session_id?: string;
+  idempotency_key?: string;
 }
 
 export interface AffectVector {
@@ -24,6 +25,7 @@ export interface AffectVector {
 }
 
 export interface ResponsePolicy {
+  evidence_action?: 'proceed' | 'verify' | 'boundary' | 'stop';
   warmth: string;
   energy: string;
   acknowledge_setback: boolean;
@@ -411,6 +413,7 @@ export class AuraAPI {
       'http 401', // Unauthorized
       'http 403', // Forbidden
       'http 404', // Not Found
+      'http 409', // Changed payload with an existing retry identity
       'http 422', // Unprocessable Entity
       'json', // JSON parsing errors
       'syntax'
@@ -454,6 +457,11 @@ export class AuraAPI {
     if (!request.user_id || !request.message.trim()) {
       throw new Error('User ID and message are required');
     }
+
+    // The request object represents one intentional send. Keep its identity
+    // for transport/manual retries; construct a new object for a new send.
+    request.idempotency_key ??= this.generateRequestId();
+    request.session_id ??= this.generateRequestId();
 
     try {
       const response = await this.makeRequest<ConversationResponse>('/conversation', {

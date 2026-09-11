@@ -7,6 +7,7 @@ import json
 import math
 import sqlite3
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 
 from aura_backend.storage.models import (
@@ -211,9 +212,9 @@ def append_turn_atomic(
                 )
 
             mood_json = (
-                json.dumps(trans.next_mood.to_dict(), sort_keys=True)
+                json.dumps(asdict(trans.next_mood), sort_keys=True)
                 if trans.next_mood
-                else json.dumps(trans.after_state.to_dict(), sort_keys=True)
+                else json.dumps(asdict(trans.after_state), sort_keys=True)
             )
 
             connection.execute(
@@ -234,8 +235,8 @@ def append_turn_atomic(
                     trans.idempotency_key,
                     trans.input_digest,
                     json.dumps(trans.accepted_appraisal, sort_keys=True),
-                    json.dumps(trans.pre_state.to_dict(), sort_keys=True),
-                    json.dumps(trans.after_state.to_dict(), sort_keys=True),
+                    json.dumps(asdict(trans.pre_state), sort_keys=True),
+                    json.dumps(asdict(trans.after_state), sort_keys=True),
                     json.dumps(trans.rendered_policy.to_dict(), sort_keys=True),
                     trans.outcome_disposition,
                     trans.config_hash,
@@ -264,7 +265,7 @@ def append_turn_atomic(
                     trans.revision,
                     "affect-v1",
                     trans.config_hash,
-                    json.dumps(trans.after_state.to_dict(), sort_keys=True),
+                    json.dumps(asdict(trans.after_state), sort_keys=True),
                     mood_json,
                     trans.transition_id,
                     command.occurred_at,

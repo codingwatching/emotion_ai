@@ -1229,7 +1229,7 @@ class StorageRepository:
             aff_row = connection.execute(
                 """
                 SELECT revision, appraisal_json, pre_state_json, after_state_json,
-                       policy_json, outcome_disposition
+                       policy_json, outcome_disposition, transition_id
                 FROM affect_transitions WHERE turn_id = ?
                 """,
                 (str(turn_id),),
@@ -1244,7 +1244,14 @@ class StorageRepository:
                     "pre_state": json.loads(aff_row[2]),
                     "post_state": json.loads(aff_row[3]),
                     "policy": json.loads(aff_row[4]),
-                    "disposition": aff_row[5],
+                    "disposition": "replayed",
+                    "persistence": {
+                        "status": "replayed",
+                        "idempotency_key": idempotency_key,
+                        "turn_id": str(turn_id),
+                        "transition_id": aff_row[6],
+                        "projection_status": "pending" if persisted.projection_reconciliation_required else "complete",
+                    },
                     "replayed": True,
                 }
             return persisted, aura_resp, simulation_payload

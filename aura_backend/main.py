@@ -48,6 +48,7 @@ if _current_dir.name == "aura_backend":
 
 # Import-light domain and request types only. Resource-owning integrations are
 # imported by the lifespan composition path, never while importing this module.
+from aura_backend.affect.receipts import DurableReceipt  # noqa: E402
 from aura_backend.conversation_persistence_service import (  # noqa: E402
     ConversationExchange,
     ConversationPersistenceService,
@@ -1608,6 +1609,8 @@ async def lifespan(app: FastAPI):
     finally:
         app.state.runtime = None
         app.state.health_snapshot = _unstarted_health_snapshot()
+        if isinstance(conversation_persistence, ConversationPersistenceService):
+            await conversation_persistence.drain()
         await runtime.aclose()
 
 
@@ -2387,6 +2390,7 @@ async def process_conversation(
 ) -> ConversationResponse:
     """Run one provider-neutral conversation while preserving public behavior."""
     session_id = request.session_id or str(uuid.uuid4())
+    idempotency_key = request.idempotency_key or uuid.uuid4().hex
     session_key = f"{request.user_id}_{session_id}"
     recovery_enabled = os.getenv("SESSION_RECOVERY_ENABLED", "true").lower() == "true"
     provider_runtime: Any = None
@@ -2409,6 +2413,12 @@ async def process_conversation(
         stage = "context"
         affect_svc = get_affect_service()
         async with affect_svc.scope_lock(request.user_id):
+            if isinstance(conversation_persistence, ConversationPersistenceService):
+                settled = await conversation_persistence.settle_scope(
+                    request.user_id, float(os.getenv("PERSISTENCE_TIMEOUT", "15.0")),
+                )
+                if not settled:
+                    raise HTTPException(status_code=503, detail="Previous turn commit is still pending; retry with the same request identity")
             # Idempotency lookup: check for committed replay before calling provider or tools
             if conversation_persistence and request.idempotency_key:
                 repo = getattr(conversation_persistence, "repository", None)
@@ -2474,7 +2484,8 @@ async def process_conversation(
                 scope_id=request.user_id,
                 message=request.message,
                 timestamp=turn_timestamp,
-                task_facts=getattr(request, "task_facts", None),
+                # HTTP claims are not trusted task-observer receipts.
+                task_facts=None,
             )
 
 
@@ -2553,25 +2564,11 @@ async def process_conversation(
 
             stage = "exchange"
             turn_id = uuid.uuid4().hex
-            idempotency_key = request.idempotency_key or uuid.uuid4().hex
             input_digest = canonical_request_hash(request.user_id, session_id, request.message)
 
-            # Reconcile head state before staging in case of late persistence completions
-            current_head = affect_svc.get_state(request.user_id, turn_timestamp)
-            if current_head.revision > prior_affect_state.revision:
-                prior_affect_state = current_head
-
             turn_outcome: TaskOutcome | None = None
-            req_outcome = getattr(request, "task_outcome", None)
-            if req_outcome:
-                if isinstance(req_outcome, TaskOutcome):
-                    turn_outcome = req_outcome
-                elif isinstance(req_outcome, dict):
-                    turn_outcome = TaskOutcome(
-                        task_id=str(req_outcome.get("task_id", "task")),
-                        success=bool(req_outcome.get("success", False)),
-                        metadata=dict(req_outcome.get("metadata") or req_outcome.get("details") or {}),
-                    )
+            # Never coerce user JSON (notably "false") into verified outcomes.
+            # Only a future server-side observer may supply this trusted seam.
 
 
             new_affect_state, affect_transition = await affect_svc.stage_turn(
@@ -2612,21 +2609,29 @@ async def process_conversation(
                 idempotency_key=idempotency_key,
                 affect_transition=affect_transition,
                 expected_state_revision=prior_affect_state.revision,
+                # Persist the engine's event clock, not provider completion time.
+                timestamp=datetime.fromtimestamp(turn_timestamp, UTC),
             )
             stage = "persistence"
-            persisted = await _persist_conversation_exchange(exchange, background_tasks)
-            if conversation_persistence and not persisted:
+            if isinstance(conversation_persistence, ConversationPersistenceService):
+                receipt = await conversation_persistence.persist_affect_exchange(
+                    exchange, float(os.getenv("PERSISTENCE_TIMEOUT", "15.0")),
+                )
+            elif conversation_persistence is None:
+                receipt = DurableReceipt("ephemeral", idempotency_key)
+            else:
+                persisted = await _persist_conversation_exchange(exchange, background_tasks)
+                receipt = DurableReceipt("committed" if persisted else "unknown", idempotency_key)
+            if conversation_persistence and not receipt.committed:
                 logger.warning(
-                    "Database persistence degraded or failed; discarding staged affective state"
+                    "Persistence not acknowledged; retaining the authoritative database state"
                 )
                 affect_svc.discard_staged_turn(request.user_id)
                 published_state = affect_svc.get_state(request.user_id, turn_timestamp)
-                published_disposition = "uncommitted"
             else:
                 # Verified persistence success: publish to memory
                 affect_svc.publish_turn(request.user_id, new_affect_state, affect_transition)
                 published_state = new_affect_state
-                published_disposition = affect_transition.outcome_disposition
 
 
             stage = "response"
@@ -2640,7 +2645,8 @@ async def process_conversation(
                 "mood_state": published_state.mood_state.to_dict(),
                 "policy": rendered_policy.to_dict(),
                 "causes": accepted_events,
-                "disposition": published_disposition,
+                "disposition": receipt.status,
+                "persistence": receipt.to_dict(),
                 "channels": compute_channel_readouts(published_state.fast_state),
             }
             return ConversationResponse(

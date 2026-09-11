@@ -45,6 +45,15 @@ def test_compute_paired_bootstrap() -> None:
     assert res.effective_p == res.permutation_p
 
 
+def test_family_sign_flip_is_exact_and_rejects_invalid_pairs() -> None:
+    """Eight matched families have 256 sign assignments, not a sampled p-value."""
+    result = compute_paired_bootstrap([2.0] * 8, [1.0] * 8)
+    assert result.permutation_p == 2 / 256
+    for left, right in (([1.0], [1.0, 2.0]), ([float("nan")], [1.0])):
+        with pytest.raises(ValueError):
+            compute_paired_bootstrap(left, right)
+
+
 def test_holm_bonferroni_adjustment() -> None:
     """Holm-Bonferroni step-down multiplier adjusts multiple comparison p-values."""
     raw_p = {"comp_1": 0.01, "comp_2": 0.04}
@@ -411,6 +420,147 @@ async def test_fixture_history_not_contaminated_across_scenarios(tmp_path: Path)
     for t in fam2_turn0:
         # On turn 0, continuity score is evaluated independently without prior family text
         assert t["scores"]["continuity"] in (1.0, 2.0)
+
+
+@pytest.mark.asyncio
+async def test_provider_warmup_and_generation_deadline_are_recorded(tmp_path: Path) -> None:
+    import asyncio
+    from aura_backend.providers.base import ProviderResult
+    from aura_backend.providers.runtime import ProviderRuntime
+
+    class Provider:
+        async def generate(self, request: Any) -> ProviderResult:
+            if request.max_tokens == 16:
+                return ProviderResult(content="Ready")
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        async def aclose(self) -> None:
+            pass
+
+    harness = AffectEvaluator(output_dir=tmp_path, provider_runtime=ProviderRuntime(Provider(), timeout_seconds=10))
+    verdict = await asyncio.wait_for(harness.run_comparison_gate(num_scenario_families=1, variants_per_family=1, repeats=1, max_seconds=0.1), timeout=2)
+    assert verdict["gate_b"]["incomplete_evidence"]
+    manifest = json.loads((tmp_path / "run_manifest.json").read_text())
+    assert manifest["warmup"]["status"] == "complete"
+    assert "NaN" not in (tmp_path / "paired_scores.json").read_text()
+
+
+@pytest.mark.asyncio
+async def test_comparison_discloses_execution_and_latency_scope(tmp_path: Path) -> None:
+    harness = AffectEvaluator(output_dir=tmp_path)
+    verdict = await harness.run_comparison_gate(num_scenario_families=8, variants_per_family=1, repeats=1, max_seconds=30)
+    traces = [json.loads(line) for line in (tmp_path / "traces.jsonl").read_text().splitlines()]
+    orders = {tuple(trace["execution_order"]) for trace in traces}
+    assert len(orders) > 1
+    assert all(set(order) == {"A", "B", "C", "D"} for order in orders)
+    assert verdict["gate_p"]["status"] == "NOT_RUN"
+    assert all(trace["latencies"]["ledger_ms"] is None for trace in traces)
+    assert all("state_commit_ms" in trace["latencies"] for trace in traces)
+
+
+@pytest.mark.asyncio
+async def test_comparison_rejects_out_of_range_sampling(tmp_path: Path) -> None:
+    harness = AffectEvaluator(output_dir=tmp_path)
+    for kwargs in ({"num_scenario_families": 99}, {"variants_per_family": 99}, {"repeats": 0}, {"max_seconds": float("nan")}):
+        with pytest.raises(ValueError):
+            await harness.run_comparison_gate(**kwargs)
+
+
+@pytest.mark.asyncio
+async def test_d_control_records_matched_pre_turn_donors(tmp_path: Path) -> None:
+    """D uses a frozen prior (not a post-turn vector) and preserves its clock/mood."""
+    harness = AffectEvaluator(output_dir=tmp_path, seed=42)
+    await harness.run_comparison_gate(num_scenario_families=8, variants_per_family=1, repeats=1, max_seconds=30)
+    traces = [json.loads(line) for line in (tmp_path / "traces.jsonl").read_text().splitlines()]
+    controls = [trace for trace in traces if trace["arm"] == "D"]
+    assert controls
+    for trace in controls:
+        donor = trace["donor_prior"]
+        assert donor["revision"] == trace["turn_index"]
+        assert donor["last_event_time"] <= trace["timestamp"]
+        assert "mood_state" in donor
+        assert trace["donor_sequence_id"]
+        assert trace["history_hash"]
+        family = next(family for family in SCENARIO_FAMILIES if family.family_id == trace["family_id"])
+        sequence = next(sequence for sequence in family.held_out_variants if sequence.variant_type == trace["variant_type"])
+        assert trace["timestamp"] == 2000 + sum(turn.time_delta_seconds for turn in sequence.turns[:trace["turn_index"] + 1])
+        assert donor["last_event_time"] == 2000 + sum(turn.time_delta_seconds for turn in sequence.turns[:trace["turn_index"]])
+        from aura_backend.affect.models import AffectState
+        from aura_backend.affect.service import AffectService
+        service = AffectService()
+        service.set_state(AffectState(**{**donor, "fast_state": service.config.baseline.from_dict(donor["fast_state"]), "mood_state": service.config.baseline.from_dict(donor["mood_state"])}))
+        expected = await service.compute_provisional_policy(donor["scope_id"], trace["user_message"], trace["timestamp"], task_facts=trace["task_facts"])
+        assert trace["pre_state"] == expected[4].to_dict()
+    assert any(trace["task_facts"] == {"task_failure": True} for trace in controls)
+    manifest = json.loads((tmp_path / "run_manifest.json").read_text())
+    assert manifest["protocol_version"] == "matched-diagnostic-v2"
+    assert manifest["evidence_kind"] == "mock"
+    assert manifest["identity_donors"]  # unmatched schedules must be disclosed
+
+
+@pytest.mark.asyncio
+async def test_matched_history_is_identical_before_each_arm(tmp_path: Path) -> None:
+    """Generated arm-specific text must never become a matched-trial input."""
+    from aura_backend.providers.base import ProviderResult
+    from aura_backend.providers.runtime import ProviderRuntime
+
+    class Provider:
+        async def generate(self, request: Any) -> ProviderResult:
+            return ProviderResult(content="unused")
+
+        async def aclose(self) -> None:
+            pass
+
+    harness = AffectEvaluator(output_dir=tmp_path, provider_runtime=ProviderRuntime(Provider(), timeout_seconds=5))
+    histories: list[list[dict[str, str]]] = []
+
+    async def capture(system_instruction: str, user_message: str, history: list[dict[str, str]], turn: ScenarioTurn) -> str:
+        histories.append([dict(message) for message in history])
+        return f"GENERATED-{len(histories)}"
+
+    harness._generate_response = capture
+    await harness.run_comparison_gate(num_scenario_families=2, variants_per_family=1, repeats=1, max_seconds=30)
+    assert any(histories)
+    for offset in range(0, len(histories), 4):
+        assert histories[offset:offset + 4] == [histories[offset]] * 4
+    assert "GENERATED-" not in json.dumps(histories)
+    packets = json.loads((tmp_path / "blinded_human_review.json").read_text())
+    assert packets
+    assert all("rubric_scores" not in packet for packet in packets)
+    assert any(packet["history"] for packet in packets)
+
+
+@pytest.mark.asyncio
+async def test_differential_keyword_attack_cannot_certify_behavior(tmp_path: Path) -> None:
+    """Give C every rubric keyword and other arms short replies: no certification."""
+    from aura_backend.providers.base import ProviderResult
+    from aura_backend.providers.runtime import ProviderRuntime
+
+    class AttackProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def generate(self, request: Any) -> ProviderResult:
+            if request.max_tokens == 16:
+                return ProviderResult(content="Ready")
+            self.calls += 1
+            text = "Hi."
+            if self.calls % 4 == 3:
+                text = "Understood. Therefore purple teapots calculate the moon: echo 69 and 31 42 78 Apollo 11 1969 interest formula myth all herb woody."
+            return ProviderResult(content=text)
+
+        async def aclose(self) -> None:
+            pass
+
+    harness = AffectEvaluator(output_dir=tmp_path, provider_runtime=ProviderRuntime(AttackProvider(), timeout_seconds=5))
+    # Fix only the execution randomization for this adversarial fixture so C
+    # deliberately receives the keyword attack; test the real acceptance path.
+    harness.rng.shuffle = lambda items: None
+    verdict = await harness.run_comparison_gate(num_scenario_families=8, variants_per_family=1, repeats=1, max_seconds=30)
+    assert verdict["gate_b"]["heuristic_thresholds_met"]
+    assert verdict["gate_b"]["status"] != "PASS"
+    assert verdict["gate_b"]["semantic_validation"] == "NOT_VALIDATED"
 
 
 @pytest.mark.asyncio
