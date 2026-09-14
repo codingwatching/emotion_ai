@@ -123,6 +123,12 @@ def test_allowed_local_json_conversation_succeeds_without_sign_in() -> None:
             "description": "Synthetic probe state",
             "assessment": {"status": "unverified", "subject": "aura"},
             "simulation": {
+                "display": {
+                    "basis": "published_affect_state",
+                    "brainwave": "Alpha",
+                    "activation": 0.3,
+                    "dominant_channel": "serotonin_like",
+                },
                 "schema_version": 1,
                 "scope_id": "probe-user",
                 "revision": 0,
