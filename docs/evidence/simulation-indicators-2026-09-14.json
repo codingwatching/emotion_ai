@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "browser": "Chromium headless",
+  "restored_without_sending_message": true,
+  "observed": {
+    "brainwave": "Alpha",
+    "channel": "Serotonin 75%",
+    "meter": "75%",
+    "animation": "brainwave-alpha",
+    "revision": "Rev 4 (restored)",
+    "waveClass": "wave-pattern wave-alpha"
+  },
+  "reduced_motion_retains_values": true,
+  "endpoint_revision": 4
+}

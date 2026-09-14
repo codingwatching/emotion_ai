@@ -106,3 +106,25 @@ An explicit background model task also completed through Ornith in 14.4 seconds
 Implementation references checked during this repair:
 [Python queue ownership](https://docs.python.org/3.12/library/asyncio-queue.html)
 and [Ollama's non-truncating embedding API](https://docs.ollama.com/api/embed).
+
+## Simulation indicator repair (September 14)
+
+The header previously read brainwave/chemical labels from the model's tone
+classification. Invalid or abstained classification cleared both indicators even
+when a committed controller state was available. The header now uses published
+controller readouts, including on idempotent replay. `GET /simulation/{user_id}`
+restores saved per-user state on page load without a model call or database write.
+The inspector displays the published state rather than the provisional pre-state.
+
+Chemical levels use the six existing controller-gain formulas. The header shows
+the largest channel (ties use stable engine order), its percentage, and a tooltip
+with all six values. These are software gain levels, not chemical concentrations.
+The wave is an authored visualization of activation: below 0.15 Delta, below 0.30
+Theta, below 0.55 Alpha, below 0.80 Beta, otherwise Gamma. This does not implement
+EEG dynamics. Missing state stays explicitly unknown; no default chemical level
+is invented. Reduced-motion preferences stop animation while retaining values.
+
+Verification: 191 backend tests and 5 frontend tests passed, plus typing, lint and
+build checks. A real headless Chromium page restored Ty's revision 4 as Alpha /
+Serotonin 75%, with an active wave animation and correct reduced-motion behavior,
+without sending a conversation. [Browser evidence](evidence/simulation-indicators-2026-09-14.json).

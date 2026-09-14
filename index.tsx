@@ -3,7 +3,8 @@
  */
 
 import { marked } from 'marked';
-import { AuraAPI, ConversationResponse, EmotionalState, CognitiveState } from './src/services/auraApi';
+import { renderSimulationIndicators } from './src/services/simulationDisplay';
+import { AuraAPI, ConversationResponse, EmotionalState, CognitiveState, AffectSimulationState } from './src/services/auraApi';
 
 // ============================================================================
 // CONFIGURATION & TYPES
@@ -427,8 +428,7 @@ class AuraUIManager {
   private setupEnhancedHeader(): void {
     // Initialize header with default state
     // Preserve the verified status fetched during initialization.
-    this.updateBrainwaveDisplay('Alpha', 'Default');
-    this.updateNeurotransmitterDisplay('Serotonin', 70);
+    this.updateSimulation(null);
 
     // Set initial greeting
     this.updateUserGreeting();
@@ -573,6 +573,8 @@ class AuraUIManager {
       // Atomic update: localStorage first, then state, then UI, then backend
       localStorage.setItem('auraUserName', newUsername);
       this.userName = newUsername;
+      this.updateSimulation(null);
+      void this.restoreSimulation();
       this.updateAllUsernameDisplays();
 
       // Notify backend with retry logic
@@ -773,6 +775,7 @@ class AuraUIManager {
         description: "Ready to assist and learn together"
       });
 
+      await this.restoreSimulation();
       await this.displayMessage(initialGreeting, 'aura');
       this.setFormState(false);
       this.messageInput.focus();
@@ -832,6 +835,8 @@ class AuraUIManager {
       if (newName && newName.length >= 2 && newName.length <= 30) {
         const oldName = this.userName;
         this.userName = newName;
+        this.updateSimulation(null);
+        void this.restoreSimulation();
         localStorage.setItem('auraUserName', this.userName);
 
         // Update UI elements
@@ -880,6 +885,7 @@ class AuraUIManager {
     // Command to reset name - clears UI and storage
     if (lowerMessage === '/resetname' || lowerMessage === '/changename') {
       this.userName = null;
+      this.updateSimulation(null);
       localStorage.removeItem('auraUserName');
       if (this.inlineUsernameInput) {
         this.inlineUsernameInput.value = '';
@@ -1255,43 +1261,54 @@ class AuraUIManager {
       // Update header background class for dynamic coloring
       this.updateHeaderEmotionalState(emotionalState.name);
 
-      // Always clear previous simulated indicators when analysis is unknown.
-      this.updateBrainwaveDisplay(emotionalState.brainwave || '', emotionalState.name);
-      this.updateNeurotransmitterDisplay(
-        emotionalState.neurotransmitter || 'Unknown',
-        emotionalState.neurotransmitter ? this.getNeurotransmitterLevel(emotionalState.intensity) : 0
-      );
-
-      // Update Affective Simulation inspector if present
-      if (emotionalState.simulation) {
-        const sim = emotionalState.simulation;
-        if (this.simRevisionBadge) {
-          this.simRevisionBadge.textContent = `Rev ${sim.revision} (${sim.disposition})`;
-        }
-        if (this.simPolicyDesc) {
-          const pol = sim.policy;
-          this.simPolicyDesc.textContent = `${pol.warmth}, ${pol.energy}${pol.acknowledge_setback ? ' [setback]' : ''}`;
-        }
-        if (this.simValence) {
-          this.simValence.textContent = sim.pre_state.valence.toFixed(2);
-        }
-        if (this.simCuriosity) {
-          this.simCuriosity.textContent = sim.pre_state.curiosity.toFixed(2);
-        }
-        if (this.simAffiliation) {
-          this.simAffiliation.textContent = sim.pre_state.affiliation.toFixed(2);
-        }
-        if (this.simLoad) {
-          this.simLoad.textContent = sim.pre_state.load.toFixed(2);
-        }
-        if (this.simCauses) {
-          this.simCauses.textContent = sim.causes.length > 0 ? sim.causes.join(', ') : 'neutral_conversation';
-        }
-      }
+      this.updateSimulation(emotionalState.simulation ?? null);
 
       console.log(`🎭 Enhanced emotion update: ${emotionalState.name} (${emotionalState.intensity})`);
     } catch (error) {
       console.warn('Failed to update emotional state display:', error);
+    }
+  }
+
+  private updateSimulation(simulation: AffectSimulationState | null): void {
+    renderSimulationIndicators(simulation, {
+      brainwave: this.brainwaveValueElement, wave: this.wavePatternElement,
+      chemical: this.ntValueElement, level: this.chemicalLevelElement,
+    });
+    if (!simulation) {
+      if (this.simRevisionBadge) this.simRevisionBadge.textContent = 'No saved state';
+      for (const element of [this.simPolicyDesc, this.simValence, this.simCuriosity,
+        this.simAffiliation, this.simLoad, this.simCauses]) {
+        if (element) element.textContent = '—';
+      }
+      return;
+    }
+    const sim = simulation;
+    if (this.simRevisionBadge) {
+      this.simRevisionBadge.textContent = `Rev ${sim.revision} (${sim.disposition})`;
+    }
+    if (this.simPolicyDesc) {
+      const pol = sim.policy;
+      this.simPolicyDesc.textContent = `${pol.warmth}, ${pol.energy}${pol.acknowledge_setback ? ' [setback]' : ''}`;
+    }
+    if (this.simValence) this.simValence.textContent = sim.post_state.valence.toFixed(2);
+    if (this.simCuriosity) this.simCuriosity.textContent = sim.post_state.curiosity.toFixed(2);
+    if (this.simAffiliation) this.simAffiliation.textContent = sim.post_state.affiliation.toFixed(2);
+    if (this.simLoad) this.simLoad.textContent = sim.post_state.load.toFixed(2);
+    if (this.simCauses) {
+      this.simCauses.textContent = (sim.causes?.length ?? 0) > 0 ? sim.causes.join(', ')
+        : sim.disposition === 'restored' ? 'Restored saved state' : 'neutral_conversation';
+    }
+  }
+
+  private async restoreSimulation(): Promise<void> {
+    if (!this.userName || !this.backendConnected) return;
+    const user = this.userName;
+    try {
+      const { simulation } = await this.api.savedSimulation(user);
+      if (user === this.userName) this.updateSimulation(simulation);
+    } catch {
+      // Preserve explicit unknown on startup; never fabricate biological values.
+      console.warn('Saved simulation could not be restored');
     }
   }
 
@@ -1314,33 +1331,6 @@ class AuraUIManager {
       console.log(`🧠 Enhanced cognitive update: ${cognitiveState.focus}`);
     } catch (error) {
       console.warn('Failed to update cognitive state display:', error);
-    }
-  }
-
-  private updateBrainwaveDisplay(brainwave: string, emotionalContext: string): void {
-    try {
-      this.brainwaveValueElement.textContent = brainwave || 'Unknown';
-
-      // Update wave pattern animation based on brainwave type
-      const wavePatternClass = brainwave ? `wave-${brainwave.toLowerCase()}` : 'wave-unknown';
-      this.wavePatternElement.className = `wave-pattern ${wavePatternClass}`;
-
-      console.log(`🧠 Brainwave updated: ${brainwave} (context: ${emotionalContext})`);
-    } catch (error) {
-      console.warn('Failed to update brainwave display:', error);
-    }
-  }
-
-  private updateNeurotransmitterDisplay(neurotransmitter: string, level: number): void {
-    try {
-      this.ntValueElement.textContent = neurotransmitter;
-
-      // Update chemical level indicator
-      this.chemicalLevelElement.style.setProperty('--chemical-intensity', `${level}%`);
-
-      console.log(`⚡ Neurotransmitter updated: ${neurotransmitter} (${level}%)`);
-    } catch (error) {
-      console.warn('Failed to update neurotransmitter display:', error);
     }
   }
 
@@ -1414,16 +1404,6 @@ class AuraUIManager {
     return energyMap[focus] || 'Medium';
   }
 
-  private getNeurotransmitterLevel(intensity: string): number {
-    const levelMap: Record<string, number> = {
-      'Low': 40, 'Medium': 70, 'High': 95
-    };
-    return levelMap[intensity] || 70;
-  }
-
-  // ============================================================================
-  // CHAT HISTORY MANAGEMENT
-  // ============================================================================
 
   private async loadChatHistory(): Promise<void> {
     if (!this.userName || !this.backendConnected) return;

@@ -166,7 +166,9 @@ def emotional_state_payload(
         ),
     }
     if simulation is not None:
-        payload["simulation"] = simulation
+        from aura_backend.affect.display import with_simulation_readouts
+
+        payload["simulation"] = with_simulation_readouts(simulation)
     return payload
 
 

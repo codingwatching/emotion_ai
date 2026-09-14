@@ -1863,3 +1863,9 @@ body {
 [data-theme="light"] .thinking-metrics {
   background: rgba(0, 0, 0, 0.1);
 }
+
+/* Indicator values remain visible when motion is disabled by the user. */
+@media (prefers-reduced-motion: reduce) {
+  .wave-pattern { animation: none; }
+  .chemical-level::after { transition: none; }
+}

@@ -4406,6 +4406,30 @@ async def trigger_emergency_backup():
         raise HTTPException(status_code=500, detail=str(e)) from None
 
 
+@api_router.get("/simulation/{user_id}")
+async def get_saved_simulation(user_id: str) -> dict[str, Any]:
+    """Restore the last committed controller state without a model call or write."""
+    from aura_backend.affect.display import with_simulation_readouts
+    from aura_backend.affect.policy import render_policy
+
+    if storage_boundary is None:
+        raise HTTPException(status_code=503, detail="Memory storage is not initialized")
+    state = await asyncio.to_thread(storage_boundary.repository.get_affect_head, user_id)
+    if state is None:
+        return {"simulation": None}
+    return {"simulation": with_simulation_readouts({
+        "schema_version": state.schema_version,
+        "scope_id": user_id,
+        "revision": state.revision,
+        "pre_state": state.fast_state.to_dict(),
+        "post_state": state.fast_state.to_dict(),
+        "mood_state": state.mood_state.to_dict(),
+        "policy": render_policy(state.fast_state).to_dict(),
+        "causes": [],
+        "disposition": "restored",
+    })}
+
+
 @api_router.get("/memory/status")
 async def get_memory_status() -> dict[str, Any]:
     """Report stored sources and index maintenance without claiming recall quality."""

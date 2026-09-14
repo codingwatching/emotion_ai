@@ -313,6 +313,10 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
                 "reason": None,
             },
             "simulation": {
+                "display": {
+                    "basis": "published_affect_state", "brainwave": "Alpha",
+                    "activation": 0.3, "dominant_channel": "serotonin_like",
+                },
                 "schema_version": 1,
                 "scope_id": "synthetic-user",
                 "revision": 0,

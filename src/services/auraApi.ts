@@ -52,6 +52,12 @@ export interface AffectSimulationState {
     gaba_like: number;
     cortisol_like: number;
   };
+  display?: {
+    basis: 'published_affect_state';
+    brainwave: 'Delta' | 'Theta' | 'Alpha' | 'Beta' | 'Gamma';
+    activation: number;
+    dominant_channel: keyof AffectSimulationState['channels'];
+  };
 }
 
 export interface EmotionalState {
@@ -467,6 +473,11 @@ export class AuraAPI {
 
   async autonomicStatus(): Promise<AutonomicStatusResponse> {
     return this.makeRequest<AutonomicStatusResponse>('/autonomic/status', { method: 'GET', timeout: 10000 });
+  }
+
+  /** Restore committed simulation independently of optional tone classification. */
+  async savedSimulation(userId: string): Promise<{ simulation: AffectSimulationState | null }> {
+    return this.makeRequest(`/simulation/${encodeURIComponent(userId)}`, { method: 'GET', timeout: 10000 });
   }
 
   /**
