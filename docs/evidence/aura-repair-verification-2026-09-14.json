@@ -1,0 +1,46 @@
+{
+  "date": "2026-09-14",
+  "offline_suite": {
+    "passed": 902,
+    "skipped": 5,
+    "deselected": 5,
+    "command": "python -m pytest tests -q -m 'not live and not private_evidence'"
+  },
+  "lint": "passed: active backend and tests; archival and scratch code excluded per CI",
+  "python_types": "passed",
+  "frontend_types": "passed",
+  "frontend_api_regression": "passed",
+  "frontend_build": "passed",
+  "live_memory": {
+    "status": "PASS",
+    "checks": 17,
+    "evidence": "autonomic-memory-2026-09-13.json"
+  },
+  "prior_failed_live_run": {
+    "evidence": "autonomic-memory-2026-09-13-failed-01.json",
+    "finding": "Search for an unknown user attempted to persist a retrieval audit with an absent scope foreign key. Fixed with a side-effect-free empty result before projection access."
+  },
+  "restarted_runtime": {
+    "backend_ready": true,
+    "frontend_http_200": true,
+    "provider": "ollama",
+    "model": "aura-ornith:35b",
+    "maintenance": "completed",
+    "stored_turns": 3,
+    "source_events": 6,
+    "pending_index_turns": 0
+  },
+  "limits": [
+    "Synthetic recall cases do not establish long-term retrieval accuracy at scale.",
+    "Automatic derived-memory summaries are not implemented.",
+    "Task diagnostics reset on restart; source conversations persist.",
+    "Long messages that exceed embedding context require future chunked indexing.",
+    "Frontend typing, build, API regression and HTTP availability checked; browser interaction was not automated."
+  ],
+  "live_background_model": {
+    "status": "PASS",
+    "provider": "ollama",
+    "model": "aura-ornith:35b",
+    "evidence": "autonomic-model-2026-09-14.json"
+  }
+}

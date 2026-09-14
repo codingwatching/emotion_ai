@@ -1,0 +1,13 @@
+{
+  "status": "FAIL",
+  "checks": {
+    "maintenance_after_start_0": true,
+    "durable_commit": true,
+    "same_session_recall": true,
+    "cross_session_recall": true,
+    "correction_committed": true,
+    "copy_only_archive": true,
+    "short_query_search_0": true
+  },
+  "error_type": "HTTPStatusError"
+}

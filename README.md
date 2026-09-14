@@ -301,6 +301,9 @@ API at <http://localhost:8000>, and API documentation at
 evidence about that machine only, not proof that every provider or model works.
 <!-- aura-startup:end -->
 
+For current background processing, memory behavior, configuration changes and
+verification, see [Autonomic work and memory](docs/autonomic-memory.md).
+
 ![alt text](image-5.png)
 
 ## 📡 API Endpoints
@@ -551,8 +554,8 @@ Check logs in:
 - All user data stored locally
 - Local Ollama keeps model traffic local; explicitly selected cloud providers
   transmit requests under their own terms
-- Vector embeddings are anonymized
-- Session data encrypted in transit
+- Embeddings and archives remain local data and can retain sensitive information
+- The default local HTTP connection is not encrypted
 
 ### Access Control
 

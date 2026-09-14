@@ -638,3 +638,18 @@ def test_trace_is_complete_content_free_and_zero_salience_is_enforced(
             cursor_secret=b"n" * 32,
             salience_scorer=NonZeroScorer(),
         ).retrieve(scope_id="scope-alpha", query=private_text)
+
+
+def test_unknown_user_recall_is_empty_without_creating_scope_or_calling_embeddings(tmp_path: Path) -> None:
+    repository = StorageRepository(tmp_path / "empty.sqlite3")
+
+    class UnavailableProjection:
+        def current_generation(self) -> None:
+            raise AssertionError("No embedding model is needed for an unknown user")
+
+    retriever = HybridRetriever(repository=repository, projection=UnavailableProjection())
+    page = retriever.retrieve(scope_id="new-user", query="vault")
+    assert page.items == () and not page.has_more and page.next_cursor is None
+    with sqlite3.connect(repository.database_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM memory_scopes").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM retrieval_runs").fetchone()[0] == 0

@@ -559,3 +559,40 @@ def test_route_source_has_no_legacy_provider_or_private_tool_branch() -> None:
     assert "_tool_mapping" not in source
     assert "mcp_gemini_bridge" not in source
     assert "global provider" not in source
+
+
+def test_short_prompt_retrieves_memory_and_queues_once_only_after_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One-word recall and post-commit maintenance share the real HTTP path."""
+    events = []
+
+    class Persistence(_FakePersistence):
+        async def safe_search_conversations(self, **kwargs: Any) -> list[Any]:
+            events.append("search")
+            assert kwargs["query"] == "Vault?"
+            return [{"origin_id": "source-1", "observed_at": "2026-09-13", "content": "Vault code: VIOLET-8631"}]
+
+        async def persist_conversation_exchange_immediate(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            result = await super().persist_conversation_exchange_immediate(*args, **kwargs)
+            events.append("commit")
+            return {**result, "durable_status": "stored"}
+
+    class Autonomic:
+        _running = True
+
+        async def request_memory_maintenance(self) -> tuple[bool, str]:
+            events.append("maintenance")
+            return True, "task-1"
+
+    selected = _success_provider()
+    runtime, _ = _runtime(selected)
+    _install_route_collaborators(monkeypatch, Persistence())
+    monkeypatch.setattr(main, "storage_boundary", None)
+    monkeypatch.setattr(main, "autonomic_system", Autonomic())
+    with TestClient(main.create_app(runtime_builder=lambda: runtime)) as client:
+        response = client.post("/conversation", json={**_payload(), "message": "Vault?"})
+    assert response.status_code == 200
+    assert events == ["search", "commit", "maintenance"]
+    assert "source=source-1" in selected.requests[0].system_instruction
+    assert selected.requests[0].max_tokens == 8192

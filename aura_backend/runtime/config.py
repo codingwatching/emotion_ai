@@ -157,6 +157,7 @@ class RuntimeSettings:
     mcp_enabled: bool
     memvid_enabled: bool
     autonomic_enabled: bool
+    conversation_max_tokens: int = 8192
 
     @classmethod
     def from_mapping(
@@ -223,6 +224,11 @@ class RuntimeSettings:
                 error.setting_name or "AURA_DEFAULT_PROVIDER"
             ) from error
 
+        if _strict_boolean(mapping, "AUTONOMIC_ENABLED"):
+            from aura_backend.runtime.autonomic_config import AutonomicSettings
+
+            AutonomicSettings.from_mapping(mapping)
+
         return cls(
             host=host,
             port=_bounded_integer(
@@ -247,4 +253,7 @@ class RuntimeSettings:
             mcp_enabled=_strict_boolean(mapping, "AURA_MCP_ENABLED"),
             memvid_enabled=_strict_boolean(mapping, "AURA_MEMVID_ENABLED"),
             autonomic_enabled=_strict_boolean(mapping, "AUTONOMIC_ENABLED"),
+            conversation_max_tokens=_bounded_integer(
+                mapping, "AURA_MAX_OUTPUT_TOKENS", 8192, minimum=1, maximum=131072,
+            ),
         )

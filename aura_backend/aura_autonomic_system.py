@@ -2,9 +2,9 @@
 Aura Autonomic Nervous System
 ============================
 
-Advanced task offloading system for Aura AI companion that intelligently delegates
-computational tasks to a secondary model (gemini-2.0-flash-lite) to optimize
-resource usage and improve response quality.
+Bounded background maintenance and explicit task execution. Model tasks use the
+same provider runtime as conversation; memory maintenance uses committed SQLite
+records and does not generate or promote speculative personal facts.
 
 This system acts as Aura's "autonomic nervous system" - handling background
 processing while the main consciousness focuses on user interaction.
@@ -17,6 +17,9 @@ import json
 import logging
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
+from itertools import count
+from uuid import uuid4
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -179,6 +182,7 @@ class TaskType(str, Enum):
     DATA_ANALYSIS = "data_analysis"
     CODE_GENERATION = "code_generation"
     MEMORY_SEARCH = "memory_search"
+    MEMORY_MAINTENANCE = "memory_maintenance"
     PATTERN_ANALYSIS = "pattern_analysis"
     COMPLEX_REASONING = "complex_reasoning"
     BACKGROUND_PROCESSING = "background_processing"
@@ -233,18 +237,12 @@ class AutonomicTask:
 
 
 class TaskClassifier:
-    """Intelligent task classification system to determine offload candidates"""
+    """Classify explicit requests using achievable, bounded complexity scores."""
 
-    def __init__(self, threshold: str = "medium"):
+    def __init__(self, threshold: str = "medium") -> None:
+        if threshold not in {"low", "medium", "high"}:
+            raise ValueError("Invalid AUTONOMIC_TASK_THRESHOLD")
         self.threshold = threshold
-        self._complexity_weights = {
-            "tool_calls": 0.8,
-            "data_processing": 0.9,
-            "analysis": 0.7,
-            "memory_operations": 0.6,
-            "code_generation": 0.8,
-            "pattern_recognition": 0.9,
-        }
 
     async def should_offload_task(
         self,
@@ -252,161 +250,46 @@ class TaskClassifier:
         task_payload: Dict[str, Any],
         user_context: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bool, TaskType, TaskPriority]:
-        """
-        Analyze whether a task should be offloaded to autonomic system
-
-        Returns:
-            Tuple of (should_offload, task_type, priority)
-        """
-        # Analyze task complexity and type
-        task_analysis = await self._analyze_task_complexity(
-            task_description, task_payload
-        )
-
         task_type = self._classify_task_type(task_description, task_payload)
-        priority = self._determine_priority(task_analysis, user_context)
-
-        # Decision logic based on threshold
-        should_offload = self._make_offload_decision(task_analysis, priority)
-
-        return should_offload, task_type, priority
-
-    async def _analyze_task_complexity(
-        self, description: str, payload: Dict[str, Any]
-    ) -> Dict[str, float]:
-        """Analyze task complexity across multiple dimensions"""
-
-        complexity_indicators = {
-            "computational_load": 0.0,
-            "data_volume": 0.0,
-            "tool_complexity": 0.0,
-            "reasoning_depth": 0.0,
-            "time_sensitivity": 0.0,
-        }
-
-        # Analyze computational load
+        score = 0.2 if task_type is TaskType.BACKGROUND_PROCESSING else 0.6
         if any(
-            keyword in description.lower()
-            for keyword in [
-                "analyze",
-                "process",
-                "compute",
-                "calculate",
-                "generate",
-                "search",
-            ]
+            word in task_description.lower()
+            for word in ("deep", "complex", "comprehensive")
         ):
-            complexity_indicators["computational_load"] += 0.3
-
-        # Analyze data volume
-        if payload.get("data_size", 0) > 1000:
-            complexity_indicators["data_volume"] += 0.4
-
-        # Analyze tool complexity
-        if "tool_name" in payload:
-            tool_complexity_map = {
-                "search_all_memories": 0.7,
-                "analyze_emotional_patterns": 0.8,
-                "create_knowledge_summary": 0.6,
-                "archive_old_conversations": 0.9,
-                "complex_analysis": 0.9,
-            }
-            tool_name = payload.get("tool_name", "")
-            complexity_indicators["tool_complexity"] = tool_complexity_map.get(
-                tool_name, 0.3
-            )
-
-        # Analyze reasoning depth
-        reasoning_keywords = [
-            "deep",
-            "complex",
-            "comprehensive",
-            "detailed",
-            "thorough",
-        ]
-        if any(keyword in description.lower() for keyword in reasoning_keywords):
-            complexity_indicators["reasoning_depth"] += 0.5
-
-        return complexity_indicators
+            score += 0.2
+        if len(json.dumps(task_payload)) > 1000:
+            score += 0.1
+        urgent = bool(user_context and user_context.get("is_urgent"))
+        priority = (
+            TaskPriority.HIGH
+            if urgent
+            else TaskPriority.MEDIUM
+            if score >= 0.5
+            else TaskPriority.LOW
+        )
+        return (
+            score >= {"low": 0.3, "medium": 0.5, "high": 0.7}[self.threshold],
+            task_type,
+            priority,
+        )
 
     def _classify_task_type(
         self, description: str, payload: Dict[str, Any]
     ) -> TaskType:
-        """Classify the type of task based on description and payload"""
-
-        description_lower = description.lower()
-
-        if "tool_name" in payload or "function_call" in payload:
+        if payload.get("operation") == "maintain_memory":
+            return TaskType.MEMORY_MAINTENANCE
+        if "tool_name" in payload:
             return TaskType.MCP_TOOL_CALL
-        elif any(
-            keyword in description_lower
-            for keyword in ["analyze", "analysis", "pattern"]
-        ):
-            return TaskType.DATA_ANALYSIS
-        elif any(
-            keyword in description_lower for keyword in ["code", "generate", "script"]
-        ):
-            return TaskType.CODE_GENERATION
-        elif any(
-            keyword in description_lower for keyword in ["search", "memory", "recall"]
-        ):
+        text = description.lower()
+        if any(word in text for word in ("search", "memory", "recall")):
             return TaskType.MEMORY_SEARCH
-        elif any(
-            keyword in description_lower for keyword in ["reason", "think", "complex"]
-        ):
+        if any(word in text for word in ("analyze", "analysis", "pattern")):
+            return TaskType.DATA_ANALYSIS
+        if any(word in text for word in ("code", "generate", "script")):
+            return TaskType.CODE_GENERATION
+        if any(word in text for word in ("reason", "think", "complex")):
             return TaskType.COMPLEX_REASONING
-        else:
-            return TaskType.BACKGROUND_PROCESSING
-
-    def _determine_priority(
-        self,
-        complexity_analysis: Dict[str, float],
-        user_context: Optional[Dict[str, Any]],
-    ) -> TaskPriority:
-        """Determine task priority based on complexity and context"""
-
-        # Calculate overall complexity score
-        complexity_score = sum(complexity_analysis.values()) / len(complexity_analysis)
-
-        # Adjust based on user context
-        if user_context:
-            if user_context.get("is_urgent", False):
-                complexity_score += 0.3
-            if user_context.get("user_waiting", True):
-                complexity_score += 0.2
-
-        # Map complexity to priority
-        if complexity_score >= 0.8:
-            return TaskPriority.CRITICAL
-        elif complexity_score >= 0.6:
-            return TaskPriority.HIGH
-        elif complexity_score >= 0.4:
-            return TaskPriority.MEDIUM
-        else:
-            return TaskPriority.LOW
-
-    def _make_offload_decision(
-        self, complexity_analysis: Dict[str, float], priority: TaskPriority
-    ) -> bool:
-        """Make the final decision on whether to offload"""
-
-        # Threshold mapping
-        threshold_map = {"low": 0.3, "medium": 0.5, "high": 0.7}
-
-        threshold_value = threshold_map.get(self.threshold, 0.5)
-        complexity_score = sum(complexity_analysis.values()) / len(complexity_analysis)
-
-        # Decision logic
-        if priority == TaskPriority.CRITICAL:
-            return (
-                complexity_score > threshold_value * 0.8
-            )  # Lower threshold for critical
-        elif priority == TaskPriority.HIGH:
-            return complexity_score > threshold_value
-        else:
-            return (
-                complexity_score > threshold_value * 1.2
-            )  # Higher threshold for low priority
+        return TaskType.BACKGROUND_PROCESSING
 
 
 class AutonomicProcessor:
@@ -414,8 +297,8 @@ class AutonomicProcessor:
 
     def __init__(
         self,
-        autonomic_model: str = "gemini-2.0-flash-lite",
-        max_output_tokens: int = 100000,
+        autonomic_model: str = "selected_provider",
+        max_output_tokens: int = 2048,
         timeout_seconds: int = 30,
         rpm_limit: int = 25,
         rpd_limit: int = 1200,
@@ -430,6 +313,7 @@ class AutonomicProcessor:
         self.max_output_tokens = max_output_tokens
         self.timeout_seconds = timeout_seconds
         self._provider_runtime = provider_runtime
+        self.memory_maintenance: Callable[[], Awaitable[Dict[str, Any]]] | None = None
 
         # Initialize rate limiter
         self.rate_limiter = RateLimiter(rpm_limit, rpd_limit)
@@ -461,19 +345,9 @@ class AutonomicProcessor:
                 task.task_type.value,
             )
 
-            # Route task to appropriate handler
-            if task.task_type == TaskType.MCP_TOOL_CALL:
-                result = await self._execute_mcp_tool_task(
-                    task, mcp_bridge, internal_tools
-                )
-            elif task.task_type == TaskType.DATA_ANALYSIS:
-                result = await self._execute_analysis_task(task)
-            elif task.task_type == TaskType.CODE_GENERATION:
-                result = await self._execute_code_generation_task(task)
-            elif task.task_type == TaskType.MEMORY_SEARCH:
-                result = await self._execute_memory_search_task(task, internal_tools)
-            else:
-                result = await self._execute_general_task(task)
+            # Cover tools and rate-limit waiting as well as model generation.
+            async with asyncio.timeout(self.timeout_seconds):
+                result = await self._dispatch(task, mcp_bridge, internal_tools)
 
             # Update task with results
             task.status = TaskStatus.COMPLETED
@@ -524,6 +398,37 @@ class AutonomicProcessor:
             logger.error("Autonomic task ended code=malformed_response")
             return task
 
+    async def _dispatch(
+        self,
+        task: AutonomicTask,
+        mcp_bridge: Optional[MCPGeminiBridge],
+        internal_tools: Optional[AuraInternalTools],
+    ) -> Dict[str, Any]:
+        """Route by the classified type even when admission was forced."""
+        if task.task_type is TaskType.MEMORY_MAINTENANCE:
+            if self.memory_maintenance is None:
+                raise ProviderFailure(code=ProviderErrorCode.UNAVAILABLE)
+            return await self.memory_maintenance()
+        if task.task_type is TaskType.MCP_TOOL_CALL:
+            return await self._execute_mcp_tool_task(task, mcp_bridge, internal_tools)
+        if task.task_type is TaskType.DATA_ANALYSIS:
+            return await self._execute_analysis_task(task)
+        if task.task_type is TaskType.CODE_GENERATION:
+            return await self._execute_code_generation_task(task)
+        if task.task_type is TaskType.MEMORY_SEARCH:
+            return await self._execute_memory_search_task(task, internal_tools)
+        return await self._execute_general_task(task)
+
+    @staticmethod
+    def _require_tool_success(result: Any) -> None:
+        """A returned error envelope is a failure, never a completed task."""
+        if isinstance(result, dict) and (
+            result.get("status") in {"error", "failed"}
+            or result.get("success") is False
+            or result.get("error")
+        ):
+            raise ProviderFailure(code=ProviderErrorCode.UNAVAILABLE)
+
     async def _execute_mcp_tool_task(
         self,
         task: AutonomicTask,
@@ -536,8 +441,16 @@ class AutonomicProcessor:
         arguments = task.payload.get("arguments", {})
 
         # Try internal tools first
-        if internal_tools and tool_name and tool_name.startswith("aura."):
+        if (
+            internal_tools
+            and tool_name
+            and (
+                tool_name.startswith("aura.")
+                or f"aura.{tool_name}" in getattr(internal_tools, "tools", {})
+            )
+        ):
             result = await internal_tools.execute_tool(tool_name, arguments)
+            self._require_tool_success(result)
             return {"tool_result": result, "execution_method": "internal_tools"}
 
         # Use MCP bridge for external tools
@@ -550,6 +463,9 @@ class AutonomicProcessor:
                 function_call, task.user_id
             )
 
+            if not execution_result.success:
+                raise ProviderFailure(code=ProviderErrorCode.UNAVAILABLE)
+            self._require_tool_success(execution_result.result)
             return {
                 "tool_result": execution_result.result,
                 "success": execution_result.success,
@@ -618,10 +534,11 @@ class AutonomicProcessor:
 
         # Use comprehensive memory search
         result = await internal_tools.execute_tool(
-            "aura.search_all_memories",
-            {"query": search_query, "user_id": user_id, "max_results": max_results},
+            "aura.search_memories",
+            {"query": search_query, "user_id": user_id, "n_results": max_results},
         )
 
+        self._require_tool_success(result)
         return {"memory_search_result": result, "task_type": "memory_search"}
 
     async def _execute_general_task(self, task: AutonomicTask) -> Dict[str, Any]:
@@ -702,105 +619,106 @@ class AutonomicProcessor:
 
 
 class AutonomicNervousSystem:
-    """
-    Complete autonomic nervous system for Aura
-
-    Manages task offloading, queuing, and execution to optimize
-    main conversation flow and resource utilization.
-    """
+    """Own a bounded priority queue, execution workers and maintenance timer."""
 
     def __init__(
         self,
-        autonomic_model: str = "gemini-2.0-flash-lite",
-        max_concurrent_tasks: int = 29,
+        autonomic_model: str = "selected_provider",
+        max_concurrent_tasks: int = 1,
         task_threshold: str = "medium",
-        max_output_tokens: int = 100000,
-        timeout_seconds: int = 60,
-        rpm_limit: int = 30,
-        rpd_limit: int = 1400,
-        queue_max_size: int = 100,
+        max_output_tokens: int = 2048,
+        timeout_seconds: int = 120,
+        rpm_limit: int = 10,
+        rpd_limit: int = 500,
+        queue_max_size: int = 32,
         provider_runtime: ProviderRuntime | None = None,
-    ):
-        self.classifier = TaskClassifier(threshold=task_threshold)
+        priority_enabled: bool = True,
+        maintenance_interval_seconds: int = 300,
+    ) -> None:
+        if (
+            min(
+                max_concurrent_tasks,
+                queue_max_size,
+                timeout_seconds,
+                rpm_limit,
+                rpd_limit,
+                max_output_tokens,
+                maintenance_interval_seconds,
+            )
+            <= 0
+        ):
+            raise ValueError("Autonomic resource limits must be positive")
+        self.classifier = TaskClassifier(task_threshold)
         self.processor = AutonomicProcessor(
-            autonomic_model=autonomic_model,
-            max_output_tokens=max_output_tokens,
-            timeout_seconds=timeout_seconds,
-            rpm_limit=rpm_limit,
-            rpd_limit=rpd_limit,
-            provider_runtime=provider_runtime,
+            autonomic_model,
+            max_output_tokens,
+            timeout_seconds,
+            rpm_limit,
+            rpd_limit,
+            provider_runtime,
         )
         self._provider_runtime = provider_runtime
-        self._disabled_reason = (
-            "not_configured" if provider_runtime is None else None
-        )
-
+        self._disabled_reason = "not_configured" if provider_runtime is None else None
         self.max_concurrent_tasks = max_concurrent_tasks
         self.queue_max_size = queue_max_size
-        self.task_queue: asyncio.Queue = asyncio.Queue(maxsize=queue_max_size)
+        self.priority_enabled = priority_enabled
+        self.maintenance_interval_seconds = maintenance_interval_seconds
+        self.task_queue: asyncio.PriorityQueue = asyncio.PriorityQueue(
+            maxsize=queue_max_size
+        )
+        self.queued_tasks: Dict[str, AutonomicTask] = {}
         self.active_tasks: Dict[str, AutonomicTask] = {}
         self.completed_tasks: Dict[str, AutonomicTask] = {}
-        self.task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
-
+        self._sequence = count()
         self._running = False
-        self._worker_task: Optional[asyncio.Task] = None
-
-        # External system references
+        self._worker_task: asyncio.Task | None = None
+        self._workers: list[asyncio.Task] = []
+        self._maintenance_task: asyncio.Task | None = None
         self.mcp_bridge: Optional[MCPGeminiBridge] = None
         self.internal_tools: Optional[AuraInternalTools] = None
-
-        logger.info("Autonomic nervous system initialized")
-        logger.info("   Model: %s", self.processor.autonomic_model)
-        logger.info("   Max concurrent tasks: %s", max_concurrent_tasks)
-        logger.info("   Task threshold: %s", task_threshold)
-        logger.info("   Rate limits: %s RPM, %s RPD", rpm_limit, rpd_limit)
-        logger.info("   Queue capacity: %s", queue_max_size)
+        self._maintenance_id: str | None = None
+        self.last_maintenance: Dict[str, Any] | None = None
 
     def set_external_systems(
         self,
         mcp_bridge: Optional[MCPGeminiBridge] = None,
         internal_tools: Optional[AuraInternalTools] = None,
-    ):
-        """Set references to external systems"""
+    ) -> None:
         self.mcp_bridge = mcp_bridge
         self.internal_tools = internal_tools
-        logger.info("🔗 Autonomic system connected to external systems")
 
-    async def start(self):
-        """Start the autonomic system worker"""
-        if self._provider_runtime is None:
-            logger.info("Autonomic nervous system disabled reason=not_configured")
+    async def start(self) -> None:
+        """Start exactly the configured number of owned execution workers."""
+        if self._provider_runtime is None or self._running:
             return
-        if self._running:
-            logger.warning("Autonomic system is already running")
-            return
-
         self._running = True
-        self._worker_task = asyncio.create_task(self._task_worker())
-        logger.info("Autonomic nervous system started")
+        self._workers = [
+            asyncio.create_task(self._task_worker())
+            for _ in range(self.max_concurrent_tasks)
+        ]
+        self._worker_task = self._workers[0]
+        if self.processor.memory_maintenance is not None:
+            self._maintenance_task = asyncio.create_task(self._maintenance_loop())
 
-    async def stop(self):
-        """Stop the autonomic system gracefully"""
-        if not self._running:
-            return
-
+    async def stop(self) -> None:
+        """Cancel and await owned execution, then terminate every queued task."""
         self._running = False
-
-        if self._worker_task:
-            self._worker_task.cancel()
-            try:
-                await self._worker_task
-            except asyncio.CancelledError:
-                pass
-
-        # Wait for active tasks to complete (with timeout)
-        if self.active_tasks:
-            logger.info(
-                "⏳ Waiting for %s active tasks to complete...", len(self.active_tasks)
-            )
-            await asyncio.sleep(2)  # Brief grace period
-
-        logger.info("🛑 Autonomic nervous system stopped")
+        owned = self._workers + (
+            [self._maintenance_task] if self._maintenance_task else []
+        )
+        for worker in owned:
+            worker.cancel()
+        await asyncio.gather(*owned, return_exceptions=True)
+        self._workers = []
+        self._worker_task = None
+        self._maintenance_task = None
+        while not self.task_queue.empty():
+            _, _, task = self.task_queue.get_nowait()
+            task.status = TaskStatus.FAILED
+            task.error = ProviderErrorCode.CANCELLED.value
+            task.completed_at = datetime.now()
+            self._finish(task)
+            self.task_queue.task_done()
 
     async def submit_task(
         self,
@@ -810,32 +728,18 @@ class AutonomicNervousSystem:
         session_id: Optional[str] = None,
         force_offload: bool = False,
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Submit a task for potential autonomic processing
-
-        Returns:
-            Tuple of (was_offloaded, task_id)
-        """
-
-        # Analyze whether task should be offloaded
-        if not force_offload:
-            should_offload, task_type, priority = (
-                await self.classifier.should_offload_task(
-                    description, payload, {"user_id": user_id}
-                )
-            )
-        else:
-            should_offload = True
-            task_type = TaskType.BACKGROUND_PROCESSING
-            priority = TaskPriority.MEDIUM
-
-        if not should_offload:
+        """Admit once; forced admission preserves tool routing and queue bounds."""
+        if not self._running:
             return False, None
-
-        # Create autonomic task
-        task_id = f"task_{int(time.time() * 1000)}_{user_id[:8]}"
+        should_offload, task_type, priority = await self.classifier.should_offload_task(
+            description,
+            payload,
+            {"user_id": user_id, "user_waiting": False},
+        )
+        if not force_offload and not should_offload:
+            return False, None
         task = AutonomicTask(
-            task_id=task_id,
+            task_id=f"task_{uuid4().hex}",
             task_type=task_type,
             priority=priority,
             description=description,
@@ -843,97 +747,92 @@ class AutonomicNervousSystem:
             user_id=user_id,
             session_id=session_id,
         )
-
-        # Queue task with size limit handling
+        order = (
+            {
+                TaskPriority.CRITICAL: 0,
+                TaskPriority.HIGH: 1,
+                TaskPriority.MEDIUM: 2,
+                TaskPriority.LOW: 3,
+            }[priority]
+            if self.priority_enabled
+            else 0
+        )
         try:
-            self.task_queue.put_nowait(task)
-            logger.info(
-                "Queued autonomic task type=%s priority=%s",
-                task_type.value,
-                priority.value,
-            )
-            return True, task_id
+            self.task_queue.put_nowait((order, next(self._sequence), task))
         except asyncio.QueueFull:
-            logger.warning("Autonomic task queue full capacity=%s", self.queue_max_size)
             return False, None
+        self.queued_tasks[task.task_id] = task
+        return True, task.task_id
+
+    async def request_memory_maintenance(self) -> Tuple[bool, Optional[str]]:
+        """Coalesce startup, timer and conversation triggers into one operation."""
+        if self.processor.memory_maintenance is None:
+            return False, None
+        if (
+            self._maintenance_id in self.queued_tasks
+            or self._maintenance_id in self.active_tasks
+        ):
+            return True, self._maintenance_id
+        accepted, task_id = await self.submit_task(
+            "Maintain searchable memory",
+            {"operation": "maintain_memory"},
+            user_id="system",
+            force_offload=True,
+        )
+        if accepted:
+            self._maintenance_id = task_id
+        return accepted, task_id
+
+    async def _maintenance_loop(self) -> None:
+        while self._running:
+            await self.request_memory_maintenance()
+            await asyncio.sleep(self.maintenance_interval_seconds)
 
     async def get_task_result(
         self, task_id: str, timeout: Optional[float] = None
     ) -> Optional[AutonomicTask]:
-        """Get the result of a completed task"""
+        deadline = time.monotonic() + max(0.0, min(timeout or 0.0, 60.0))
+        while task_id not in self.completed_tasks and time.monotonic() < deadline:
+            if task_id not in self.queued_tasks and task_id not in self.active_tasks:
+                return None
+            await asyncio.sleep(0.05)
+        return (
+            self.completed_tasks.get(task_id)
+            or self.active_tasks.get(task_id)
+            or self.queued_tasks.get(task_id)
+        )
 
-        # Check if already completed
-        if task_id in self.completed_tasks:
-            return self.completed_tasks[task_id]
-
-        # Wait for completion if specified
-        if timeout:
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                if task_id in self.completed_tasks:
-                    return self.completed_tasks[task_id]
-                await asyncio.sleep(0.1)
-
-        # Check active tasks
-        return self.active_tasks.get(task_id)
-
-    async def _task_worker(self):
-        """Background worker to process queued tasks"""
-        logger.info("🔄 Autonomic task worker started")
-
+    async def _task_worker(self) -> None:
         while self._running:
-            try:
-                # Get task from queue with timeout
-                task = await asyncio.wait_for(self.task_queue.get(), timeout=1.0)
-
-                # Process task with semaphore
-                async with self.task_semaphore:
-                    asyncio.create_task(self._process_task(task))
-
-            except asyncio.TimeoutError:
-                # No tasks in queue, continue
-                continue
-            except Exception:
-                logger.error("Autonomic task worker ended one iteration with an error")
-                await asyncio.sleep(1.0)
-
-    async def _process_task(self, task: AutonomicTask):
-        """Process an individual task"""
-        try:
-            # Add to active tasks
+            _, _, task = await self.task_queue.get()
+            self.queued_tasks.pop(task.task_id, None)
             self.active_tasks[task.task_id] = task
+            try:
+                await self.processor.execute_task(
+                    task, self.mcp_bridge, self.internal_tools
+                )
+            finally:
+                self._finish(task)
+                self.task_queue.task_done()
 
-            # Execute task
-            completed_task = await self.processor.execute_task(
-                task, self.mcp_bridge, self.internal_tools
-            )
-
-            # Move to completed tasks
-            self.completed_tasks[task.task_id] = completed_task
-
-            # Clean up active tasks
-            if task.task_id in self.active_tasks:
-                del self.active_tasks[task.task_id]
-
-            # Limit completed task history
-            if len(self.completed_tasks) > 1000:
-                # Remove oldest tasks
-                oldest_tasks = sorted(
-                    self.completed_tasks.keys(),
-                    key=lambda k: self.completed_tasks[k].completed_at or datetime.min,
-                )[:100]
-                for old_task_id in oldest_tasks:
-                    del self.completed_tasks[old_task_id]
-
-        except Exception:
-            logger.error("Autonomic task processing ended unexpectedly")
-            # Ensure task is moved to completed even on error
-            if task.task_id in self.active_tasks:
-                del self.active_tasks[task.task_id]
+    def _finish(self, task: AutonomicTask) -> None:
+        self.active_tasks.pop(task.task_id, None)
+        self.queued_tasks.pop(task.task_id, None)
+        self.completed_tasks[task.task_id] = task
+        if task.task_type is TaskType.MEMORY_MAINTENANCE:
+            self.last_maintenance = {
+                "status": task.status.value,
+                "error": task.error,
+                "completed_at": task.completed_at.isoformat()
+                if task.completed_at
+                else None,
+                "result": task.result,
+            }
+        while len(self.completed_tasks) > 1000:
+            self.completed_tasks.pop(next(iter(self.completed_tasks)))
 
     def get_system_status(self) -> Dict[str, Any]:
-        """Get comprehensive system status including rate limiting metrics"""
-        processor_stats = self.processor.get_stats()
+        stats = self.processor.get_stats()
         state = (
             AutonomicState.DISABLED
             if self._provider_runtime is None
@@ -941,21 +840,25 @@ class AutonomicNervousSystem:
             if self._running
             else AutonomicState.STOPPED
         )
-
         return {
             "status": state.value,
             "disabled_reason": self._disabled_reason,
             "running": self._running,
-            "queued_tasks": self.task_queue.qsize(),
+            "queued_tasks": len(self.queued_tasks),
             "active_tasks": len(self.active_tasks),
             "completed_tasks": len(self.completed_tasks),
             "max_concurrent_tasks": self.max_concurrent_tasks,
             "queue_max_size": self.queue_max_size,
-            "queue_utilization": (self.task_queue.qsize() / self.queue_max_size) * 100,
-            "processor_stats": processor_stats,
-            "rate_limiting": processor_stats.get("rate_limiter", {}),
+            "queue_utilization": self.task_queue.qsize() / self.queue_max_size * 100,
+            "processor_stats": stats,
+            "rate_limiting": stats["rate_limiter"],
             "task_threshold": self.classifier.threshold,
             "autonomic_model": self.processor.autonomic_model,
+            "model_selection": "shared_conversation_provider",
+            "priority_enabled": self.priority_enabled,
+            "maintenance_interval_seconds": self.maintenance_interval_seconds,
+            "last_memory_maintenance": self.last_maintenance,
+            "task_history": "in_process_only",
         }
 
 
@@ -967,36 +870,29 @@ async def initialize_autonomic_system(
     mcp_bridge: Optional[MCPGeminiBridge] = None,
     internal_tools: Optional[AuraInternalTools] = None,
     provider_runtime: ProviderRuntime | None = None,
+    memory_maintenance: Callable[[], Awaitable[Dict[str, Any]]] | None = None,
 ) -> AutonomicNervousSystem:
     """Initialize with an explicit runtime or return a disabled subsystem."""
     global _autonomic_system
 
     import os
 
-    # Get configuration from environment with optimized defaults
-    autonomic_model = os.getenv("AURA_AUTONOMIC_MODEL", "gemini-2.0-flash-lite")
-    max_concurrent = int(os.getenv("AUTONOMIC_MAX_CONCURRENT_TASKS", "30"))
-    task_threshold = os.getenv("AUTONOMIC_TASK_THRESHOLD", "medium")
-    max_tokens = int(os.getenv("AURA_AUTONOMIC_MAX_OUTPUT_TOKENS", "100000"))
-    timeout = int(os.getenv("AUTONOMIC_TIMEOUT_SECONDS", "60"))
+    from aura_backend.runtime.autonomic_config import AutonomicSettings
 
-    # Rate limiting configuration
-    rpm_limit = int(os.getenv("AUTONOMIC_RATE_LIMIT_RPM", "30"))
-    rpd_limit = int(os.getenv("AUTONOMIC_RATE_LIMIT_RPD", "1400"))
-    queue_max_size = int(os.getenv("AUTONOMIC_QUEUE_MAX_SIZE", "40"))
-
+    settings = AutonomicSettings.from_mapping(os.environ)
     _autonomic_system = AutonomicNervousSystem(
-        autonomic_model=autonomic_model,
-        max_concurrent_tasks=max_concurrent,
-        task_threshold=task_threshold,
-        max_output_tokens=max_tokens,
-        timeout_seconds=timeout,
-        rpm_limit=rpm_limit,
-        rpd_limit=rpd_limit,
-        queue_max_size=queue_max_size,
+        max_concurrent_tasks=settings.concurrency,
+        task_threshold=settings.threshold,
+        max_output_tokens=settings.max_tokens,
+        timeout_seconds=settings.timeout_seconds,
+        rpm_limit=settings.rpm,
+        rpd_limit=settings.rpd,
+        queue_max_size=settings.queue_size,
         provider_runtime=provider_runtime,
+        priority_enabled=settings.priority_enabled,
+        maintenance_interval_seconds=settings.maintenance_interval_seconds,
     )
-
+    _autonomic_system.processor.memory_maintenance = memory_maintenance
     # Set external system references
     _autonomic_system.set_external_systems(mcp_bridge, internal_tools)
 
@@ -1006,9 +902,6 @@ async def initialize_autonomic_system(
     logger.info(
         "Global autonomic nervous system initialized status=%s",
         _autonomic_system.get_system_status()["status"],
-    )
-    logger.info(
-        f"📊 Configuration: {max_concurrent} concurrent, {rpm_limit} RPM, {rpd_limit} RPD"
     )
     return _autonomic_system
 

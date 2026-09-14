@@ -83,6 +83,7 @@ class AuraUIManager {
 
     // Set up periodic chat history refresh (every 30 seconds)
     setInterval(() => {
+      if (this.backendConnected) void this.refreshMemoryStatus();
       if (this.userName && this.backendConnected) {
         this.loadChatHistory().catch(error => {
           console.warn("⚠️ Periodic chat history refresh failed:", error);
@@ -163,20 +164,28 @@ class AuraUIManager {
       this.updateSystemHealth('online', 'Connected', 'Backend reachable; other capabilities not verified');
       console.log("✅ Backend connected:", healthData);
 
-      // Test if the backend is actually responding to conversation endpoint
-      try {
-        console.log("🧪 Testing backend endpoints...");
-        // We'll test this during the first actual message
-      } catch (testError) {
-        console.warn("⚠️ Backend health check passed but endpoints may not be working:", testError);
-        this.updateSystemHealth('warning', 'Limited', 'Some endpoints may not be responding');
-      }
+      await this.refreshMemoryStatus();
 
     } catch (error) {
       console.warn("⚠️ Backend health check failed:", error);
       this.backendConnected = false;
       this.updateSystemHealth('error', 'Disconnected', 'Backend connection failed');
       this.showConnectionWarning();
+    }
+  }
+
+  private async refreshMemoryStatus(): Promise<void> {
+    try {
+      const [memory, autonomic] = await Promise.all([this.api.memoryStatus(), this.api.autonomicStatus()]);
+      const failed = memory.maintenance?.status === 'failed' || memory.maintenance?.status === 'timeout';
+      const pending = memory.pending_index_turns;
+      const running = autonomic.system_status?.running ?? false;
+      const activity = running ? 'background care running' : 'background care off';
+      const detail = failed ? 'memory maintenance needs attention' : pending > 0 ? `${pending} awaiting memory indexing` : 'memory indexing up to date';
+      this.updateSystemHealth(failed || pending > 0 ? 'warning' : 'online', 'Connected',
+        `${memory.committed_turns} saved exchanges · ${detail} · ${activity}`);
+    } catch {
+      this.updateSystemHealth('warning', 'Connected', 'Memory status unavailable');
     }
   }
 
@@ -417,7 +426,7 @@ class AuraUIManager {
 
   private setupEnhancedHeader(): void {
     // Initialize header with default state
-    this.updateSystemHealth('online', 'Connected', 'Backend reachable; other capabilities not verified');
+    // Preserve the verified status fetched during initialization.
     this.updateBrainwaveDisplay('Alpha', 'Default');
     this.updateNeurotransmitterDisplay('Serotonin', 70);
 
@@ -1035,7 +1044,7 @@ class AuraUIManager {
       }
 
       // Update system health to show successful communication
-      this.updateSystemHealth('online', 'Connected', 'Reply received; this does not verify all subsystems');
+      void this.refreshMemoryStatus();
 
       // Display message with thinking data if available
       const thinkingData = response.has_thinking ? {

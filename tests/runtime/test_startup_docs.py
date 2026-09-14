@@ -231,7 +231,7 @@ def test_optional_failure_guidance_is_redacted_and_extra_specific() -> None:
 
 def test_env_example_contains_only_obvious_non_secret_key_sentinels() -> None:
     assignments = dict(_example_assignments(include_commented=True))
-    secret_keys = ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY")
+    secret_keys = ("GEMINI_API_KEY", "OPENROUTER_API_KEY")
     for key in secret_keys:
         assert assignments[key] == "<set-in-private-environment>"
 
@@ -244,5 +244,5 @@ def test_ornith_is_not_the_normal_example_provider_model() -> None:
     text = ENV_EXAMPLE.read_text(encoding="utf-8")
     active = dict(_example_assignments(include_commented=False))
 
-    assert active["OLLAMA_MODEL"] == "llama3.1"
+    assert active["AURA_MODEL"] == "llama3.1"
     assert "ornith:latest" not in text

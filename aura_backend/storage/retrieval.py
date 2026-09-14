@@ -205,6 +205,20 @@ class HybridRetriever:
                 query_sha256=query_sha256,
                 page_size=page_size,
             )
+        # First-use recall is an empty read, not a profile creation or an audit
+        # foreign-key violation. There can be no eligible sources for this scope.
+        connection = open_database(self.repository.database_path)
+        try:
+            scope_exists = connection.execute(
+                "SELECT 1 FROM memory_scopes WHERE scope_id = ?", (scope_id,),
+            ).fetchone() is not None
+        finally:
+            connection.close()
+        if not scope_exists:
+            return RetrievalPage(
+                items=(), next_cursor=None, has_more=False,
+                trace_id=secrets.token_hex(16), traces=(),
+            )
         generation = self.projection.current_generation()
         generation_id = str(generation.generation_id)
         run_id = secrets.token_hex(16)

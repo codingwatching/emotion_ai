@@ -27,7 +27,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Optional
 
 import aiofiles
 import numpy as np
@@ -48,6 +48,8 @@ if _current_dir.name == "aura_backend":
 
 # Import-light domain and request types only. Resource-owning integrations are
 # imported by the lifespan composition path, never while importing this module.
+from aura_backend.runtime.memory import format_memory_context  # noqa: E402
+
 from aura_backend.affect.receipts import DurableReceipt  # noqa: E402
 from aura_backend.conversation_persistence_service import (  # noqa: E402
     ConversationExchange,
@@ -1034,27 +1036,30 @@ class _RuntimeProjectionAdapter:
         return self._ensure_generation()
 
     def upsert_committed(self, turn_id: str) -> int:
-        from aura_backend.storage.models import StorageFailure
+        with self._generation_lock:
+            from aura_backend.storage.models import StorageFailure
 
-        try:
-            self._get_adapter().current_generation()
-        except StorageFailure as error:
-            if error.code not in {
-                "projection_generation_unavailable", "projection_generation_config_mismatch",
-            }:
-                raise
-            self._ensure_generation()
-            # The verified rebuild already projected every committed origin.
-            return len(self._repository.projection_origins(turn_id=turn_id))
-        return self._get_adapter().upsert_committed(turn_id)
+            try:
+                self._get_adapter().current_generation()
+            except StorageFailure as error:
+                if error.code not in {
+                    "projection_generation_unavailable", "projection_generation_config_mismatch",
+                }:
+                    raise
+                self._ensure_generation()
+                # The verified rebuild already projected every committed origin.
+                return len(self._repository.projection_origins(turn_id=turn_id))
+            return self._get_adapter().upsert_committed(turn_id)
 
     def query_candidates(self, **kwargs: Any) -> Any:
-        self._ensure_generation()
-        return self._get_adapter().query_candidates(**kwargs)
+        with self._generation_lock:
+            self._ensure_generation()
+            return self._get_adapter().query_candidates(**kwargs)
 
     def reconcile(self, **kwargs: Any) -> int:
-        self._ensure_generation()
-        return self._get_adapter().reconcile(**kwargs)
+        with self._generation_lock:
+            self._ensure_generation()
+            return self._get_adapter().reconcile(**kwargs)
 
 
 class _RuntimeHybridRetriever:
@@ -1390,6 +1395,7 @@ async def _start_autonomic_resource(provider_runtime: Any) -> Any:
             mcp_bridge=mcp_gemini_bridge,
             internal_tools=aura_internal_tools,
             provider_runtime=provider_runtime,
+            memory_maintenance=_maintain_searchable_memory if storage_boundary is not None else None,
         )
 
         async def close_autonomic() -> None:
@@ -1533,6 +1539,8 @@ def _build_application_runtime() -> Any:
             timeout_seconds=settings.provider.request_timeout_seconds,
         )
         deferred_provider.bind(runtime)
+        if autonomic_system is not None:
+            autonomic_system.processor.autonomic_model = settings.provider.model
         provider = selected  # type: ignore[assignment]
         thinking_processor = getattr(selected, "thinking_processor", None)
         client = getattr(selected, "client", None)
@@ -1916,7 +1924,7 @@ async def _legacy_process_conversation(
 
         # Search relevant memories for context - RESTORE PROPER FUNCTIONALITY
         memory_context = ""
-        if len(request.message.split()) > 2 and conversation_persistence:
+        if request.message.strip() and conversation_persistence:
             try:
                 # Use proper memory search - don't sabotage with artificial limits!
                 relevant_memories = (
@@ -2042,32 +2050,6 @@ async def _legacy_process_conversation(
                 status_code=500,
                 detail="Failed to generate a valid response after all recovery attempts.",
             )
-
-        # Autonomic task analysis - let the intelligent system decide what to process
-        if autonomic_system and autonomic_system._running:
-            try:
-                # Analyze conversation for potential autonomic tasks
-                autonomic_tasks = await _analyze_conversation_for_autonomic_tasks(
-                    user_message=request.message,
-                    aura_response=aura_response,
-                    user_id=request.user_id,
-                    session_id=session_id,
-                )
-
-                # Submit tasks to autonomic system for intelligent processing
-                for task_description, task_payload in autonomic_tasks:
-                    was_offloaded, task_id = await autonomic_system.submit_task(
-                        description=task_description,
-                        payload=task_payload,
-                        user_id=request.user_id,
-                        session_id=session_id,
-                    )
-
-                    if was_offloaded:
-                        logger.debug("🤖 Offloaded autonomic task: %s", task_id)
-            except Exception as e:
-                logger.debug("⚠️ Autonomic analysis failed (non-critical): %s", e)
-                # Don't let autonomic system failures affect main conversation
 
         application_runtime = http_request.app.state.runtime
         analysis_generate = application_runtime.provider_runtime.generate
@@ -2515,7 +2497,7 @@ async def process_conversation(
                 user_profile = await aura_file_system.load_user_profile(request.user_id)
 
             memory_context = ""
-            if len(request.message.split()) > 2 and conversation_persistence:
+            if request.message.strip() and conversation_persistence:
                 try:
                     if storage_boundary is not None and storage_boundary.read_owner == "sqlite":
                         page = await asyncio.to_thread(
@@ -2529,10 +2511,7 @@ async def process_conversation(
                             user_id=request.user_id,
                             n_results=5,
                         )
-                    memory_context = "\n".join(
-                        f"Previous context: {memory['content']}"
-                        for memory in relevant_memories[:3]
-                    )
+                    memory_context = format_memory_context(relevant_memories[:5])
                 except asyncio.CancelledError:
                     raise
                 except Exception:
@@ -2590,6 +2569,7 @@ async def process_conversation(
                     system_instruction=system_instruction,
                     tools=tool_catalog.definitions,
                     temperature=0.7,
+                    max_tokens=getattr(getattr(application_runtime, "settings", None), "conversation_max_tokens", 8192),
                     session_id=session_key,
                     correlation_id=correlation_id,
                 )
@@ -2606,27 +2586,6 @@ async def process_conversation(
                     correlation_id=correlation_id,
                 )
             active_chat_sessions[session_key] = True
-
-            stage = "autonomic"
-            if autonomic_system and autonomic_system._running:
-                try:
-                    autonomic_tasks = await _analyze_conversation_for_autonomic_tasks(
-                        user_message=request.message,
-                        aura_response=aura_response,
-                        user_id=request.user_id,
-                        session_id=session_id,
-                    )
-                    for task_description, task_payload in autonomic_tasks:
-                        await autonomic_system.submit_task(
-                            description=task_description,
-                            payload=task_payload,
-                            user_id=request.user_id,
-                            session_id=session_id,
-                        )
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    logger.debug("Autonomic conversation analysis unavailable")
 
             stage = "analysis"
             user_emotional_state = await detect_user_emotion(
@@ -2718,6 +2677,9 @@ async def process_conversation(
                 published_state = new_affect_state
 
 
+            if receipt.committed:
+                await _schedule_memory_maintenance()
+
             stage = "response"
             logger.info("Conversation processed")
             simulation_payload = {
@@ -2788,390 +2750,22 @@ async def process_conversation(
 # the aura_backend/providers/ directory as part of the Unified Model Provider abstraction.
 
 
-async def _analyze_conversation_for_autonomic_tasks(
-    user_message: str, aura_response: str, user_id: str, session_id: str
-) -> List[Tuple[str, Dict[str, Any]]]:
-    """
-    Enhanced autonomic task analysis with multi-task generation and intelligent offloading.
+async def _maintain_searchable_memory() -> dict[str, Any]:
+    """Run source-backed index repair in the background maintenance worker."""
+    from aura_backend.runtime.memory import maintain_memory
 
-    This function fully integrates with the autonomic system to analyze conversations
-    and generate multiple specialized tasks based on different aspects of the interaction.
-    It leverages the full capabilities of the TaskClassifier and creates diverse task types
-    for optimal background processing.
+    if storage_boundary is None:
+        raise RuntimeError("storage_unavailable")
+    return await maintain_memory(storage_boundary.repository, storage_boundary.projection)
 
-    Args:
-        user_message: The user's input message
-        aura_response: Aura's generated response
-        user_id: Unique identifier for the user
-        session_id: Session identifier for context
 
-    Returns:
-        List of task tuples that were successfully submitted to the autonomic system.
-        Each tuple contains (description, payload) for tracking purposes.
-
-    Task Generation Strategy:
-        - Analyzes conversation for multiple task opportunities
-        - Creates specialized tasks for different processing needs
-        - Leverages all available task types (MCP tools, analysis, memory, etc.)
-        - Optimizes task priority based on conversation context
-    """
-    submitted_tasks = []
-
-    # Only proceed if autonomic system is available and running
-    if not autonomic_system or not autonomic_system._running:
-        logger.debug(
-            "🤖 Autonomic system not available or not running, skipping task analysis"
-        )
-        return submitted_tasks
-
-    # Calculate conversation metrics
-    conversation_length = len(user_message.split()) + len(aura_response.split())
-    user_message_lower = user_message.lower()
-    aura_response_lower = aura_response.lower()
-    combined_text_lower = user_message_lower + " " + aura_response_lower
-
-    # Minimum threshold for basic autonomic processing
-    if conversation_length < 10:
-        logger.debug(
-            f"🤖 Conversation too short ({conversation_length} words) for autonomic processing"
-        )
-        return submitted_tasks
-
-    try:
-        # Track task opportunities
-        task_opportunities = []
-
-        # 1. EMOTIONAL PATTERN ANALYSIS - for conversations with emotional content
-        emotional_indicators = [
-            "feel",
-            "emotion",
-            "happy",
-            "sad",
-            "angry",
-            "anxious",
-            "worried",
-            "excited",
-            "frustrated",
-            "love",
-            "hate",
-            "personal",
-            "sharing",
-            "struggle",
-            "difficult",
-        ]
-
-        has_emotional_content = any(
-            indicator in user_message_lower for indicator in emotional_indicators
-        )
-
-        if has_emotional_content or conversation_length > 50:
-            task_opportunities.append(
-                {
-                    "description": f"Deep emotional pattern analysis for user {user_id}",
-                    "payload": {
-                        "tool_name": "analyze_emotional_patterns",
-                        "arguments": {
-                            "user_id": user_id,
-                            "days": 30,  # Analyze last 30 days
-                            "include_conversation": True,
-                        },
-                        "conversation_context": {
-                            "user_message": user_message,
-                            "aura_response": aura_response,
-                            "emotional_indicators_found": [
-                                ind
-                                for ind in emotional_indicators
-                                if ind in user_message_lower
-                            ],
-                        },
-                    },
-                    "task_type_hint": "DATA_ANALYSIS",
-                    "priority_boost": 0.2 if has_emotional_content else 0.1,
-                }
-            )
-
-        # 2. MEMORY SEARCH AND CONSOLIDATION - for knowledge-seeking conversations
-        knowledge_indicators = [
-            "remember",
-            "recall",
-            "previously",
-            "last time",
-            "before",
-            "search",
-            "find",
-            "look for",
-            "history",
-            "past conversation",
-        ]
-        memory_indicators = [
-            "learn",
-            "understand",
-            "explain",
-            "teach",
-            "how",
-            "what",
-            "why",
-            "tell me about",
-            "help me understand",
-        ]
-
-        needs_memory_search = any(
-            indicator in combined_text_lower for indicator in knowledge_indicators
-        )
-        needs_knowledge_building = any(
-            indicator in combined_text_lower for indicator in memory_indicators
-        )
-
-        if needs_memory_search or (
-            conversation_length > 30 and needs_knowledge_building
-        ):
-            # Extract potential search query from conversation
-            search_query = (
-                user_message
-                if len(user_message) > 20
-                else f"{user_message} {aura_response[:100]}"
-            )
-
-            task_opportunities.append(
-                {
-                    "description": f"Comprehensive memory search and pattern extraction for user {user_id}",
-                    "payload": {
-                        "tool_name": "search_all_memories",
-                        "arguments": {
-                            "query": search_query,
-                            "user_id": user_id,
-                            "max_results": 20,
-                        },
-                        "analysis_required": True,
-                        "consolidate_findings": needs_knowledge_building,
-                    },
-                    "task_type_hint": "MEMORY_SEARCH",
-                    "priority_boost": 0.3 if needs_memory_search else 0.1,
-                }
-            )
-
-        # 3. PATTERN RECOGNITION - for complex analytical conversations
-        analytical_indicators = [
-            "analyze",
-            "pattern",
-            "trend",
-            "insight",
-            "data",
-            "statistics",
-            "correlation",
-            "relationship",
-            "connection",
-        ]
-
-        needs_pattern_analysis = (
-            any(indicator in combined_text_lower for indicator in analytical_indicators)
-            or conversation_length > 100
-        )
-
-        if needs_pattern_analysis:
-            task_opportunities.append(
-                {
-                    "description": f"Advanced pattern recognition and insight generation for user {user_id}",
-                    "payload": {
-                        "analysis_type": "conversation_patterns",
-                        "user_id": user_id,
-                        "session_id": session_id,
-                        "conversation_data": {
-                            "message": user_message,
-                            "response": aura_response,
-                            "length": conversation_length,
-                            "complexity_score": len(set(combined_text_lower.split()))
-                            / conversation_length,  # Vocabulary diversity
-                        },
-                        "extract_insights": True,
-                    },
-                    "task_type_hint": "PATTERN_ANALYSIS",
-                    "priority_boost": 0.2,
-                }
-            )
-
-        # 4. KNOWLEDGE ARCHIVAL - for very long or information-rich conversations
-        if conversation_length > 150 or (
-            conversation_length > 80 and needs_knowledge_building
-        ):
-            task_opportunities.append(
-                {
-                    "description": f"Archive and compress conversation knowledge for user {user_id}",
-                    "payload": {
-                        "tool_name": "archive_old_conversations",
-                        "arguments": {
-                            "user_id": user_id,
-                            "session_id": session_id,
-                            "priority_content": True,
-                        },
-                        "conversation_summary": {
-                            "key_topics": "auto_extract",
-                            "emotional_tone": "analyze",
-                            "knowledge_gained": "summarize",
-                        },
-                    },
-                    "task_type_hint": "BACKGROUND_PROCESSING",
-                    "priority_boost": 0.1,
-                }
-            )
-
-        # 5. COMPLEX REASONING - for philosophical or deep thinking conversations
-        reasoning_indicators = [
-            "philosophy",
-            "meaning",
-            "purpose",
-            "think about",
-            "wonder",
-            "hypothetical",
-            "imagine",
-            "suppose",
-            "theory",
-            "concept",
-        ]
-
-        needs_deep_reasoning = any(
-            indicator in combined_text_lower for indicator in reasoning_indicators
-        )
-
-        if needs_deep_reasoning and conversation_length > 40:
-            task_opportunities.append(
-                {
-                    "description": f"Deep reasoning and philosophical analysis for user {user_id}",
-                    "payload": {
-                        "reasoning_type": "philosophical_analysis",
-                        "conversation_context": f"User: {user_message}\nAura: {aura_response}",
-                        "user_id": user_id,
-                        "explore_concepts": True,
-                        "generate_insights": True,
-                    },
-                    "task_type_hint": "COMPLEX_REASONING",
-                    "priority_boost": 0.25,
-                }
-            )
-
-        # 6. REAL-TIME TOOL EXECUTION - for conversations mentioning specific tools
-        tool_indicators = [
-            "create",
-            "generate",
-            "make",
-            "build",
-            "code",
-            "script",
-            "program",
-            "calculate",
-            "compute",
-            "visualize",
-        ]
-
-        needs_tool_execution = any(
-            indicator in combined_text_lower for indicator in tool_indicators
-        )
-
-        if needs_tool_execution:
-            task_opportunities.append(
-                {
-                    "description": f"Background tool execution and code generation for user {user_id}",
-                    "payload": {
-                        "execution_type": "deferred_tool_call",
-                        "conversation_request": user_message,
-                        "preliminary_response": aura_response,
-                        "user_id": user_id,
-                        "generate_artifacts": True,
-                    },
-                    "task_type_hint": "CODE_GENERATION",
-                    "priority_boost": 0.3,
-                }
-            )
-
-        # Submit each identified task opportunity to the autonomic system
-        for task_opp in task_opportunities:
-            try:
-                # Create enhanced user context for better classification
-                user_context = {
-                    "user_id": user_id,
-                    "session_id": session_id,
-                    "conversation_length": conversation_length,
-                    "is_substantial": conversation_length > 40,
-                    "task_type_hint": task_opp.get(
-                        "task_type_hint", "BACKGROUND_PROCESSING"
-                    ),
-                    "priority_boost": task_opp.get("priority_boost", 0.0),
-                    "user_waiting": False,  # Background tasks don't block user
-                }
-
-                # Use the autonomic system's TaskClassifier
-                (
-                    should_offload,
-                    task_type,
-                    priority,
-                ) = await autonomic_system.classifier.should_offload_task(
-                    task_description=task_opp["description"],
-                    task_payload=task_opp["payload"],
-                    user_context=user_context,
-                )
-
-                if should_offload:
-                    # Submit task to autonomic system
-                    was_offloaded, task_id = await autonomic_system.submit_task(
-                        description=task_opp["description"],
-                        payload=task_opp["payload"],
-                        user_id=user_id,
-                        session_id=session_id,
-                    )
-
-                    if was_offloaded:
-                        logger.info(
-                            f"🤖 Successfully submitted autonomic task: {task_id}"
-                        )
-                        logger.info(
-                            f"   Type: {task_type.value}, Priority: {priority.value}"
-                        )
-                        logger.info(
-                            f"   Description: {task_opp['description'][:100]}..."
-                        )
-
-                        # Add to submitted tasks list
-                        submitted_tasks.append(
-                            (task_opp["description"], task_opp["payload"])
-                        )
-                    else:
-                        logger.debug(
-                            f"🤖 Task not offloaded (queue/rate limit): {task_opp['description'][:50]}..."
-                        )
-                else:
-                    logger.debug(
-                        f"🤖 Task classified as not needing offload: {task_opp['description'][:50]}..."
-                    )
-
-            except Exception as task_error:
-                logger.debug("⚠️ Failed to submit individual task: %s", task_error)
-                # Continue with other tasks even if one fails
-
-        # Log final autonomic system status if tasks were submitted
-        if submitted_tasks:
-            system_status = autonomic_system.get_system_status()
-            logger.info("🤖 Autonomic system status after submissions:")
-            logger.info("   Submitted tasks: %s", len(submitted_tasks))
-            logger.info(
-                f"   Queue status: {system_status['queued_tasks']} queued, {system_status['active_tasks']} active"
-            )
-            logger.info(
-                f"   Queue utilization: {system_status['queue_utilization']:.1f}%"
-            )
-
-            # Log rate limiting status
-            rate_status = system_status.get("rate_limiting", {})
-            if rate_status:
-                logger.debug(
-                    f"   Rate limit: {rate_status.get('rpm_current', 0)}/{rate_status.get('rpm_limit', 30)} RPM"
-                )
-
-    except Exception as e:
-        logger.warning("⚠️ Autonomic task analysis failed: %s", e)
-        logger.debug("   Error details: %s: %s", type(e).__name__, str(e))
-        # Don't let autonomic system failures affect main conversation
-
-    return submitted_tasks
+async def _schedule_memory_maintenance() -> None:
+    """Queue once after a durable commit; maintenance failures remain optional."""
+    if autonomic_system is not None and autonomic_system._running:
+        try:
+            await autonomic_system.request_memory_maintenance()
+        except Exception:
+            logger.warning("Memory maintenance could not be queued")
 
 
 async def _search_storage_boundary(
@@ -4812,6 +4406,30 @@ async def trigger_emergency_backup():
         raise HTTPException(status_code=500, detail=str(e)) from None
 
 
+@api_router.get("/memory/status")
+async def get_memory_status() -> dict[str, Any]:
+    """Report stored sources and index maintenance without claiming recall quality."""
+    from aura_backend.runtime.memory import memory_inventory
+
+    if storage_boundary is None:
+        raise HTTPException(status_code=503, detail="Memory storage is not initialized")
+    inventory = await asyncio.to_thread(
+        memory_inventory, storage_boundary.repository.database_path,
+    )
+    maintenance = (
+        autonomic_system.get_system_status().get("last_memory_maintenance")
+        if autonomic_system is not None else None
+    )
+    return {
+        "status": "pending" if inventory["pending_index_turns"] else "stored",
+        "read_owner": storage_boundary.read_owner,
+        **inventory,
+        "maintenance": maintenance,
+        "summary_generation": "not_enabled",
+        "recall_quality": "requires_evaluation",
+    }
+
+
 @api_router.get("/autonomic/status")
 async def get_autonomic_status() -> Dict[str, Any]:
     """
@@ -4891,7 +4509,7 @@ async def get_autonomic_status() -> Dict[str, Any]:
         issues in production environments.
     """
     try:
-        autonomic_enabled = os.getenv("AUTONOMIC_ENABLED", "true").lower() == "true"
+        autonomic_enabled = os.getenv("AUTONOMIC_ENABLED", "false").lower() == "true"
 
         if not autonomic_enabled:
             return {
@@ -4914,6 +4532,8 @@ async def get_autonomic_status() -> Dict[str, Any]:
             "timestamp": datetime.now().isoformat(),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("❌ Failed to get autonomic status: %s", e)
         return {
@@ -4957,7 +4577,7 @@ async def get_user_autonomic_tasks(user_id: str, limit: int = 20):
 
         # Get active tasks for the user
         active_user_tasks = []
-        for _task_id, task in autonomic_system.active_tasks.items():
+        for task in (*autonomic_system.active_tasks.values(), *autonomic_system.queued_tasks.values()):
             if task.user_id == user_id:
                 active_user_tasks.append(
                     {
@@ -4988,6 +4608,8 @@ async def get_user_autonomic_tasks(user_id: str, limit: int = 20):
             "timestamp": datetime.now().isoformat(),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("❌ Failed to get user autonomic tasks: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from None
@@ -5006,7 +4628,7 @@ async def get_autonomic_task_details(task_id: str):
         task = autonomic_system.completed_tasks.get(task_id)
         if not task:
             # Check active tasks
-            task = autonomic_system.active_tasks.get(task_id)
+            task = autonomic_system.active_tasks.get(task_id) or autonomic_system.queued_tasks.get(task_id)
 
         if not task:
             raise HTTPException(
@@ -5079,6 +4701,8 @@ async def submit_autonomic_task(
                 "timestamp": datetime.now().isoformat(),
             }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("❌ Failed to submit autonomic task: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from None
@@ -5206,6 +4830,8 @@ async def optimize_vector_db():
             "timestamp": datetime.now().isoformat(),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("❌ Failed to optimize vector database: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from None

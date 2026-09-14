@@ -153,6 +153,17 @@ export interface HealthCheckResponse {
   error?: string;
 }
 
+export interface MemoryStatusResponse {
+  committed_turns: number;
+  pending_index_turns: number;
+  maintenance: { status: string; error: string | null } | null;
+}
+
+export interface AutonomicStatusResponse {
+  status: string;
+  system_status?: { running: boolean; queued_tasks: number; active_tasks: number };
+}
+
 // ============================================================================
 // ENHANCED AURA API CLASS
 // ============================================================================
@@ -447,6 +458,15 @@ export class AuraAPI {
       method: 'GET',
       timeout: 50000 // Shorter timeout for health checks
     });
+  }
+
+  /** Report actual storage and maintenance state without generating a message. */
+  async memoryStatus(): Promise<MemoryStatusResponse> {
+    return this.makeRequest<MemoryStatusResponse>('/memory/status', { method: 'GET', timeout: 10000 });
+  }
+
+  async autonomicStatus(): Promise<AutonomicStatusResponse> {
+    return this.makeRequest<AutonomicStatusResponse>('/autonomic/status', { method: 'GET', timeout: 10000 });
   }
 
   /**
