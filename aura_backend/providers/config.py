@@ -184,6 +184,13 @@ class ProviderSettings:
         base_url: str | None
         thinking_budget = -1
 
+        # Shared model selection works for every provider. An explicitly supplied
+        # provider-specific name retains precedence and its normal validation.
+        mapping = dict(mapping)
+        for model_setting in ("OLLAMA_MODEL", "OPENROUTER_MODEL"):
+            if model_setting not in mapping and "AURA_MODEL" in mapping:
+                mapping[model_setting] = mapping["AURA_MODEL"]
+
         if kind is ProviderKind.OLLAMA:
             model = _model_name(mapping, "OLLAMA_MODEL", "llama3.1", kind)
             base_url = _base_url(

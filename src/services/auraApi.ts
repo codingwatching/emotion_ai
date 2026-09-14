@@ -202,6 +202,8 @@ export class AuraAPI {
   // ============================================================================
 
   private getApiBaseUrl(): string {
+    const configured = (import.meta as ImportMeta & { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL;
+    if (configured?.trim()) return configured.trim().replace(/\/+$/, '');
     // Try to detect the correct API URL
     const hostname = window.location.hostname;
 
@@ -486,10 +488,10 @@ export class AuraAPI {
    * Searches user memories based on a query.
    * @param {string} userId The user identifier.
    * @param {string} query Search query string.
-   * @param {number} [nResults=50000] Number of results to return (1-50000).
+   * @param {number} [nResults=20] Number of results per selected source (1-100).
    * @returns {Promise<SearchResponse>}
    */
-  async searchMemories(userId: string, query: string, nResults: number = 50000): Promise<SearchResponse> {
+  async searchMemories(userId: string, query: string, nResults: number = 20, includeActive = true, includeArchives = false): Promise<SearchResponse> {
     if (!userId || !query.trim()) {
       throw new Error('User ID and query are required');
     }
@@ -500,7 +502,9 @@ export class AuraAPI {
         body: {
           user_id: userId,
           query: query.trim(),
-          n_results: Math.max(1, Math.min(nResults, 50000)) // Clamp between 1 and 50000
+          n_results: Number.isFinite(nResults) ? Math.max(1, Math.min(Math.floor(nResults), 100)) : 20,
+          include_active: includeActive,
+          include_archives: includeArchives
         }
       });
 
@@ -514,6 +518,16 @@ export class AuraAPI {
       console.error('❌ Memory search error:', error);
       throw new Error(`Failed to search memories: ${(error as Error).message}`);
     }
+  }
+
+  async archiveSession(userId: string, sessionId: string): Promise<{ messages_archived: number }> {
+    return this.makeRequest('/memvid/archive-session', {
+      method: 'POST', body: { user_id: userId, session_id: sessionId }, timeout: 180000,
+    });
+  }
+
+  async getMemvidStatus(userId: string): Promise<{ status: string; archives_count: number; archives: Array<{ name: string }> }> {
+    return this.makeRequest(`/memvid/status?user_id=${encodeURIComponent(userId)}`, { method: 'GET' });
   }
 
   /**
@@ -560,16 +574,16 @@ export class AuraAPI {
   /**
    * Retrieves chat history sessions for a user.
    * @param {string} userId The user identifier.
-   * @param {number} [limit=50000] Maximum sessions to retrieve (1-50000).
+   * @param {number} [limit=100] Maximum entries per backend page (1-100).
    * @returns {Promise<ChatHistoryResponse>}
    */
-  async getChatHistory(userId: string, limit: number = 50000): Promise<ChatHistoryResponse> {
+  async getChatHistory(userId: string, limit: number = 100): Promise<ChatHistoryResponse> {
     if (!userId) {
       throw new Error('User ID is required');
     }
 
     try {
-      const clampedLimit = Math.max(1, Math.min(limit, 200000)); // Clamp between 1 and 200000
+      const clampedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Math.floor(limit), 100)) : 100;
       const response = await this.makeRequest<ChatHistoryResponse>(
         `/chat-history/${encodeURIComponent(userId)}?limit=${clampedLimit}`,
         { method: 'GET' }

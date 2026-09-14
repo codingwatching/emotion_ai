@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib
 import importlib.util
 from dataclasses import dataclass
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -350,21 +352,24 @@ async def test_real_mcp_and_gemini_seams_use_no_io_collaborators() -> None:
 @pytest.mark.asyncio
 async def test_real_memvid_import_enters_injected_no_storage_facade(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     if not _spec_exists("memvid_sdk"):
         pytest.skip("not_run: declared_extra_not_installed")
     importlib.import_module("memvid_sdk")
-    module = importlib.import_module("aura_backend.memvid_archival_service")
+    module = importlib.import_module("aura_backend.runtime.memvid")
+    monkeypatch.setattr(main, "storage_boundary", SimpleNamespace(repository=SimpleNamespace(database_path=tmp_path / "ledger.sqlite3")))
+    monkeypatch.setattr(main, "aura_internal_tools", None)
     events: list[str] = []
 
     class NoStorageFacade:
-        def __init__(self) -> None:
+        def __init__(self, repository: Any, root: Path) -> None:
             events.append("start")
 
         async def close(self) -> None:
             events.append("close")
 
-    monkeypatch.setattr(module, "MemvidArchivalService", NoStorageFacade)
+    monkeypatch.setattr(module, "MemvidArchiveService", NoStorageFacade)
     started = await main._start_memvid_resource()
     await started.close()
     await started.close()
@@ -393,6 +398,7 @@ async def test_real_autonomic_module_starts_and_closes_without_model_call() -> N
 async def test_partial_optional_stage_start_runs_registered_cleanup_once(
     monkeypatch: pytest.MonkeyPatch,
     stage: str,
+    tmp_path: Path,
 ) -> None:
     events: list[str] = []
 
@@ -436,17 +442,19 @@ async def test_partial_optional_stage_start_runs_registered_cleanup_once(
     elif stage == "memvid":
         if not _spec_exists("memvid_sdk"):
             pytest.skip("not_run: declared_extra_not_installed")
-        module = importlib.import_module("aura_backend.memvid_archival_service")
+        module = importlib.import_module("aura_backend.runtime.memvid")
+        monkeypatch.setattr(main, "storage_boundary", SimpleNamespace(repository=SimpleNamespace(database_path=tmp_path / "ledger.sqlite3")))
+        monkeypatch.setattr(main, "aura_internal_tools", None)
 
         class PartialFacade:
-            def __init__(self) -> None:
+            def __init__(self, repository: Any, root: Path) -> None:
                 events.append("start")
                 raise RuntimeError("private-SENTINEL")
 
             async def close(self) -> None:
                 events.append("close")
 
-        monkeypatch.setattr(module, "MemvidArchivalService", PartialFacade)
+        monkeypatch.setattr(module, "MemvidArchiveService", PartialFacade)
         operation = main._start_memvid_resource()
     else:
         module = importlib.import_module("aura_backend.aura_autonomic_system")

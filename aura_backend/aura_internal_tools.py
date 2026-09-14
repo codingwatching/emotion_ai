@@ -48,6 +48,7 @@ class AuraInternalTools:
         self.file_system = file_system
         self.retriever = retriever
         self.read_owner = read_owner
+        self.archive_service: Any = None
 
         # Initialize memvid tools if available
         self.memvid_tools = None
@@ -366,7 +367,36 @@ class AuraInternalTools:
                 f"🧠 Added {len(intelligent_tools)} intelligent memory tools to Aura's toolkit"
             )
 
+        # A callable wrapper is not an available capability without its backend.
+        if self.file_system is None:
+            tools.pop("aura.get_user_profile", None)
+        if self.vector_db is None:
+            tools.pop("aura.analyze_emotional_patterns", None)
+            if self.read_owner != "sqlite" or self.retriever is None:
+                tools.pop("aura.search_memories", None)
         return tools
+
+    def bind_archive_service(self, service: Any) -> None:
+        """Advertise only archive operations backed by the live runtime service."""
+        self.archive_service = service
+        for name, description, properties, required, handler in (
+            ("archive_session", "Copy a committed chat session to a verified Memvid archive; keep active messages.",
+             {"user_id": {"type": "string"}, "session_id": {"type": "string"}},
+             ["user_id", "session_id"], service.archive_session),
+            ("search_archives", "Search this user's archived conversations using local embeddings.",
+             {"user_id": {"type": "string"}, "query": {"type": "string"}},
+             ["user_id", "query"], self.search_archives),
+        ):
+            self.tools[f"aura.{name}"] = {
+                "name": f"aura.{name}", "description": description,
+                "parameters": {"type": "object", "properties": properties, "required": required},
+                "handler": handler,
+            }
+
+    async def search_archives(self, user_id: str, query: str) -> dict[str, Any]:
+        """Preserve failures instead of representing failed reads as empty memory."""
+        results = await self.archive_service.search_archives(query, user_id)
+        return {"status": "success", "memories": results, "source": "memvid"}
 
     async def search_memories(
         self, user_id: str, query: str, n_results: int = 5

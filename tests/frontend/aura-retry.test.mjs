@@ -6,11 +6,16 @@ import ts from 'typescript';
 test('conversation retries preserve identity; new sends get new identities', async () => {
   const saved = { window: globalThis.window, fetch: globalThis.fetch, setInterval: globalThis.setInterval };
   const bodies = [];
+  const historyUrls = [];
   globalThis.window = { location: { hostname: 'localhost', protocol: 'http:' } };
   globalThis.setInterval = () => 0;
   let fail = true;
   globalThis.fetch = async (url, options) => {
     if (url.endsWith('/health')) return Response.json({ status: 'operational' });
+    if (url.includes('/chat-history/')) {
+      historyUrls.push(url);
+      return Response.json({ sessions: [], total_sessions: 0 });
+    }
     bodies.push(JSON.parse(options.body));
     if (fail) { fail = false; return new Response('pending', { status: 503 }); }
     return Response.json({ response: 'Reply', emotional_state: {}, cognitive_state: {}, session_id: bodies.at(-1).session_id });
@@ -31,6 +36,15 @@ test('conversation retries preserve identity; new sends get new identities', asy
     assert.deepEqual(bodies[2], bodies[0]);
     await auraAPI.sendMessage({ user_id: 'test', message: 'Hello' });
     assert.notEqual(bodies[3].idempotency_key, bodies[0].idempotency_key);
+    await auraAPI.getChatHistory('test', 2000000);
+    await auraAPI.getChatHistory('test');
+    assert.ok(historyUrls.every(url => Number(new URL(url).searchParams.get('limit')) <= 100));
+    await auraAPI.searchMemories('test', 'vault', 50000, false, true);
+    assert.equal(bodies.at(-1).n_results, 100);
+    assert.equal(bodies.at(-1).include_active, false);
+    assert.equal(bodies.at(-1).include_archives, true);
+    await auraAPI.archiveSession('test', 'session');
+    assert.equal(bodies.at(-1).session_id, 'session');
   } finally {
     Object.assign(globalThis, saved);
   }

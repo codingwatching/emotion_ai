@@ -1115,6 +1115,46 @@ class StorageRepository:
             projection_reconciliation_required=projection != "complete",
         )
 
+    def session_messages(self, scope_id: str, session_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        """Return recent committed exchanges in causal order, isolated by session."""
+        if not 1 <= limit <= 100:
+            raise StorageFailure("invalid_history_limit")
+        connection = open_database(self.database_path)
+        try:
+            rows = connection.execute(
+                """WITH recent AS (
+                    SELECT turn_id, occurred_at FROM turns WHERE scope_id=? AND session_id=?
+                    ORDER BY occurred_at DESC, rowid DESC LIMIT ?
+                ) SELECT e.actor,e.content,e.observed_at,e.event_id
+                  FROM recent t JOIN events e ON e.turn_id=t.turn_id
+                  WHERE e.scope_id=? ORDER BY t.occurred_at,e.event_pk""",
+                (scope_id, session_id, limit, scope_id),
+            ).fetchall()
+            return [{"role": "assistant" if row[0] == "aura" else "user",
+                     "sender": row[0], "content": row[1], "timestamp": row[2],
+                     "id": row[3]} for row in rows]
+        finally:
+            connection.close()
+
+    def chat_sessions(self, scope_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        """List actual sessions with stable titles from their first user message."""
+        if not 1 <= limit <= 100:
+            raise StorageFailure("invalid_history_limit")
+        connection = open_database(self.database_path)
+        try:
+            rows = connection.execute(
+                """SELECT t.session_id,MAX(t.occurred_at),COUNT(*)*2,
+                    (SELECT e.content FROM turns first JOIN events e ON e.turn_id=first.turn_id
+                     WHERE first.scope_id=t.scope_id AND first.session_id=t.session_id AND e.ordinal=0
+                     ORDER BY first.occurred_at,first.rowid LIMIT 1)
+                    FROM turns t WHERE t.scope_id=? GROUP BY t.session_id
+                    ORDER BY MAX(t.occurred_at) DESC LIMIT ?""", (scope_id, limit),
+            ).fetchall()
+            return [{"session_id": row[0], "timestamp": row[1], "message_count": row[2],
+                     "last_message": row[3], "title": row[3]} for row in rows]
+        finally:
+            connection.close()
+
     def get_affect_head(self, scope_id: str) -> Any | None:
         """Return the current committed affect head for a scope, if present."""
         from aura_backend.affect.models import AffectState, AffectVector

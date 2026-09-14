@@ -32,6 +32,7 @@ from typing import Any, IO, Protocol
 from aura_backend.providers.base import ProviderHealth, ProviderHealthStatus
 
 from .config import RuntimeConfigurationError, RuntimeSettings
+from .environment import load_runtime_environment
 
 EXIT_OK = 0
 EXIT_MISSING = 2
@@ -306,6 +307,9 @@ def _default_port_probe(host: str, port: int) -> bool:
     for family, socktype, protocol, _canonical, address in addresses:
         candidate = socket.socket(family, socktype, protocol)
         try:
+            # Match uvicorn's restart semantics: closed connections in TIME_WAIT
+            # are not a live listener and must not block an immediate restart.
+            candidate.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             candidate.bind(address)
         except OSError:
             continue
@@ -360,8 +364,29 @@ def default_preflight_probes() -> PreflightProbes:
     )
 
 
+class _OwnedProcessTree:
+    """Own a fresh POSIX process group, including npm's Vite child."""
+
+    def __init__(self, command: tuple[str, ...], cwd: Path) -> None:
+        self.process = subprocess.Popen(command, cwd=cwd, start_new_session=True)  # noqa: S603
+
+    def poll(self) -> int | None:
+        return self.process.poll()
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.process.wait(timeout=timeout)
+
+    def terminate(self) -> None:
+        os.killpg(self.process.pid, signal.SIGTERM)
+
+    def kill(self) -> None:
+        os.killpg(self.process.pid, signal.SIGKILL)
+
+
 def _default_process_start(command: tuple[str, ...], cwd: Path) -> OwnedProcess:
-    """Start exactly one declared child without a shell or detached ownership."""
+    """Keep subprocess descendants inside this launcher's cleanup boundary."""
+    if os.name == "posix":
+        return _OwnedProcessTree(command, cwd)
     return subprocess.Popen(command, cwd=cwd)  # noqa: S603
 
 
@@ -466,14 +491,14 @@ def _backend_command(settings: RuntimeSettings) -> tuple[str, ...]:
 
 
 def _frontend_command() -> tuple[str, ...]:
-    return ("npm", "run", "dev", "--", "--host", "127.0.0.1")
+    return ("npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173", "--strictPort")
 
 
 def _stop_owned(owned: list[tuple[str, OwnedProcess]]) -> None:
     """Stop only children started here, in strict reverse dependency order."""
     for _name, process in reversed(owned):
         try:
-            if process.poll() is None:
+            if isinstance(process, _OwnedProcessTree) or process.poll() is None:
                 process.terminate()
             process.wait(timeout=10.0)
         except subprocess.TimeoutExpired:
@@ -1008,8 +1033,10 @@ def main(
     """Run one runtime command and return its documented integer status."""
     arguments = build_parser().parse_args(argv)
     output = stdout or sys.stdout
-    selected_environment = dict(os.environ) if environment is None else dict(environment)
     root = repository_root or Path(__file__).resolve().parents[2]
+    selected_environment = (
+        load_runtime_environment(root) if environment is None else dict(environment)
+    )
     if arguments.command == "preflight":
         report = build_preflight_report(
             environment=selected_environment,

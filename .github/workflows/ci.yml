@@ -13,6 +13,8 @@ jobs:
     name: deterministic-backend
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      MEMVID_TELEMETRY: "0"
     steps:
       - name: Check out the reviewed revision
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -23,7 +25,7 @@ jobs:
         with:
           version: "0.11.21"
       - name: Synchronize the Python lock
-        run: uv sync --locked --dev
+        run: uv sync --locked --dev --extra memvid
       - name: Run all deterministic Phase 1 and Phase 2 tests
         run: uv run --locked --no-sync python -m pytest tests -q -m "not live and not private_evidence"
 

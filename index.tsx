@@ -160,7 +160,7 @@ class AuraUIManager {
 
       const healthData = await this.api.healthCheck();
       this.backendConnected = true;
-      this.updateSystemHealth('optimal', 'Connected', 'All systems operational');
+      this.updateSystemHealth('online', 'Connected', 'Backend reachable; other capabilities not verified');
       console.log("✅ Backend connected:", healthData);
 
       // Test if the backend is actually responding to conversation endpoint
@@ -311,7 +311,10 @@ class AuraUIManager {
       (async () => {
         try {
           console.log(`Searching memories for user "${this.userName}" with query "${query}"`);
-          const response = await this.api.searchMemories(this.userName!, query);
+          const active = (document.getElementById('search-active-memory') as HTMLInputElement).checked;
+          const archives = (document.getElementById('search-video-archives') as HTMLInputElement).checked;
+          if (!active && !archives) throw new Error('Select a memory source to search.');
+          const response = await this.api.searchMemories(this.userName!, query, 20, active, archives);
 
           this.displaySearchResults(response, searchResultsArea);
         } catch (error: any) {
@@ -322,6 +325,29 @@ class AuraUIManager {
       })();
     });
     console.log("✅ Unified Memory Search UI setup complete.");
+    const archiveButton = document.getElementById('manage-archives') as HTMLButtonElement | null;
+    if (archiveButton) {
+      archiveButton.textContent = 'Archive this chat';
+      archiveButton.title = 'Copy the latest 100 exchanges to Memvid; keep active messages.';
+      archiveButton.addEventListener('click', async () => {
+        if (!this.userName || !this.currentSessionId) {
+          searchErrorElement.textContent = 'Send a message before archiving this chat.';
+          return;
+        }
+        archiveButton.disabled = true;
+        archiveButton.textContent = 'Verifying archive…';
+        try {
+          const result = await this.api.archiveSession(this.userName, this.currentSessionId);
+          searchErrorElement.textContent = `Archived ${result.messages_archived} messages. Active messages are unchanged.`;
+          await this.updateVideoArchiveStatus();
+        } catch (error: any) {
+          searchErrorElement.textContent = `Archive failed: ${error.message}`;
+        } finally {
+          archiveButton.disabled = false;
+          archiveButton.textContent = 'Archive this chat';
+        }
+      });
+    }
   }
 
   private setupEmotionalInsights(): void {
@@ -391,7 +417,7 @@ class AuraUIManager {
 
   private setupEnhancedHeader(): void {
     // Initialize header with default state
-    this.updateSystemHealth('optimal', 'Connected', 'All systems operational');
+    this.updateSystemHealth('online', 'Connected', 'Backend reachable; other capabilities not verified');
     this.updateBrainwaveDisplay('Alpha', 'Default');
     this.updateNeurotransmitterDisplay('Serotonin', 70);
 
@@ -979,7 +1005,9 @@ class AuraUIManager {
         // Update existing session in the list
         const sessionIndex = this.chatSessions.findIndex(s => s.session_id === this.currentSessionId);
         if (sessionIndex !== -1) {
-          this.chatSessions[sessionIndex].last_message = this.truncateMessage(userMessage);
+          if (this.chatSessions[sessionIndex].message_count === 0) {
+            this.chatSessions[sessionIndex].last_message = this.truncateMessage(userMessage);
+          }
           this.chatSessions[sessionIndex].message_count = (this.chatSessions[sessionIndex].message_count || 0) + 1;
           this.chatSessions[sessionIndex].timestamp = new Date().toISOString();
 
@@ -1007,7 +1035,7 @@ class AuraUIManager {
       }
 
       // Update system health to show successful communication
-      this.updateSystemHealth('optimal', 'Connected', 'Communication successful');
+      this.updateSystemHealth('online', 'Connected', 'Reply received; this does not verify all subsystems');
 
       // Display message with thinking data if available
       const thinkingData = response.has_thinking ? {
@@ -1393,7 +1421,7 @@ class AuraUIManager {
 
     try {
       console.log("📚 Loading chat history...");
-      const historyData = await this.api.getChatHistory(this.userName, 2000000);
+      const historyData = await this.api.getChatHistory(this.userName);
 
       console.log("📊 Chat history response:", historyData);
 
@@ -1590,9 +1618,10 @@ class AuraUIManager {
             this.chatSessions[sessionIndex].message_count = sessionMessages.length;
             // Update last message if we have messages
             if (sessionMessages.length > 0) {
-              const lastMsg = sessionMessages[sessionMessages.length - 1];
-              const lastContent = lastMsg.content || '';
-              this.chatSessions[sessionIndex].last_message = lastContent.substring(0, 100) + (lastContent.length > 100 ? '...' : '');
+              const firstUser = sessionMessages.find(msg => msg.sender === 'user');
+              if (firstUser && !this.chatSessions[sessionIndex].last_message) {
+                this.chatSessions[sessionIndex].last_message = this.truncateMessage(firstUser.content);
+              }
             }
           }
         } else {
@@ -1692,16 +1721,16 @@ class AuraUIManager {
 
   private displaySearchResults(response: any, resultsElement: HTMLElement): void {
     if (response.results && response.results.length > 0) {
-      resultsElement.innerHTML = response.results.map((result: any) => {
+      resultsElement.innerHTML = response.results.map((result: any, index: number) => {
         const content = result.content.replace(/[*#]/g, '').trim();
-        const similarity = (result.similarity * 100).toFixed(1);
-        const source = response.includes_video_archives ? 'unified' : 'active';
+        // Different indexes use different scores; none is a confidence percentage.
+        const source = result.source === 'memvid' ? 'memvid' : 'active';
 
         return `
           <div class="memory-result" data-source="${source}">
             <div class="memory-content">${this.escapeHtml(content)}</div>
             <div class="memory-meta">
-              Relevance: ${similarity}% | Source: ${response.search_type || 'Memory'}
+              Result ${index + 1} | Source: ${source === 'memvid' ? 'Memvid archive' : 'Active memory'}
             </div>
           </div>
         `;
@@ -1767,8 +1796,7 @@ class AuraUIManager {
     if (!statusElement) return;
 
     try {
-      const response = await fetch('http://localhost:8000/memvid/status');
-      const data = await response.json();
+      const data = await this.api.getMemvidStatus(this.userName || '');
 
       if (data.status === 'operational') {
         statusElement.innerHTML = `
@@ -1779,7 +1807,7 @@ class AuraUIManager {
               <div><strong>📊 Recent Archives:</strong></div>
               <ul style="margin: 4px 0; padding-left: 20px; font-size: 0.8rem;">
                 ${data.archives.slice(0, 3).map((archive: any) =>
-                  `<li>${typeof archive === 'string' ? archive : archive.name || 'Unnamed Archive'}</li>`
+                  `<li>${this.escapeHtml(typeof archive === 'string' ? archive : archive.name || 'Unnamed Archive')}</li>`
                 ).join('')}
               </ul>
             ` : '<div style="color: var(--text-secondary); font-style: italic;">No archives yet</div>'}

@@ -621,7 +621,8 @@ def _run_base_only_startup_scenario(
             cleanup_events.append("legacy_services")
 
     class FakeFileSystem:
-        pass
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
 
     class FakeInternalTools:
         def __init__(self, *_args: Any, **_kwargs: Any) -> None:
@@ -715,7 +716,12 @@ def _run_base_only_startup_scenario(
     socket.socket.connect = forbidden("network_connect")
     socket.socket.connect_ex = forbidden("network_connect_ex")
     socket.create_connection = forbidden("network_create_connection")
-    sqlite3.connect = forbidden("sqlite_connect")
+    def isolated_sqlite_connect(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if Path(path).resolve().parent != (Path.cwd() / "startup-ledger").resolve():
+            return forbidden("sqlite_connect_outside_test_root")()
+        return original_sqlite_connect(path, *args, **kwargs)
+
+    sqlite3.connect = isolated_sqlite_connect
     subprocess.Popen = forbidden("subprocess_popen")
     __import__("asyncio").create_subprocess_exec = forbidden("async_subprocess_exec")
     __import__("asyncio").create_subprocess_shell = forbidden("async_subprocess_shell")
@@ -736,6 +742,7 @@ def _run_base_only_startup_scenario(
         main._composition_environment = lambda: {
             "ALLOWED_ORIGINS": DEFAULT_ORIGIN,
             "AURA_DEFAULT_PROVIDER": "ollama",
+            "AURA_LEDGER_DIRECTORY": str(Path.cwd() / "startup-ledger"),
         }
         ModelProviderFactory.create_provider = staticmethod(
             lambda *_args, **_kwargs: FakeProvider()

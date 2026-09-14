@@ -89,6 +89,32 @@ def _adapter(tmp_path: Path, repository: StorageRepository) -> ProjectionAdapter
     )
 
 
+def test_runtime_rebuilds_changed_embedding_generation_without_deleting_old(
+    tmp_path: Path, ledger_path: Path, turn_command: TurnCommand,
+) -> None:
+    from aura_backend.main import _RuntimeProjectionAdapter
+
+    repository = StorageRepository(ledger_path)
+    repository.append_turn(turn_command.scope_id, turn_command)
+    adapter = _adapter(tmp_path, repository)
+    adapter.rebuild(generation_id="old-model", created_at="2026-09-01T00:00:00Z")
+
+    class NewEmbeddings(FakeEmbeddingService):
+        def get_model_info(self) -> dict[str, Any]:
+            return {"model_name": "new-test-model", "embedding_dimension": 3}
+
+    runtime = _RuntimeProjectionAdapter(
+        projection_root=adapter.projection_root, repository=repository,
+        embedding_service=NewEmbeddings(),
+    )
+    assert runtime.upsert_committed(turn_command.turn_id) == 3
+    current = runtime.current_generation()
+    assert current.embedding_model == "new-test-model"
+    assert current.generation_id != "old-model"
+    assert adapter.generation_path("old-model").exists()
+    assert len(repository.projection_origins()) == 3
+
+
 def test_locked_chroma_api_creates_explicit_cosine_collection(tmp_path: Path) -> None:
     """The installed API must persist cosine rather than Chroma's L2 default."""
     client = chromadb.PersistentClient(path=str(tmp_path / "locked-api"))

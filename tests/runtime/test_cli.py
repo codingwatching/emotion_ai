@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import signal
 import subprocess
 import sys
@@ -275,6 +276,65 @@ def test_main_emits_one_public_json_document(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("command", ["preflight", "serve"])
+def test_cli_loads_project_dotenv_for_selected_cloud_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str,
+) -> None:
+    """The ordinary CLI and its children use saved settings without env-file flags."""
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+    _write_project_contract(tmp_path)
+    (tmp_path / ".env").write_text(
+        "AURA_DEFAULT_PROVIDER=openrouter\nAURA_MODEL=test/aura\n"
+        "OPENROUTER_API_KEY=test-only-secret\n", encoding="utf-8",
+    )
+    for key in ("AURA_DEFAULT_PROVIDER", "AURA_MODEL", "OPENROUTER_MODEL", "OPENROUTER_API_KEY", "PYTHON_DOTENV_DISABLED"):
+        monkeypatch.delenv(key, raising=False)
+    output = io.StringIO()
+    inherited: list[str | None] = []
+
+    def start(child_command: tuple[str, ...], cwd: Path) -> _FakeProcess:
+        inherited.append(os.environ.get("AURA_DEFAULT_PROVIDER"))
+        return _FakeProcess("backend", [], poll_values=[0])
+
+    code = main(
+        [command, *(["--backend-only"] if command == "serve" else [])],
+        repository_root=tmp_path, probes=_passing_probes(), stdout=output,
+        serve_probes=ServeProbes(start=start, readiness=lambda *_args: True, sleep=lambda _: None),
+    )
+    payload = json.loads(output.getvalue())
+    assert "test-only-secret" not in output.getvalue()
+    if command == "preflight":
+        checks = {item["name"]: item for item in payload["checks"]}
+        assert checks["provider_config"]["value"] == "openrouter"
+        assert checks["provider_model"]["value"] == "test/aura"
+        assert code == 0
+    else:
+        assert inherited == ["openrouter"]
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_cli_preserves_shell_overrides_and_explicit_mapping_isolation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, explicit: bool,
+) -> None:
+    """Saved settings cannot override exports or contaminate injected test inputs."""
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+    _write_project_contract(tmp_path)
+    (tmp_path / ".env").write_text(
+        "AURA_DEFAULT_PROVIDER=openrouter\nAURA_MODEL=file/model\n"
+        "OPENROUTER_API_KEY=test-secret\n", encoding="utf-8",
+    )
+    monkeypatch.setenv("AURA_DEFAULT_PROVIDER", "ollama")
+    monkeypatch.setenv("OLLAMA_MODEL", "shell/model")
+    output = io.StringIO()
+    assert main(
+        ["preflight"], repository_root=tmp_path, probes=_passing_probes(), stdout=output,
+        environment={"OLLAMA_MODEL": "injected/model"} if explicit else None,
+    ) == 0
+    checks = {item["name"]: item for item in json.loads(output.getvalue())["checks"]}
+    assert checks["provider_config"]["value"] == "ollama"
+    assert checks["provider_model"]["value"] == ("injected/model" if explicit else "shell/model")
+
+
 def _passing_report() -> PreflightReport:
     return PreflightReport.from_checks(
         tuple(
@@ -410,6 +470,9 @@ def test_serve_uses_factory_loopback_ready_gate_and_safe_commands(tmp_path: Path
         "--",
         "--host",
         "127.0.0.1",
+        "--port",
+        "5173",
+        "--strictPort",
     )
     forbidden = {"install", "sync", "pull", "download", "chmod", "kill"}
     assert not any(forbidden.intersection(command) for command in commands)
@@ -552,3 +615,55 @@ def test_signal_handlers_request_owned_shutdown_and_restore_process_state() -> N
 
     assert signal.getsignal(signal.SIGINT) == previous_int
     assert signal.getsignal(signal.SIGTERM) == previous_term
+
+
+def test_port_probe_allows_restart_but_rejects_live_listener() -> None:
+    import socket
+    from aura_backend.runtime.cli import _default_port_probe
+
+    with socket.socket() as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+        assert not _default_port_probe("127.0.0.1", port)
+        with socket.create_connection(("127.0.0.1", port)) as client:
+            accepted, _ = server.accept()
+            accepted.close()
+            assert client.recv(1) == b""
+    assert _default_port_probe("127.0.0.1", port)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process group contract")
+def test_owned_process_cleanup_stops_grandchild_listener(tmp_path: Path) -> None:
+    """Exercise the actual npm-like parent/child ownership shape."""
+    import socket
+    import time
+    from aura_backend.runtime.cli import _default_process_start, _stop_owned
+
+    marker = tmp_path / "port.txt"
+    child = (
+        "import socket,time; from pathlib import Path; "
+        "s=socket.socket(); s.bind(('127.0.0.1',0)); s.listen(); "
+        f"Path({str(marker)!r}).write_text(str(s.getsockname()[1])); time.sleep(60)"
+    )
+    parent = f"import subprocess,sys; subprocess.Popen([sys.executable,'-c',{child!r}]).wait()"
+    process = _default_process_start((sys.executable, "-c", parent), tmp_path)
+    try:
+        for _ in range(100):
+            if marker.exists() and marker.read_text():
+                break
+            time.sleep(0.02)
+        port = int(marker.read_text())
+        with socket.create_connection(("127.0.0.1", port), timeout=1):
+            pass
+    finally:
+        _stop_owned([("frontend", process)])
+    for _ in range(100):
+        with socket.socket() as probe:
+            probe.settimeout(0.1)
+            if probe.connect_ex(("127.0.0.1", port)) != 0:
+                break
+        time.sleep(0.02)
+    else:
+        pytest.fail("owned grandchild still listening after launcher cleanup")

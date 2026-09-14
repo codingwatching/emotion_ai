@@ -183,6 +183,41 @@ not install, synchronize, or download software or models.
 uv sync --locked
 ```
 
+To enable the real Memvid archive integration, install the locked extra instead:
+
+```bash
+uv sync --locked --extra memvid
+```
+
+Set `AURA_MEMVID_ENABLED=true` and select `MEMVID_EMBEDDING_PROVIDER=ollama`
+with your installed `MEMVID_EMBEDDING_MODEL` (for example `embeddinggemma:latest`).
+Set `MEMVID_TELEMETRY=0` to disable SDK analytics. This adapter uses precomputed
+local vectors, not the SDK's implicit cloud embedding selection.
+
+Memory storage has three distinct roles: SQLite keeps committed conversations;
+Chroma indexes embeddings for active semantic search; Memvid keeps independent
+`.mv2` archive snapshots with their own vectors. In the UI, **Archive this chat**
+copies the latest 100 exchanges and verifies the saved content after reopening.
+It does not delete active messages or import old Chroma/video archives. Archive
+files live below the configured ledger directory in `memvid/`. Search checkboxes
+select active memory, archives, or both. Aura also receives `archive_session`
+and `search_archives` tools when Memvid starts successfully.
+
+The opt-in real local smoke test uses temporary synthetic data and tests chat
+continuity, archival, search, and an application restart:
+
+```bash
+uv run --locked --no-sync python scripts/verify_local_memory.py
+```
+
+The maintained Aura Modelfile is `docs/models/ornith-apex/Modelfile.aura`.
+Rebuild with `ollama create aura-ornith:35b -f docs/models/ornith-apex/Modelfile.aura`.
+It requests a 131072-token context and an 8192-token generation budget; actual
+generation can use a smaller explicit request budget. Context allocation does
+not guarantee accurate recall at the full capacity. The locally tested recall
+probe used 30000 input tokens. `AURA_HISTORY_MAX_CHARS` is a separate application
+history budget in characters, not tokens; keep it below the model's capacity.
+
 <!-- aura-setup-command -->
 ```bash
 npm ci
@@ -194,6 +229,33 @@ optional cloud providers and require an explicit provider selection plus the
 corresponding credential in your private environment.
 
 ### Preflight, then serve
+
+For normal use, run the `serve` command below; it runs preflight automatically.
+On Linux, the existing launcher is the shorter equivalent: `./start_full_system.sh`.
+Both commands load this repository's `.env` without extra flags. Exported shell
+variables take precedence. `AURA_MODEL` works with any selected provider;
+`OPENROUTER_MODEL` or `OLLAMA_MODEL`, when set, takes precedence over it.
+Selecting OpenRouter does not require a local Ollama chat model.
+
+Active memory search uses `AURA_EMBEDDING_PROVIDER` and `AURA_EMBEDDING_MODEL`.
+The compatibility default is `sentence_transformers` / `all-MiniLM-L6-v2`.
+For local Ollama embeddings, select `ollama` / `embeddinggemma:latest`;
+`AURA_EMBEDDING_BASE_URL` optionally overrides `OLLAMA_BASE_URL` for embeddings.
+The separate `MEMVID_EMBEDDING_*` settings apply only to optional archives.
+Changing the active embedding model builds and verifies a new derived index on
+first use before switching; the old generation and SQLite records are retained.
+Failed embedding requests leave the rebuild incomplete rather than switching to
+an invalid index. This may make the first memory operation slower.
+
+Conversation continuity uses committed exchanges from the same user/session,
+not just a provider session identifier. It retains up to 100 recent exchanges
+within `AURA_HISTORY_MAX_CHARS` (default 24000 characters, not tokens). Increase
+this only alongside a verified model context allocation. Chat history uses real
+session IDs and stable first-message titles; its list requests are capped at 100.
+Startup initializes and opens the selected ledger before reporting readiness.
+`AURA_CLEAN_INSTALL=true` selects the new SQLite-backed read path without importing
+legacy stores. Chroma remains the derived semantic index; Memvid is a separate
+optional archive integration, not a prerequisite for chat.
 
 <!-- aura-runtime-command -->
 ```bash
