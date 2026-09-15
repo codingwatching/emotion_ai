@@ -29,6 +29,7 @@ def render_policy(
     prior_policy: ResponsePolicy | None = None,
     *,
     regulation: RegulationDecision | None = None,
+    support_needed: bool = False,
 ) -> ResponsePolicy:
     """Map affective state vector to authored, causal response policy."""
     # 1. Warmth
@@ -83,6 +84,9 @@ def render_policy(
 
     # 5. Reflection
     reflection = "immediate" if (state.load < 0.25 and state.curiosity > 0.65) else "defer"
+    if support_needed:
+        # Current distress takes precedence over residual excitement/curiosity.
+        warmth, energy, exploration, reflection = "warm", "steady", "focused", "defer"
 
     # 6. Render compact, server-authored policy instruction
     prompt_lines = [
@@ -95,6 +99,8 @@ def render_policy(
     ]
     if evidence_action == "verify":
         prompt_lines.append("- Evidence handling: Check the claim against available task evidence before accepting it; if no check is available, keep it explicitly unverified.")
+    if support_needed:
+        prompt_lines.append("- Care: Be attentive and unhurried; respond to the user's expressed needs without forced cheerfulness or unnecessary questioning.")
     prompt_block = "\n".join(prompt_lines)
 
     return ResponsePolicy(

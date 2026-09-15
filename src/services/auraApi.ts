@@ -44,6 +44,7 @@ export interface AffectSimulationState {
   policy: ResponsePolicy;
   causes: string[];
   disposition: string;
+  appraisal?: { status: string | null; reason: string | null };
   channels: {
     dopamine_like: number;
     norepinephrine_like: number;
@@ -57,6 +58,7 @@ export interface AffectSimulationState {
     brainwave: 'Delta' | 'Theta' | 'Alpha' | 'Beta' | 'Gamma';
     activation: number;
     dominant_channel: keyof AffectSimulationState['channels'];
+    emotion: { name: string; intensity: string; description: string };
   };
 }
 

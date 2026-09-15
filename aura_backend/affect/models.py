@@ -84,7 +84,7 @@ class AffectConfig:
     """Authored configuration for affect dynamics, baselines, and decay."""
 
     schema_version: int = 1
-    config_version: str = "affect-v1"
+    config_version: str = "affect-v2-conversation"
     baseline: AffectVector = field(
         default_factory=lambda: AffectVector(
             valence=0.10,
@@ -125,6 +125,7 @@ class AffectConfig:
             "mood_assimilation_rate": self.mood_assimilation_rate,
             "max_turn_impulse": self.max_turn_impulse,
             "enable_contempt_branch": self.enable_contempt_branch,
+            "event_impulses": STARTER_EVENT_IMPULSES,
         }
         raw = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()
@@ -132,6 +133,25 @@ class AffectConfig:
 
 # Starter event impulse table (Section 5 of plan)
 STARTER_EVENT_IMPULSES: dict[str, dict[str, float]] = {
+    # Authored responses to source-checked conversational events, not biology.
+    "conversation_exploration": {
+        "novelty": 0.18, "curiosity": 0.12, "arousal": 0.10,
+    },
+    "conversation_celebration": {
+        "valence": 0.18, "arousal": 0.18, "affiliation": 0.04, "load": -0.06,
+    },
+    "conversation_distress": {
+        "valence": -0.08, "arousal": 0.14, "affiliation": 0.06, "load": 0.16,
+    },
+    "conversation_affection": {
+        "valence": 0.10, "affiliation": 0.10, "load": -0.04,
+    },
+    "conversation_settling": {
+        "arousal": -0.16, "load": -0.16, "valence": 0.04, "novelty": -0.10,
+    },
+    "conversation_overload": {
+        "arousal": -0.08, "load": 0.16, "affiliation": 0.04,
+    },
     "verified_task_success": {
         "valence": 0.12,
         "control": 0.04,
@@ -193,6 +213,9 @@ class Appraisal:
     source_ids: tuple[str, ...] = ()
     task_id: str | None = None
     source_sha256: str | None = None
+    analysis_status: str | None = None
+    analysis_reason: str | None = None
+    accepted_events: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -210,6 +233,9 @@ class Appraisal:
             "source_ids": list(self.source_ids),
             "source_sha256": self.source_sha256,
             "task_id": self.task_id,
+            "analysis_status": self.analysis_status,
+            "analysis_reason": self.analysis_reason,
+            "accepted_events": list(self.accepted_events),
         }
 
 

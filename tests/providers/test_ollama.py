@@ -45,6 +45,25 @@ async def test_analysis_reasoning_opt_out_preserves_ordinary_conversation_defaul
     assert "reasoning_effort" not in client.completions.calls[1]
 
 
+@pytest.mark.asyncio
+async def test_structured_analysis_schema_reaches_transport_without_changing_chat() -> None:
+    from aura_backend.providers.ollama import OllamaProvider
+    from aura_backend.affect.semantic import InteractionProposal
+
+    schema = InteractionProposal.model_json_schema()
+    client = FakeClient([_response('{"events":[]}'), _response("conversation")])
+    provider = OllamaProvider(settings=_settings(), client=client)
+    request = replace(_request(), output_schema=schema)
+    schema["title"] = "mutated"
+    await provider.generate(request)
+    await provider.generate(_request())
+    transmitted = client.completions.calls[0]["response_format"]
+    assert transmitted["type"] == "json_schema"
+    assert transmitted["json_schema"]["schema"]["title"] == "InteractionProposal"
+    assert isinstance(transmitted["json_schema"]["schema"]["required"], list)
+    assert "response_format" not in client.completions.calls[1]
+
+
 def _settings(**overrides: str) -> ProviderSettings:
     return ProviderSettings.from_mapping(
         {"OLLAMA_MODEL": "ornith-synthetic", **overrides}

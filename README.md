@@ -15,7 +15,8 @@ Each accepted proposal includes checked verbatim source quotations and the hash
 of the analyzed text. Failed analysis stays **Unknown**, including in stored
 history; it no longer silently becomes “Normal.” Text does not measure a user's
 brain activity or chemical levels. The interface labels Aura's indicators as
-simulations and clears them when an assessment is unknown.
+simulations derived from saved controller state; an unknown classification does
+not erase those readouts.
 
 The local Ornith smoke evaluation handled 11 of 12 invented cases as expected;
 it incorrectly labeled an ambiguous sarcastic sentence. Its strict acceptance
@@ -100,19 +101,27 @@ commands. Historical data has not been rewritten.
 
 ## 🎭 Emotional Intelligence System
 
-### Supported Emotions
+### Simulated Emotions
 
-- **Basic**: Normal, Happy, Sad, Angry, Excited, Fear, Disgust, Surprise
-- **Complex**: Joy, Love, Peace, Creativity, DeepMeditation
-- **Combined**: Hope (Anticipation + Joy), Optimism, Awe, Remorse
-- **Social**: RomanticLove, PlatonicLove, ParentalLove, Friendliness
+The header names the strongest tendency in Aura's committed controller state:
+Calm, Curious, Excited, Concerned, Warm, Content, or Peaceful. Conversation events
+are proposed by the selected model, checked against exact source quotes, and
+translated into bounded, authored state changes before the reply is generated.
+User-emotion inference and Aura's optional reply-style analysis are separate
+records; a failed reply analysis cannot freeze or overwrite the controller.
 
 ### Simulated Indicators
 
-- **Brainwave labels**: Alpha, Beta, Gamma, Theta, Delta are software analogies.
-- **Chemical labels**: The fixed mappings describe Aura's simulated tone only.
-- These indicators are not measured EEG, chemical levels, or an implemented
-  time-evolving affective control loop. User assessments carry no biological labels.
+- **Brainwave labels**: Alpha, Beta, Gamma, Theta, Delta are activation bands;
+  the percentage exposes changes within a band.
+- **Chemical channels**: Six controller readouts appear in the simulation panel.
+  The header shows the largest channel, which can remain stable while others change.
+- State persists with the conversation and decays toward baseline between turns.
+  These are software analogies, not measured EEG or chemical concentrations.
+  User assessments carry no biological labels.
+
+See [the conversation simulation repair](docs/conversation-simulation.md) for
+the causal path, checks, and limitations.
 
 ## 🧠 ASEKE Cognitive Framework
 

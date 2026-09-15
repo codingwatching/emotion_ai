@@ -11,6 +11,7 @@ export interface SimulationIndicators {
   wave: HTMLElement;
   chemical: HTMLElement;
   level: HTMLElement;
+  channels?: HTMLElement | null;
 }
 
 /** Render actual controller readouts; an unavailable tone label cannot erase them. */
@@ -35,10 +36,11 @@ export function renderSimulationIndicators(
     elements.chemical.textContent = 'Unknown';
     elements.chemical.title = 'No simulated channel values are available yet.';
     elements.level.style.setProperty('--chemical-intensity', '0%');
+    if (elements.channels) elements.channels.textContent = 'No saved channel values';
     return;
   }
   const level = Math.round(channels[channel] * 100);
-  elements.brainwave.textContent = display.brainwave;
+  elements.brainwave.textContent = `${display.brainwave} ${Math.round(display.activation * 100)}%`;
   elements.brainwave.title = `Simulated rhythm: ${Math.round(display.activation * 100)}% activation. Visual analogy, not EEG.`;
   elements.wave.className = `wave-pattern wave-${display.brainwave.toLowerCase()}`;
   elements.chemical.textContent = `${channelNames[channel]} ${level}%`;
@@ -46,4 +48,9 @@ export function renderSimulationIndicators(
     .map(([key, label]) => `${label}-like: ${Math.round(channels[key as keyof typeof channelNames] * 100)}%`)
     .join('\n');
   elements.level.style.setProperty('--chemical-intensity', `${level}%`);
+  if (elements.channels) {
+    elements.channels.textContent = Object.entries(channelNames)
+      .map(([key, label]) => `${label}: ${(channels[key as keyof typeof channelNames] * 100).toFixed(1)}%`)
+      .join(' · ');
+  }
 }

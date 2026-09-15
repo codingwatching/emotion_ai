@@ -1,0 +1,283 @@
+{
+  "status": "PASS",
+  "browser": "Chromium headless",
+  "user": "SimulationCheck0915",
+  "rows": [
+    {
+      "message": "How do stars form from clouds of gas? Please answer in one short sentence.",
+      "observed": {
+        "brainwave": "Alpha 40%",
+        "chemical": "Serotonin 75%",
+        "channels": "Dopamine: 63.5% · Norepinephrine: 29.0% · Acetylcholine: 20.8% · Serotonin: 75.0% · GABA: 75.0% · Cortisol: 10.0%",
+        "emotion": "Curious",
+        "intensity": "Medium",
+        "animation": "brainwave-alpha",
+        "revision": "Rev 1 (committed)",
+        "causes": "conversation_exploration"
+      },
+      "state": {
+        "valence": 0.1,
+        "arousal": 0.4,
+        "novelty": 0.18,
+        "affiliation": 0.65,
+        "control": 0.75,
+        "curiosity": 0.72,
+        "load": 0.1
+      },
+      "channels": {
+        "dopamine_like": 0.635,
+        "norepinephrine_like": 0.29,
+        "acetylcholine_like": 0.208,
+        "serotonin_like": 0.75,
+        "gaba_like": 0.75,
+        "cortisol_like": 0.1
+      },
+      "display": {
+        "basis": "published_affect_state",
+        "brainwave": "Alpha",
+        "activation": 0.4,
+        "dominant_channel": "serotonin_like",
+        "emotion": {
+          "name": "Curious",
+          "intensity": "Medium",
+          "description": "Engaged in exploring and understanding."
+        }
+      },
+      "appraisal": {
+        "status": "inferred",
+        "reason": null
+      },
+      "causes": [
+        "conversation_exploration"
+      ],
+      "policy": {
+        "warmth": "warm",
+        "energy": "balanced",
+        "acknowledge_setback": false,
+        "recovery_step": false,
+        "exploration": "exploratory",
+        "reflection": "immediate",
+        "input_state": {
+          "valence": 0.1,
+          "arousal": 0.4,
+          "novelty": 0.18,
+          "affiliation": 0.65,
+          "control": 0.75,
+          "curiosity": 0.72,
+          "load": 0.1
+        },
+        "evidence_action": "proceed"
+      }
+    },
+    {
+      "message": "I am thrilled that we figured it out! This is wonderful! Please reply in one short sentence.",
+      "observed": {
+        "brainwave": "Beta 56%",
+        "chemical": "Serotonin 80%",
+        "channels": "Dopamine: 67.8% · Norepinephrine: 34.7% · Acetylcholine: 17.9% · Serotonin: 79.8% · GABA: 75.0% · Cortisol: 4.0%",
+        "emotion": "Excited",
+        "intensity": "Medium",
+        "animation": "brainwave-beta",
+        "revision": "Rev 2 (committed)",
+        "causes": "conversation_celebration"
+      },
+      "state": {
+        "valence": 0.28,
+        "arousal": 0.5614,
+        "novelty": 0.1323,
+        "affiliation": 0.69,
+        "control": 0.75,
+        "curiosity": 0.7152,
+        "load": 0.04
+      },
+      "channels": {
+        "dopamine_like": 0.6776,
+        "norepinephrine_like": 0.3468,
+        "acetylcholine_like": 0.1794,
+        "serotonin_like": 0.798,
+        "gaba_like": 0.75,
+        "cortisol_like": 0.04
+      },
+      "display": {
+        "basis": "published_affect_state",
+        "brainwave": "Beta",
+        "activation": 0.5614,
+        "dominant_channel": "serotonin_like",
+        "emotion": {
+          "name": "Excited",
+          "intensity": "Medium",
+          "description": "Energized by positive developments."
+        }
+      },
+      "appraisal": {
+        "status": "inferred",
+        "reason": null
+      },
+      "causes": [
+        "conversation_celebration"
+      ],
+      "policy": {
+        "warmth": "warm",
+        "energy": "energetic",
+        "acknowledge_setback": false,
+        "recovery_step": false,
+        "exploration": "exploratory",
+        "reflection": "immediate",
+        "input_state": {
+          "valence": 0.28,
+          "arousal": 0.5614,
+          "novelty": 0.1323,
+          "affiliation": 0.69,
+          "control": 0.75,
+          "curiosity": 0.7152,
+          "load": 0.04
+        },
+        "evidence_action": "proceed"
+      }
+    },
+    {
+      "message": "I am frightened and sad about what happened today. Please respond in one short sentence.",
+      "observed": {
+        "brainwave": "Beta 68%",
+        "chemical": "Serotonin 77%",
+        "channels": "Dopamine: 65.6% · Norepinephrine: 40.1% · Acetylcholine: 17.1% · Serotonin: 76.9% · GABA: 75.0% · Cortisol: 20.1%",
+        "emotion": "Concerned",
+        "intensity": "Medium",
+        "animation": "brainwave-beta",
+        "revision": "Rev 3 (committed)",
+        "causes": "conversation_distress"
+      },
+      "state": {
+        "valence": 0.196,
+        "arousal": 0.6827,
+        "novelty": 0.1184,
+        "affiliation": 0.7496,
+        "control": 0.75,
+        "curiosity": 0.7135,
+        "load": 0.2013
+      },
+      "channels": {
+        "dopamine_like": 0.6558,
+        "norepinephrine_like": 0.4005,
+        "acetylcholine_like": 0.171,
+        "serotonin_like": 0.7692,
+        "gaba_like": 0.75,
+        "cortisol_like": 0.2013
+      },
+      "display": {
+        "basis": "published_affect_state",
+        "brainwave": "Beta",
+        "activation": 0.6827,
+        "dominant_channel": "serotonin_like",
+        "emotion": {
+          "name": "Concerned",
+          "intensity": "Medium",
+          "description": "Attentive care with more unresolved load."
+        }
+      },
+      "appraisal": {
+        "status": "inferred",
+        "reason": null
+      },
+      "causes": [
+        "conversation_distress"
+      ],
+      "policy": {
+        "warmth": "warm",
+        "energy": "energetic",
+        "acknowledge_setback": false,
+        "recovery_step": false,
+        "exploration": "exploratory",
+        "reflection": "immediate",
+        "input_state": {
+          "valence": 0.196,
+          "arousal": 0.6827,
+          "novelty": 0.1184,
+          "affiliation": 0.7496,
+          "control": 0.75,
+          "curiosity": 0.7135,
+          "load": 0.2013
+        },
+        "evidence_action": "proceed"
+      }
+    },
+    {
+      "message": "I feel relieved now. Let us slow down and take it easy. Please reply in one short sentence.",
+      "observed": {
+        "brainwave": "Alpha 49%",
+        "chemical": "Serotonin 83%",
+        "channels": "Dopamine: 66.4% · Norepinephrine: 24.9% · Acetylcholine: 10.3% · Serotonin: 83.3% · GABA: 75.0% · Cortisol: 3.9%",
+        "emotion": "Warm",
+        "intensity": "Medium",
+        "animation": "brainwave-alpha",
+        "revision": "Rev 4 (committed)",
+        "causes": "conversation_settling"
+      },
+      "state": {
+        "valence": 0.2337,
+        "arousal": 0.4929,
+        "novelty": 0.0049,
+        "affiliation": 0.7483,
+        "control": 0.75,
+        "curiosity": 0.7117,
+        "load": 0.0389
+      },
+      "channels": {
+        "dopamine_like": 0.6643,
+        "norepinephrine_like": 0.2489,
+        "acetylcholine_like": 0.1029,
+        "serotonin_like": 0.8334,
+        "gaba_like": 0.75,
+        "cortisol_like": 0.0389
+      },
+      "display": {
+        "basis": "published_affect_state",
+        "brainwave": "Alpha",
+        "activation": 0.4929,
+        "dominant_channel": "serotonin_like",
+        "emotion": {
+          "name": "Warm",
+          "intensity": "Medium",
+          "description": "Increased warmth and connection."
+        }
+      },
+      "appraisal": {
+        "status": "inferred",
+        "reason": null
+      },
+      "causes": [
+        "conversation_settling"
+      ],
+      "policy": {
+        "warmth": "warm",
+        "energy": "balanced",
+        "acknowledge_setback": false,
+        "recovery_step": false,
+        "exploration": "exploratory",
+        "reflection": "immediate",
+        "input_state": {
+          "valence": 0.2337,
+          "arousal": 0.4929,
+          "novelty": 0.0049,
+          "affiliation": 0.7483,
+          "control": 0.75,
+          "curiosity": 0.7117,
+          "load": 0.0389
+        },
+        "evidence_action": "proceed"
+      }
+    }
+  ],
+  "reload_preserves_readouts": true,
+  "reduced_motion_retains_values": true,
+  "restored": {
+    "brainwave": "Alpha 49%",
+    "chemical": "Serotonin 83%",
+    "channels": "Dopamine: 66.4% · Norepinephrine: 24.9% · Acetylcholine: 10.3% · Serotonin: 83.3% · GABA: 75.0% · Cortisol: 3.9%",
+    "emotion": "Warm",
+    "intensity": "Medium",
+    "animation": "brainwave-alpha",
+    "revision": "Rev 4 (restored)",
+    "causes": "conversation_settling"
+  }
+}

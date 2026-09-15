@@ -230,6 +230,20 @@ async def test_adapter_generation_is_async_stateless_and_normalized() -> None:
 
 
 @pytest.mark.asyncio
+async def test_structured_analysis_uses_gemini_json_schema_config() -> None:
+    from dataclasses import replace
+    from aura_backend.affect.semantic import InteractionProposal
+
+    client = FakeClient([FakeAsyncChat([_response(_part('{"events":[]}'))])])
+    provider = _provider(client)
+    schema = InteractionProposal.model_json_schema()
+    await provider.generate(replace(_request(), output_schema=schema))
+    config = client.aio.chats.create_calls[0]["config"]
+    assert config["response_mime_type"] == "application/json"
+    assert config["response_json_schema"] == schema
+
+
+@pytest.mark.asyncio
 async def test_adapter_tool_follow_up_uses_async_chat_and_neutral_executor() -> None:
     definition = ToolDefinition(
         name="memory_search",

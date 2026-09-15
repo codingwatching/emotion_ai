@@ -1869,3 +1869,11 @@ body {
   .wave-pattern { animation: none; }
   .chemical-level::after { transition: none; }
 }
+
+.sim-channels {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: var(--text-secondary, #b8b8b8);
+  font-variant-numeric: tabular-nums;
+}

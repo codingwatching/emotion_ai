@@ -58,13 +58,13 @@
           <div class="status-container emotional-state">
             <div class="status-header">
               <span class="status-icon" id="emotion-icon">😊</span>
-              <span class="status-label">Aura's Simulated Tone</span>
+              <span class="status-label">Aura's Simulated Emotion</span>
             </div>
             <div class="status-main">
               <span class="status-value" id="aura-emotion-status" aria-live="polite">Unknown</span>
               <span class="intensity-level" id="emotion-intensity">Unknown</span>
             </div>
-            <div class="status-details" id="aura-emotion-details">Awaiting a reply; not measured biology.</div>
+            <div class="status-details" id="aura-emotion-details">Waiting for simulation state.</div>
           </div>
           
           <div class="status-container cognitive-state">
@@ -192,8 +192,9 @@
           </div>
           <div class="sim-row">
             <span class="sim-label">Causes:</span>
-            <span class="sim-value" id="sim-causes">baseline / idle</span>
+            <span class="sim-value" id="sim-causes">Waiting for state</span>
           </div>
+          <div id="sim-channels" class="sim-channels" aria-live="polite">No saved channel values</div>
         </div>
       </div>
 

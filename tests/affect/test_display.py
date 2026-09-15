@@ -31,6 +31,7 @@ def test_unknown_tone_and_replay_use_same_published_controller_values() -> None:
             "brainwave": "Alpha",
             "activation": 0.3,
             "dominant_channel": "serotonin_like",
+            "emotion": {"name": "Calm", "intensity": "Low", "description": "Near the simulation's resting state."},
         }
     )
     assert current["simulation"]["channels"]["serotonin_like"] == 0.75
@@ -84,7 +85,9 @@ def test_saved_simulation_endpoint_reads_exact_user_without_provider_or_write(
     monkeypatch.setattr(
         main,
         "storage_boundary",
-        SimpleNamespace(repository=SimpleNamespace(get_affect_head=get_head)),
+        SimpleNamespace(repository=SimpleNamespace(
+            get_affect_head=get_head, get_affect_transition=lambda *_: None,
+        )),
     )
     client = TestClient(
         main.create_app()

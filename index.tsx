@@ -61,6 +61,7 @@ class AuraUIManager {
   private simAffiliation?: HTMLElement | null;
   private simLoad?: HTMLElement | null;
   private simCauses?: HTMLElement | null;
+  private simChannels?: HTMLElement | null;
   private wavePatternElement!: HTMLElement;
   private chemicalLevelElement!: HTMLElement;
 
@@ -141,6 +142,7 @@ class AuraUIManager {
     this.simAffiliation = document.getElementById('sim-affiliation');
     this.simLoad = document.getElementById('sim-load');
     this.simCauses = document.getElementById('sim-causes');
+    this.simChannels = document.getElementById('sim-channels');
 
     // Note: Simplified user management elements will be created dynamically in setupUsernameManagement()
 
@@ -767,7 +769,7 @@ class AuraUIManager {
         intensity: "Unknown",
         brainwave: "",
         neurotransmitter: "",
-        description: "Aura's simulated tone will appear after a reply."
+        description: "Aura's simulated emotion will appear with its state."
       });
 
       this.updateCognitiveState({
@@ -1243,37 +1245,22 @@ class AuraUIManager {
   }
 
   private updateEmotionalState(emotionalState: EmotionalState): void {
-    try {
-      // Update basic emotion display
-      this.emotionStatusElement.textContent = emotionalState.name;
-      this.emotionDetailsElement.textContent = emotionalState.description || 'Simulated tone; not measured biology.';
-
-      // Update intensity
-      if (this.emotionIntensityElement) {
-        this.emotionIntensityElement.textContent = emotionalState.intensity || 'Unknown';
-      }
-
-      // Update emotion icon based on emotion
-      if (this.emotionIconElement) {
-        this.emotionIconElement.textContent = this.getEmotionIcon(emotionalState.name);
-      }
-
-      // Update header background class for dynamic coloring
-      this.updateHeaderEmotionalState(emotionalState.name);
-
-      this.updateSimulation(emotionalState.simulation ?? null);
-
-      console.log(`🎭 Enhanced emotion update: ${emotionalState.name} (${emotionalState.intensity})`);
-    } catch (error) {
-      console.warn('Failed to update emotional state display:', error);
-    }
+    this.updateSimulation(emotionalState.simulation ?? null);
   }
 
   private updateSimulation(simulation: AffectSimulationState | null): void {
     renderSimulationIndicators(simulation, {
       brainwave: this.brainwaveValueElement, wave: this.wavePatternElement,
       chemical: this.ntValueElement, level: this.chemicalLevelElement,
+      channels: this.simChannels,
     });
+    // Emotion, rhythms and channels share one committed source, including reloads.
+    const emotion = simulation?.display?.emotion;
+    this.emotionStatusElement.textContent = emotion?.name ?? 'Unknown';
+    this.emotionIntensityElement.textContent = emotion?.intensity ?? 'Unknown';
+    this.emotionDetailsElement.textContent = emotion?.description ?? 'No saved simulation state.';
+    if (this.emotionIconElement) this.emotionIconElement.textContent = this.getEmotionIcon(emotion?.name ?? 'Unknown');
+    this.updateHeaderEmotionalState(emotion?.name ?? 'Unknown');
     if (!simulation) {
       if (this.simRevisionBadge) this.simRevisionBadge.textContent = 'No saved state';
       for (const element of [this.simPolicyDesc, this.simValence, this.simCuriosity,
@@ -1295,8 +1282,19 @@ class AuraUIManager {
     if (this.simAffiliation) this.simAffiliation.textContent = sim.post_state.affiliation.toFixed(2);
     if (this.simLoad) this.simLoad.textContent = sim.post_state.load.toFixed(2);
     if (this.simCauses) {
-      this.simCauses.textContent = (sim.causes?.length ?? 0) > 0 ? sim.causes.join(', ')
-        : sim.disposition === 'restored' ? 'Restored saved state' : 'neutral_conversation';
+      const descriptions: Record<string, string> = {
+        conversation_exploration: 'Exploring an idea', conversation_celebration: 'Shared enthusiasm',
+        conversation_distress: 'Responding with care', conversation_affection: 'Warm exchange',
+        conversation_settling: 'Slowing down', conversation_overload: 'Making space',
+        explicit_collaboration: 'Appreciation', explicit_repair: 'Repairing the exchange',
+        new_unresolved_information: 'New information', linguistic_correction_claim: 'Considering a correction',
+      };
+      this.simCauses.textContent = (sim.causes?.length ?? 0) > 0
+        ? sim.causes.map(cause => descriptions[cause] ?? cause.replace(/_/g, ' ')).join(', ')
+        : sim.disposition === 'restored' ? 'Restored saved state'
+          : ['invalid', 'unavailable'].includes(sim.appraisal?.status ?? '')
+            ? `Analysis unavailable (${sim.appraisal?.reason ?? 'unknown'}); state settling`
+            : 'No supported event; state settling';
     }
   }
 
@@ -1357,7 +1355,8 @@ class AuraUIManager {
       // Remove existing emotion classes
       const emotionClasses = ['emotion-normal', 'emotion-happy', 'emotion-sad', 'emotion-angry',
                              'emotion-excited', 'emotion-love', 'emotion-curious', 'emotion-creative',
-                             'emotion-peaceful', 'emotion-fear'];
+                             'emotion-peaceful', 'emotion-fear', 'emotion-calm',
+                             'emotion-warm', 'emotion-content', 'emotion-concerned', 'emotion-unknown'];
 
       emotionClasses.forEach(cls => this.headerElement.classList.remove(cls));
 
@@ -1382,7 +1381,8 @@ class AuraUIManager {
       'Happy': '😊', 'Sad': '😢', 'Angry': '😠', 'Excited': '🤩',
       'Fear': '😰', 'Love': '💖', 'Curious': '🤔', 'Creative': '🎨',
       'Peaceful': '😌', 'Normal': '😊', 'Joy': '😄', 'Surprise': '😲',
-      'Disgust': '🤢', 'Awe': '😮', 'Hope': '🌟', 'Optimism': '☀️'
+      'Disgust': '🤢', 'Awe': '😮', 'Hope': '🌟', 'Optimism': '☀️',
+      'Calm': '😌', 'Warm': '🤗', 'Content': '🙂', 'Concerned': '🫂'
     };
     return iconMap[emotion] || '😊';
   }

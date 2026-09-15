@@ -114,6 +114,8 @@ class ProviderRequest:
     correlation_id: str | None = None
     # Optional hint: currently implemented by Ollama; other adapters keep defaults.
     disable_reasoning: bool = False
+    # Optional structured analysis output; adapters translate the immutable schema.
+    output_schema: Mapping[str, JsonValue] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.messages, tuple) or not self.messages:
@@ -130,6 +132,10 @@ class ProviderRequest:
             raise TypeError("system_instruction must be text or None")
         if not isinstance(self.disable_reasoning, bool):
             raise TypeError("disable_reasoning must be a boolean")
+        if self.output_schema is not None:
+            if not isinstance(self.output_schema, Mapping):
+                raise TypeError("output_schema must be a JSON object")
+            object.__setattr__(self, "output_schema", _freeze_json(self.output_schema))
         if (
             isinstance(self.temperature, bool)
             or not isinstance(self.temperature, (int, float))

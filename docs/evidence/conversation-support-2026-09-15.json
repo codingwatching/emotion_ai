@@ -1,0 +1,85 @@
+{
+  "status": "PASS",
+  "browser": "Chromium headless",
+  "user": "SupportCheck0915",
+  "rows": [
+    {
+      "message": "I am frightened and sad about what happened today. Please respond in one short sentence.",
+      "observed": {
+        "brainwave": "Alpha 44%",
+        "chemical": "GABA 75%",
+        "channels": "Dopamine: 55.5% · Norepinephrine: 22.0% · Acetylcholine: 10.0% · Serotonin: 72.2% · GABA: 75.0% · Cortisol: 26.0%",
+        "emotion": "Concerned",
+        "intensity": "Medium",
+        "animation": "brainwave-alpha",
+        "revision": "Rev 1 (committed)",
+        "causes": "Responding with care"
+      },
+      "state": {
+        "valence": 0.02,
+        "arousal": 0.44,
+        "novelty": 0,
+        "affiliation": 0.71,
+        "control": 0.75,
+        "curiosity": 0.6,
+        "load": 0.26
+      },
+      "channels": {
+        "dopamine_like": 0.555,
+        "norepinephrine_like": 0.22,
+        "acetylcholine_like": 0.1,
+        "serotonin_like": 0.722,
+        "gaba_like": 0.75,
+        "cortisol_like": 0.26
+      },
+      "display": {
+        "basis": "published_affect_state",
+        "brainwave": "Alpha",
+        "activation": 0.44,
+        "dominant_channel": "gaba_like",
+        "emotion": {
+          "name": "Concerned",
+          "intensity": "Medium",
+          "description": "Attentive care with more unresolved load."
+        }
+      },
+      "appraisal": {
+        "status": "inferred",
+        "reason": null
+      },
+      "causes": [
+        "conversation_distress"
+      ],
+      "policy": {
+        "acknowledge_setback": false,
+        "energy": "steady",
+        "evidence_action": "proceed",
+        "exploration": "focused",
+        "input_state": {
+          "affiliation": 0.71,
+          "arousal": 0.44,
+          "control": 0.75,
+          "curiosity": 0.6,
+          "load": 0.26,
+          "novelty": 0,
+          "valence": 0.02
+        },
+        "recovery_step": false,
+        "reflection": "defer",
+        "warmth": "warm"
+      }
+    }
+  ],
+  "reload_preserves_readouts": true,
+  "reduced_motion_retains_values": true,
+  "restored": {
+    "brainwave": "Alpha 44%",
+    "chemical": "GABA 75%",
+    "channels": "Dopamine: 55.5% · Norepinephrine: 22.0% · Acetylcholine: 10.0% · Serotonin: 72.2% · GABA: 75.0% · Cortisol: 26.0%",
+    "emotion": "Concerned",
+    "intensity": "Medium",
+    "animation": "brainwave-alpha",
+    "revision": "Rev 1 (restored)",
+    "causes": "Responding with care"
+  }
+}

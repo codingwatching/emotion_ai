@@ -60,7 +60,9 @@ class _CaptureProvider:
 
     async def generate(self, request: ProviderRequest) -> ProviderResult:
         self.requests.append(request)
-        if len(self.requests) == 1:
+        if request.output_schema and request.output_schema.get("title") == "InteractionProposal":
+            return ProviderResult(content='{"events":[]}')
+        if request.session_id is not None:
             return ProviderResult(content=self.response_text)
         return ProviderResult(
             content=json.dumps(
@@ -189,7 +191,7 @@ def test_primary_prompt_contains_pre_state_policy_block(
         )
     assert response.status_code == 200
     assert len(provider.requests) >= 1
-    primary_request = provider.requests[0]
+    primary_request = next(request for request in provider.requests if request.session_id)
 
     instruction = primary_request.system_instruction
     assert "### Simulated Behavioral Posture (affect-v1)" in instruction
@@ -1313,3 +1315,49 @@ def test_projection_failure_does_not_discard_committed_ledger(
         persisted_head = repo.get_affect_head(user_id)
         assert persisted_head is not None
         assert persisted_head.revision == 1
+
+
+def test_semantic_events_drive_real_route_and_replay_without_reappraisal(
+    clean_db: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise input meaning through generation policy, commit, HTTP and restore."""
+    from aura_backend.affect.display import with_simulation_readouts
+
+    class SemanticProvider(_CaptureProvider):
+        async def generate(self, request: ProviderRequest) -> ProviderResult:
+            if request.output_schema and request.output_schema.get("title") == "InteractionProposal":
+                self.requests.append(request)
+                message = json.loads(request.messages[0].content)["source"]
+                return ProviderResult(json.dumps({"events": [
+                    {"kind": "exploration", "evidence": message},
+                ]}))
+            return await super().generate(request)
+
+    repo = StorageRepository(clean_db)
+    provider = SemanticProvider("A star begins as collapsing gas.")
+    runtime = _TestAppRuntime(ProviderRuntime(provider, timeout_seconds=2), ToolCatalog(()))
+    monkeypatch.setattr(main, "conversation_persistence", ConversationPersistenceService(repo, _Projection()))
+    monkeypatch.setattr(main, "affect_service", AffectService(repository=repo))
+    monkeypatch.setattr(main, "storage_boundary", SimpleNamespace(repository=repo))
+    body = {"user_id": "semantic-route", "session_id": "session", "message": "How do stars form?", "idempotency_key": "once"}
+    with TestClient(main.create_app(runtime_builder=lambda: runtime)) as client:
+        response = client.post("/conversation", json=body)
+        assert response.status_code == 200
+        simulation = response.json()["emotional_state"]["simulation"]
+        assert simulation["disposition"] == "committed"
+        assert simulation["display"]["emotion"]["name"] == "Curious"
+        assert simulation["display"]["activation"] == 0.4
+        assert simulation["appraisal"] == {"status": "inferred", "reason": None}
+        primary = next(request for request in provider.requests if request.session_id)
+        assert "Initiative & Exploration: exploratory" in primary.system_instruction
+        calls = len(provider.requests)
+        replay = client.post("/conversation", json=body).json()["emotional_state"]["simulation"]
+        restored = client.get("/simulation/semantic-route").json()["simulation"]
+        assert len(provider.requests) == calls
+        for value in (replay, restored):
+            assert value["display"] == simulation["display"]
+            assert value["channels"] == simulation["channels"]
+            assert value["causes"] == ["conversation_exploration"]
+            assert value["appraisal"] == simulation["appraisal"]
+    loaded = AffectService(repository=repo).get_state("semantic-route")
+    assert with_simulation_readouts({"post_state": loaded.fast_state.to_dict()})["display"] == simulation["display"]

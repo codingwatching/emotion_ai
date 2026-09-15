@@ -234,6 +234,14 @@ class OpenAICompatibleProvider:
         }
         if request.max_tokens is not None:
             kwargs["max_tokens"] = request.max_tokens
+        if request.output_schema is not None:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "aura_analysis", "strict": True,
+                    "schema": _plain_json(request.output_schema),
+                },
+            }
         if request.tools:
             kwargs["tools"] = self._tools(request.tools)
         return kwargs

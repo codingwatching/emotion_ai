@@ -142,4 +142,5 @@ def build_appraisal_record(
         source_sha256=hashlib.sha256(message.encode("utf-8")).hexdigest(),
         status=status,
         task_id=task_id,
+        accepted_events=tuple(accepted_events),
     )

@@ -297,6 +297,9 @@ class GeminiProvider(BaseProvider):
             config["system_instruction"] = "\n\n".join(system_parts)
         if request.max_tokens is not None:
             config["max_output_tokens"] = request.max_tokens
+        if request.output_schema is not None:
+            config["response_mime_type"] = "application/json"
+            config["response_json_schema"] = _plain_json(request.output_schema)
         if request.tools:
             config["tools"] = self._tool_config(request.tools)
         if self.thinking_budget != 0:

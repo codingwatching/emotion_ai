@@ -68,6 +68,9 @@ class _SequenceProvider:
         self.close_calls = 0
 
     async def generate(self, request: ProviderRequest) -> ProviderResult:
+        if request.output_schema and request.output_schema.get("title") == "InteractionProposal":
+            self.requests.append(request)
+            return ProviderResult(content='{"events":[]}')
         self.requests.append(request)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, ProviderErrorCode):
@@ -316,7 +319,9 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
                 "display": {
                     "basis": "published_affect_state", "brainwave": "Alpha",
                     "activation": 0.3, "dominant_channel": "serotonin_like",
+                    "emotion": {"name": "Calm", "intensity": "Low", "description": "Near the simulation's resting state."},
                 },
+                "appraisal": {"status": "abstained", "reason": None},
                 "schema_version": 1,
                 "scope_id": "synthetic-user",
                 "revision": 0,
@@ -390,8 +395,9 @@ def test_selected_runtime_preserves_success_schema_tools_and_persistence(
         "thinking_content": None,
         "thinking_metrics": None,
     }
-    assert len(provider.requests) == 4
-    primary, *analyses = provider.requests
+    assert len(provider.requests) == 5
+    appraisal_request, primary, *analyses = provider.requests
+    assert appraisal_request.output_schema["title"] == "InteractionProposal"
     assert primary.messages[0].content == PROMPT_SENTINEL
     assert primary.system_instruction
     assert primary.session_id == "synthetic-user_synthetic-session"
@@ -598,5 +604,5 @@ def test_short_prompt_retrieves_memory_and_queues_once_only_after_commit(
         response = client.post("/conversation", json={**_payload(), "message": "Vault?"})
     assert response.status_code == 200
     assert events == ["search", "commit", "maintenance"]
-    assert "source=source-1" in selected.requests[0].system_instruction
-    assert selected.requests[0].max_tokens == 8192
+    assert "source=source-1" in selected.requests[1].system_instruction
+    assert selected.requests[1].max_tokens == 8192

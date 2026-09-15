@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import hashlib
 import time
 import uuid
@@ -10,6 +11,8 @@ from dataclasses import asdict
 from typing import Any
 
 from aura_backend.affect.appraisal import appraise_user_message, build_appraisal_record
+from aura_backend.affect.semantic import assess_interaction
+from aura_backend.conversation.emotion_assessment import Generate
 from aura_backend.affect.regulation import classify_events, regulate_interpretations
 from aura_backend.affect.dynamics import (
     apply_observed_outcome,
@@ -124,6 +127,7 @@ class AffectService:
         *,
         task_facts: dict[str, Any] | None = None,
         event_id: str | None = None,
+        generate: Generate | None = None,
     ) -> tuple[AffectState, ResponsePolicy, list[str], Appraisal, AffectVector]:
         """Compute provisional pre-response state and policy under per-scope lock.
 
@@ -141,6 +145,19 @@ class AffectService:
                 self.config,
             )
             accepted_events = appraise_user_message(message, task_facts=task_facts)
+            analysis = await assess_interaction(message, generate) if generate else None
+            semantic_events: list[tuple[str, str]] = []
+            if analysis is not None:
+                # One communicative act must not receive both lexical and semantic gains.
+                aliases = {
+                    "conversation_exploration": "new_unresolved_information",
+                    "conversation_affection": "explicit_collaboration",
+                }
+                semantic_events = [
+                    (kind, span) for kind, span in analysis.events
+                    if aliases.get(kind) not in accepted_events
+                ]
+                accepted_events.extend(kind for kind, _span in semantic_events)
             turn_impulse = calculate_turn_impulse(accepted_events, self.config)
             pre_state = apply_pre_state(fast_decayed, turn_impulse)
 
@@ -166,7 +183,22 @@ class AffectService:
                 message=message,
                 accepted_events=accepted_events,
             )
-            policy = render_policy(pre_state, regulation=regulation_result)
+            if analysis is not None:
+                appraisal = replace(
+                    appraisal,
+                    status="inferred" if semantic_events else appraisal.status,
+                    evidence_spans=tuple(dict.fromkeys([
+                        *appraisal.evidence_spans, *(span for _kind, span in semantic_events),
+                    ])),
+                    analysis_status=analysis.status,
+                    analysis_reason=analysis.reason,
+                )
+            policy = render_policy(
+                pre_state, regulation=regulation_result,
+                support_needed=any(kind in accepted_events for kind in (
+                    "conversation_distress", "conversation_overload",
+                )),
+            )
 
             return prior_state, policy, accepted_events, appraisal, pre_state
 

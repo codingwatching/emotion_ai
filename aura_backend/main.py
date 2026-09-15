@@ -2531,6 +2531,7 @@ async def process_conversation(
                 timestamp=turn_timestamp,
                 # HTTP claims are not trusted task-observer receipts.
                 task_facts=None,
+                generate=provider_runtime.generate,
             )
 
 
@@ -2691,6 +2692,10 @@ async def process_conversation(
                 "mood_state": published_state.mood_state.to_dict(),
                 "policy": rendered_policy.to_dict(),
                 "causes": accepted_events,
+                "appraisal": {
+                    "status": affect_appraisal.analysis_status,
+                    "reason": affect_appraisal.analysis_reason,
+                },
                 "disposition": receipt.status,
                 "persistence": receipt.to_dict(),
                 "channels": compute_channel_readouts(published_state.fast_state),
@@ -4417,6 +4422,9 @@ async def get_saved_simulation(user_id: str) -> dict[str, Any]:
     state = await asyncio.to_thread(storage_boundary.repository.get_affect_head, user_id)
     if state is None:
         return {"simulation": None}
+    transition = await asyncio.to_thread(
+        storage_boundary.repository.get_affect_transition, user_id, state.revision,
+    )
     return {"simulation": with_simulation_readouts({
         "schema_version": state.schema_version,
         "scope_id": user_id,
@@ -4424,8 +4432,9 @@ async def get_saved_simulation(user_id: str) -> dict[str, Any]:
         "pre_state": state.fast_state.to_dict(),
         "post_state": state.fast_state.to_dict(),
         "mood_state": state.mood_state.to_dict(),
-        "policy": render_policy(state.fast_state).to_dict(),
+        "policy": transition["policy"] if transition else render_policy(state.fast_state).to_dict(),
         "causes": [],
+        "appraisal": transition["appraisal"] if transition else {},
         "disposition": "restored",
     })}
 

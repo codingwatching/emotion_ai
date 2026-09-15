@@ -390,6 +390,9 @@ def _install_route_fakes(main: Any, scenario: str) -> dict[str, Any]:
                 ProviderFailure,
             )
 
+            if request.output_schema and request.output_schema.get("title") == "InteractionProposal":
+                return ProviderResult(content='{"events":[]}')
+
             calls["provider"] += 1
             calls["provider_input"] = {
                 "message_count": len(request.messages),
